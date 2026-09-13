@@ -27,9 +27,12 @@ export function ClickSpeed() {
   useEffect(() => {
     const stored = window.localStorage.getItem(BEST_CPS_KEY);
     const parsed = stored === null ? Number.NaN : Number(stored);
-    if (Number.isFinite(parsed)) setBestCps(parsed);
+    const hydrationTimer = window.setTimeout(() => {
+      if (Number.isFinite(parsed)) setBestCps(parsed);
+    }, 0);
 
     return () => {
+      window.clearTimeout(hydrationTimer);
       if (timerRef.current) clearInterval(timerRef.current);
     };
   }, []);
@@ -149,7 +152,7 @@ export function ClickSpeed() {
                 handleTap();
               }}
               onKeyDown={handleKeyDown}
-              className="flex min-h-64 w-full touch-manipulation select-none items-center justify-center rounded-lg bg-primary px-6 text-center text-title-2 font-bold text-primary-foreground shadow-sm transition-[background-color,box-shadow,transform] hover:bg-primary-hover active:scale-[0.99] focus-visible:border-primary focus-visible:ring-3 focus-visible:ring-primary/50 sm:min-h-72"
+              className="[-webkit-tap-highlight-color:transparent] flex min-h-64 w-full touch-manipulation select-none items-center justify-center rounded-lg bg-primary px-6 text-center text-title-2 font-bold text-primary-foreground shadow-sm transition-[background-color,box-shadow,transform] hover:bg-primary-hover active:scale-[0.99] focus-visible:border-primary focus-visible:ring-3 focus-visible:ring-primary/50 sm:min-h-72"
             >
               탭!
             </button>

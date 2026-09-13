@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { Clock3, Play, RotateCcw, Trophy } from "lucide-react";
 
 import { AdSlot } from "@/components/ads/ad-slot";
@@ -31,22 +31,32 @@ function formatScore(score: number) {
   return new Intl.NumberFormat("ko-KR").format(score);
 }
 
+function getStoredBestScore() {
+  if (typeof window === "undefined") return 0;
+  const stored = window.localStorage.getItem(BEST_SCORE_KEY);
+  const parsed = stored ? Number.parseInt(stored, 10) : 0;
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+}
+
+function subscribeToBestScore(onStoreChange: () => void) {
+  window.addEventListener("storage", onStoreChange);
+  window.addEventListener("whac-a-mole-best-score", onStoreChange);
+  return () => {
+    window.removeEventListener("storage", onStoreChange);
+    window.removeEventListener("whac-a-mole-best-score", onStoreChange);
+  };
+}
+
 export function WhacAMole() {
   const [phase, setPhase] = useState<Phase>("idle");
   const [score, setScore] = useState(0);
-  const [bestScore, setBestScore] = useState(0);
-  const [timeRemaining, setTimeRemaining] = useState(GAME_BALANCE.durationSeconds);
+  const bestScore = useSyncExternalStore(subscribeToBestScore, getStoredBestScore, () => 0);
+  const [timeRemaining, setTimeRemaining] = useState<number>(GAME_BALANCE.durationSeconds);
   const [moleIndex, setMoleIndex] = useState(-1);
   const [feedback, setFeedback] = useState("시작 버튼을 누르면 두더지가 나타납니다.");
   const endAtRef = useRef(0);
   const nextMoleAtRef = useRef(0);
   const currentMoleRef = useRef(-1);
-
-  useEffect(() => {
-    const storedBest = window.localStorage.getItem(BEST_SCORE_KEY);
-    const parsedBest = storedBest ? Number.parseInt(storedBest, 10) : 0;
-    if (Number.isFinite(parsedBest) && parsedBest > 0) setBestScore(parsedBest);
-  }, []);
 
   const finishGame = useCallback(() => {
     setPhase("result");
@@ -89,7 +99,7 @@ export function WhacAMole() {
     const now = Date.now();
     const firstHole = Math.floor(Math.random() * HOLE_COUNT);
     endAtRef.current = now + GAME_BALANCE.durationSeconds * 1000;
-    nextMoleAtRef.current = now;
+    nextMoleAtRef.current = now + GAME_BALANCE.initialMoleIntervalMs;
     currentMoleRef.current = firstHole;
     setPhase("playing");
     setScore(0);
@@ -109,8 +119,8 @@ export function WhacAMole() {
       setScore((currentScore) => {
         const nextScore = currentScore + GAME_BALANCE.pointsPerHit;
         if (nextScore > bestScore) {
-          setBestScore(nextScore);
           window.localStorage.setItem(BEST_SCORE_KEY, String(nextScore));
+          window.dispatchEvent(new Event("whac-a-mole-best-score"));
         }
         return nextScore;
       });
@@ -153,16 +163,14 @@ export function WhacAMole() {
           </div>
 
           <div className={styles.boardWrap}>
-            <div className={styles.board} role="grid" aria-label="두더지 구멍 9개">
+            <div className={styles.board} aria-label="두더지 구멍 9개">
               {Array.from({ length: HOLE_COUNT }, (_, index) => {
                 const isActive = phase === "playing" && index === moleIndex;
                 return (
                   <button
                     key={index}
                     type="button"
-                    role="gridcell"
                     aria-label={isActive ? `${index + 1}번 홀, 두더지 있음` : `${index + 1}번 홀`}
-                    aria-pressed={isActive}
                     className={`${styles.hole} ${isActive ? styles.activeHole : ""}`}
                     onClick={() => handleHoleClick(index)}
                   >

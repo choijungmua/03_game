@@ -41,4 +41,4 @@
 @keyframes mole-pop { from { opacity: .2; transform: translate(-50%, 35%) scale(.8); } to { opacity: 1; transform: translate(-50%, 0) scale(1); } }
 
 @media (min-width: 640px) { .page { padding-top: 48px; } .gameCard { padding: 22px; } }
-@media (prefers-reduced-motion: reduce) { .hole, .mole { transition: none; animation: none; } }
+@media (prefers-reduced-motion: reduce) { .hole, .mole, .page :global(*) { transition: none; animation: none; } }
