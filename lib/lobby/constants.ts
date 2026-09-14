@@ -7,8 +7,8 @@ export const DEFAULT_LOBBY_SETTINGS: LobbySettings = { muted: false, volume: 0.6
 
 export const LOBBY_SETTINGS_STORAGE_KEY = "ggpli:lobby-settings";
 
-/** 다른 유저는 이만큼 과거 위치를 그린다. 폴링(150ms)이 한 번 늦어도 멈칫하지 않게 두 틱이 조금 안 되게 둔다 */
-export const REMOTE_RENDER_DELAY_MS = 250;
+/** 다른 유저는 이만큼 과거 위치를 그린다. WebSocket 틱(50ms, presence.ts LOBBY_TICK_MS) 두 번치라 한 틱이 늦게 와도 멈칫하지 않는다 (150ms 폴링 때는 250ms였다) */
+export const REMOTE_RENDER_DELAY_MS = 100;
 /** 응답에서 이만큼 계속 빠진 유저만 지운다. 한 번 빠졌다고 지우면 사라졌다 다시 나타나 깜빡인다 */
 export const REMOTE_GONE_MS = 1_000;
 /** 유저마다 들고 있는 과거 위치 개수 */
