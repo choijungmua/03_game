@@ -380,6 +380,8 @@ describe("CapybaraSneak", () => {
       expect(eaten).toBeGreaterThan(0);
 
       fireEvent.click(pauseButton());
+      expect(ownerState()).toBe("away");
+
       await advance(10_000);
       expect(gaugeValue()).toBe(eaten);
       expect(ownerState()).toBe("away");
@@ -391,8 +393,8 @@ describe("CapybaraSneak", () => {
       expect(ownerState()).toBe("turning");
     });
 
-    it("주인이 보고 있을 때 멈췄다 이어해도 바로 들키지 않는다", async () => {
-      expect(EAT_DELAY_MS).toBeLessThan(TURNING_AT);
+    it("주인이 보고 있을 때 멈췄다 이어하면 경고부터 다시 보여주고, 시선을 피할 수 없다", async () => {
+      expect(EAT_DELAY_MS).toBeLessThan(WARNING_MS_RANGE.min);
       render(<CapybaraSneak />);
       press();
       release();
@@ -403,10 +405,38 @@ describe("CapybaraSneak", () => {
       expect(ownerState()).toBe("away");
 
       fireEvent.click(screen.getByRole("button", { name: "이어하기" }));
+      // 시선을 피해 새 away 주기를 받는 대신, 경고("!")부터 다시 시작한다
+      expect(ownerState()).toBe("turning");
+
       press();
       await advance(EAT_DELAY_MS);
       expect(gaugeValue()).toBeGreaterThan(0);
       expect(screen.queryByText("들켰다!")).toBeNull();
+
+      await advance(WARNING_MS_RANGE.min - EAT_DELAY_MS);
+      expect(ownerState()).toBe("looking");
+    });
+
+    it("등을 돌리고 있을 때 멈췄다 이어하면 계속 등을 돌리고 있다", () => {
+      render(<CapybaraSneak />);
+      press();
+      expect(ownerState()).toBe("away");
+
+      fireEvent.click(pauseButton());
+      fireEvent.click(screen.getByRole("button", { name: "이어하기" }));
+      expect(ownerState()).toBe("away");
+    });
+
+    it("멈춘 동안 스페이스바를 눌러도 먹지 않는다", async () => {
+      render(<CapybaraSneak />);
+      press();
+      await advance(EAT_DELAY_MS);
+      const eaten = gaugeValue();
+
+      fireEvent.click(pauseButton());
+      fireEvent.keyDown(window, { key: " " });
+      await advance(EAT_DELAY_MS + EAT_INTERVAL_MS * 3);
+      expect(gaugeValue()).toBe(eaten);
     });
 
     it("멈춘 상태에서 처음부터를 누르면 창이 닫히고 시작 전으로 돌아간다", async () => {

@@ -88,6 +88,9 @@ export function CapybaraSneak() {
   const statusRef = useRef<GameStatus>("ready");
   const ownerRef = useRef<OwnerState>("away");
   const gaugeRef = useRef(0);
+  // 멈출 때 주인이 이미 등을 돌리고 있었는지(=시선을 피해도 되는지) 기록해둔다.
+  // turning/looking 중에 멈췄다면, 이어할 때 새 away 주기를 주지 않고 경고부터 다시 보여준다
+  const resumeWarningRef = useRef(false);
 
   function changeStatus(next: GameStatus) {
     statusRef.current = next;
@@ -130,10 +133,8 @@ export function CapybaraSneak() {
 
     const timers: ReturnType<typeof setTimeout>[] = [];
 
-    function scheduleAway() {
-      const awayMs = pickDuration(AWAY_MS_RANGE);
-      const warningMs = Math.min(awayMs, pickWarningMs(gaugeRef.current));
-      timers.push(setTimeout(() => moveOwner("turning"), awayMs - warningMs));
+    // delayMs 뒤에 돌아봄(가끔은 흘끗) → 다시 등 돌리고 새 주기 시작. away 경로와 이어하기 경로가 같이 쓴다
+    function scheduleLooking(delayMs: number) {
       timers.push(
         setTimeout(() => {
           moveOwner("looking");
@@ -144,11 +145,26 @@ export function CapybaraSneak() {
               scheduleAway();
             }, look.ms),
           );
-        }, awayMs),
+        }, delayMs),
       );
     }
 
-    scheduleAway();
+    function scheduleAway() {
+      const awayMs = pickDuration(AWAY_MS_RANGE);
+      const warningMs = Math.min(awayMs, pickWarningMs(gaugeRef.current));
+      timers.push(setTimeout(() => moveOwner("turning"), awayMs - warningMs));
+      scheduleLooking(awayMs);
+    }
+
+    if (resumeWarningRef.current) {
+      // 멈췄을 때 이미 경고/시선 중이었다면 등 돌리는 시간을 새로 주지 않고 경고부터 이어간다
+      resumeWarningRef.current = false;
+      moveOwner("turning");
+      scheduleLooking(pickWarningMs(gaugeRef.current));
+    } else {
+      scheduleAway();
+    }
+
     return () => timers.forEach(clearTimeout);
   }, [status, paused]);
 
@@ -233,11 +249,13 @@ export function CapybaraSneak() {
     setTrend("up");
     setPressing(false);
     setPaused(false);
+    resumeWarningRef.current = false;
   }
 
-  // 주인은 등 돌린 상태로 되돌린다 — scheduleAway()는 away에서 시작한다고 보고 짜여 있어,
-  // looking 중에 멈췄다 이어하면 첫 입에 바로 들키기 때문
+  // 화면은 등 돌린 모습으로 돌아가지만, turning/looking 중에 멈췄다면 기억해뒀다가
+  // 이어할 때 경고부터 다시 보여준다 — 그냥 away로 되돌리면 시선을 피해 새 주기를 받는 꼼수가 생기기 때문
   function pauseGame() {
+    resumeWarningRef.current = ownerRef.current !== "away";
     ownerRef.current = "away";
     setOwnerState("away");
     setPressing(false);
