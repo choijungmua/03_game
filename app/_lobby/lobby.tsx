@@ -2,6 +2,7 @@
 
 // 캔버스용 new Image()와 이름이 겹치지 않게 NextImage로 가져온다
 import NextImage from "next/image";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { type FormEvent, useEffect, useEffectEvent, useRef, useState } from "react";
 
@@ -66,6 +67,7 @@ import {
   WALK_SPEED,
 } from "@/lib/lobby/world";
 
+import { SITE_LINKS } from "./constants";
 import { Wardrobe } from "./wardrobe";
 
 type Pose = "stand" | "walk1" | "walk2";
@@ -1509,6 +1511,17 @@ export function Lobby({ games }: { games: DoorGame[] }) {
           </span>
           <span className="hidden [@media(pointer:coarse)]:inline">화면을 누른 채 끌면 그쪽으로 걸어요 · 오두막 문 앞에 가면 입장</span>
         </p>
+        <nav aria-label="사이트 정보" className="pointer-events-auto flex gap-1 text-caption-3 text-text-caption">
+          {SITE_LINKS.map(({ href, label }) => (
+            <Link
+              key={href}
+              href={href}
+              className="flex min-h-6 items-center rounded-md bg-card/60 px-2 transition-colors hover:text-text-strong focus-visible:outline-2 focus-visible:outline-primary"
+            >
+              {label}
+            </Link>
+          ))}
+        </nav>
       </div>
 
       {/* 터치 조이스틱: 누른 자리에 나타난다. 위치는 게임 루프가 DOM에 직접 쓴다 */}
