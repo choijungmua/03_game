@@ -12,7 +12,7 @@ import { cn } from "@/lib";
 import type { Cell, RoomView, Stone } from "@/lib/games/rooms";
 
 import { EmoteBubble, EmotePicker, useEmoteShowing } from "./capybara-emotes";
-import { OpenRoomList } from "./open-room-list";
+import { RoomList } from "./room-list";
 import type { BoardRoomState, CapybaraRoomProps } from "./type";
 
 const ASSET = "/assets/images/games/capybara-board";
@@ -121,8 +121,9 @@ export function CapybaraRoom<S extends BoardRoomState>({
       />
 
       {!view || !state ? (
-        <div className="absolute inset-0 flex items-center justify-center px-4">
-          <div className={cn(CARD, "flex w-full max-w-md flex-col gap-5 p-6")}>
+        // 시작 카드 + 오른쪽 방 목록. 좁은 화면에서는 위아래로 쌓고 스크롤한다
+        <div className="absolute inset-0 flex flex-col items-center gap-4 overflow-y-auto px-4 pt-[calc(max(1rem,env(safe-area-inset-top))_+_3.5rem)] pb-[max(1rem,env(safe-area-inset-bottom))] md:flex-row md:justify-center md:overflow-hidden">
+          <div className={cn(CARD, "flex w-full max-w-md shrink-0 flex-col gap-5 p-6")}>
             <div className="flex flex-col items-center gap-2">
               <p aria-hidden="true" className="text-center text-title-1 font-black">
                 {title}
@@ -139,14 +140,14 @@ export function CapybaraRoom<S extends BoardRoomState>({
               </Button>
             </div>
 
-            <OpenRoomList room={room} />
-
             {error && (
               <p role="alert" className="text-center text-caption-1 text-error">
                 {error}
               </p>
             )}
           </div>
+
+          <RoomList room={room} className="w-full max-w-md shrink-0 md:h-[min(36rem,100%)] md:w-80" />
         </div>
       ) : (
         <div className="absolute inset-0 flex flex-col items-center gap-3 pt-[calc(max(1rem,env(safe-area-inset-top))_+_3.5rem)] pb-[max(1rem,env(safe-area-inset-bottom))]">
