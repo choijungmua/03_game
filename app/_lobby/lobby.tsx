@@ -27,8 +27,9 @@ import {
   type WardrobeAnchor,
   type WardrobeSlot,
   wardrobeSrc,
-  WORLD_GLASSES,
-  WORLD_HAT,
+  VIEW_OF,
+  WORLD_ANCHORS,
+  WORLD_HEAD_ELLIPSE,
 } from "@/lib/lobby/wardrobe";
 import {
   type Building,
@@ -369,7 +370,11 @@ function drawStar(ctx: CanvasRenderingContext2D, x: number, y: number, radius: n
   ctx.stroke();
 }
 
-/** 스프라이트 한 장(left, top, 정사각형 size) 위에 옷을 얹는다. 앉은 정면은 옷장 미리보기와 같은 그림이라 전부, 나머지는 모자(+정면이면 안경)만 */
+/**
+ * 스프라이트 한 장(left, top, 정사각형 size) 위에 옷을 전부 입힌다.
+ * 앉은 정면은 옷장 미리보기와 같은 그림이라 옷장 자리(SLOT_INFO), 나머지 동작은 서 있는 몸 상자 자리(WORLD_ANCHORS)에
+ * 바라보는 방향의 옷 그림(앞·뒤·옆)을 쓴다. 왼쪽을 보면 오른쪽 옆모습 자리와 그림을 좌우 반전한다. 그 방향 그림이 없는 옷은 건너뛴다
+ */
 function drawOutfit(
   ctx: CanvasRenderingContext2D,
   base: HTMLImageElement,
@@ -380,15 +385,22 @@ function drawOutfit(
   size: number,
   outfitImage: (src: string) => HTMLImageElement,
 ) {
+  const sitting = view === "sit-down";
+  const wardrobeView = sitting ? "front" : VIEW_OF[view];
+  const flip = view === "left";
+  const anchorsOf = (slot: WardrobeSlot) => (sitting ? SLOT_INFO[slot].anchors : (WORLD_ANCHORS[wardrobeView][slot] ?? []));
   const put = (slot: WardrobeSlot, anchor: WardrobeAnchor) => {
     const id = outfit[slot];
     const item = id ? outfitImage(wardrobeSrc(slot, id)) : undefined;
     if (!ready(item)) return;
-    const width = (size * anchor.width) / 100;
-    const height = (width * item.naturalHeight) / item.naturalWidth;
-    const centerX = left + (size * anchor.x) / 100;
+    const fullWidth = (size * anchor.width) / 100;
+    const height = (fullWidth * item.naturalHeight) / item.naturalWidth;
+    // 옆모습은 앞모습 옷을 가로로만 좁혀 쓴다
+    const width = fullWidth * (anchor.squeeze ?? 1);
+    const centerX = left + (size * (flip ? 100 - anchor.x : anchor.x)) / 100;
     const itemTop = top + (size * anchor.bottom) / 100 - height;
-    if (!anchor.mirror) {
+    // 짝(신발·장갑) 반전과 왼쪽 보기 반전이 겹치면 원래 방향
+    if (anchor.mirror === flip) {
       ctx.drawImage(item, centerX - width / 2, itemTop, width, height);
       return;
     }
@@ -398,24 +410,20 @@ function drawOutfit(
     ctx.drawImage(item, -width / 2, itemTop, width, height);
     ctx.restore();
   };
-  if (view !== "sit-down") {
-    put("hat", WORLD_HAT[view]);
-    if (view === "down") put("glasses", WORLD_GLASSES);
-    return;
-  }
   const layer = (slots: readonly WardrobeSlot[]) => {
-    for (const slot of slots) for (const anchor of SLOT_INFO[slot].anchors) put(slot, anchor);
+    for (const slot of slots) for (const anchor of anchorsOf(slot)) put(slot, anchor);
   };
   layer(BODY_LAYERS);
   if (BODY_LAYERS.some((slot) => outfit[slot])) {
     // 머리를 한 번 더 그려 옷이 턱 밑으로 들어가 보이게 한다 (옷장 미리보기와 같은 방식)
+    const head = sitting ? HEAD_ELLIPSE : WORLD_HEAD_ELLIPSE[wardrobeView];
     ctx.save();
     ctx.beginPath();
     ctx.ellipse(
-      left + (size * HEAD_ELLIPSE.x) / 100,
-      top + (size * HEAD_ELLIPSE.y) / 100,
-      (size * HEAD_ELLIPSE.rx) / 100,
-      (size * HEAD_ELLIPSE.ry) / 100,
+      left + (size * (flip ? 100 - head.x : head.x)) / 100,
+      top + (size * head.y) / 100,
+      (size * head.rx) / 100,
+      (size * head.ry) / 100,
       0,
       0,
       Math.PI * 2,
