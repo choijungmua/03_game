@@ -6,3 +6,8 @@ export const BUBBLE_LINE = 16;
 export const EMOTE_SIZE = 60;
 /** 채팅 알약의 이모티콘 버튼에 보이는 이모티콘 번호 (선글라스 카피바라) */
 export const EMOTE_PICKER_ICON = 3;
+
+/** 오른쪽 위 세로 버튼 줄의 나무 테·펠트 판 버튼 그림 (때리기·앉기 버튼과 같은 시트 화풍, 원본 assets-src/ui/lobby/) */
+export const SETTINGS_BUTTON_SRC = "/assets/images/ui/lobby/settings.webp";
+export const SOUND_ON_BUTTON_SRC = "/assets/images/ui/lobby/sound-on.webp";
+export const SOUND_OFF_BUTTON_SRC = "/assets/images/ui/lobby/sound-off.webp";

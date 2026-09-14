@@ -1537,7 +1537,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
       {/* 있는 듯 없는 듯: 평소엔 반투명 알약, 입력할 때만 넓어지고 또렷해진다. 보내기는 Enter(모바일은 키보드 전송). 오른쪽 위 버튼 줄 자리는 비워 둔다 */}
       <form
         onSubmit={sendChat}
-        className="group absolute left-3 top-[max(0.75rem,env(safe-area-inset-top))] flex w-44 max-w-[calc(100%-12rem)] items-center rounded-full bg-black/25 transition-[width,background-color] duration-150 has-[input:focus]:w-72 has-[input:focus]:bg-card/90 has-[input:focus-visible]:ring-1 has-[input:focus-visible]:ring-primary motion-reduce:transition-none"
+        className="group absolute left-3 top-[max(0.75rem,env(safe-area-inset-top))] flex w-44 max-w-[calc(100%-6rem)] items-center rounded-full bg-black/25 transition-[width,background-color] duration-150 has-[input:focus]:w-72 has-[input:focus]:bg-card/90 has-[input:focus-visible]:ring-1 has-[input:focus-visible]:ring-primary motion-reduce:transition-none"
       >
         <Input
           ref={chatInputRef}
@@ -1559,14 +1559,15 @@ export function Lobby({ games }: { games: DoorGame[] }) {
         </p>
       </form>
 
-      <div className="absolute right-3 top-[max(0.75rem,env(safe-area-inset-top))] flex items-center gap-2">
-        <SettingsMenu settings={settings} onChange={updateSettings} />
-        <SoundToggle settings={settings} onChange={updateSettings} />
+      {/* 오른쪽 위 세로 버튼 줄: 카피바라 옷장 → 효과음 → 설정 */}
+      <div className="absolute right-3 top-[max(0.75rem,env(safe-area-inset-top))] flex flex-col items-center gap-2">
         <Wardrobe
           onChange={(outfit) => {
             outfitRef.current = outfit;
           }}
         />
+        <SoundToggle settings={settings} onChange={updateSettings} />
+        <SettingsMenu settings={settings} onChange={updateSettings} />
       </div>
 
       <div className="pointer-events-none absolute inset-x-0 bottom-0 flex flex-col items-center gap-2 px-4 pb-[max(1.25rem,env(safe-area-inset-bottom))]">

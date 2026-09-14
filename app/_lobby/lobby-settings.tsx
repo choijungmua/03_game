@@ -1,37 +1,52 @@
 "use client";
 
-import { Settings, Volume2, VolumeX } from "lucide-react";
+import NextImage from "next/image";
 import { useEffect, useRef, useState } from "react";
 
 import { Checkbox } from "@/components/inputs/checkbox";
 import { cn } from "@/lib";
 import type { LobbySettings } from "@/lib/lobby/settings";
 
+import { SETTINGS_BUTTON_SRC, SOUND_OFF_BUTTON_SRC, SOUND_ON_BUTTON_SRC } from "./constants";
+
 interface SettingsProps {
   settings: LobbySettings;
   onChange: (settings: LobbySettings) => void;
 }
 
-const ROUND_BUTTON =
-  "flex size-11 items-center justify-center rounded-full bg-card/90 text-text-strong shadow-md backdrop-blur hover:bg-card focus-visible:outline-2 focus-visible:outline-primary";
+/** 때리기·앉기 버튼과 같은 나무 테·펠트 판 둥근 버튼. 테두리까지 그림에 있어서 배경·테두리를 따로 그리지 않는다 */
+const FELT_BUTTON = "group rounded-full focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary";
 
-/** 카피바라 옆 효과음 켜고 끄기 */
+function FeltButtonImage({ src, className }: { src: string; className?: string }) {
+  return (
+    <NextImage
+      src={src}
+      alt=""
+      width={256}
+      height={256}
+      unoptimized
+      draggable={false}
+      className={cn("size-12 drop-shadow-md transition-transform duration-200 motion-safe:group-active:scale-90 motion-reduce:transition-none", className)}
+    />
+  );
+}
+
+/** 카피바라 아래 효과음 켜고 끄기 */
 export function SoundToggle({ settings, onChange }: SettingsProps) {
-  const Icon = settings.muted ? VolumeX : Volume2;
   return (
     <button
       type="button"
       onClick={() => onChange({ ...settings, muted: !settings.muted })}
       aria-label="효과음"
       aria-pressed={!settings.muted}
-      className={ROUND_BUTTON}
+      className={FELT_BUTTON}
     >
-      <Icon aria-hidden className="size-5" />
+      <FeltButtonImage src={settings.muted ? SOUND_OFF_BUTTON_SRC : SOUND_ON_BUTTON_SRC} />
     </button>
   );
 }
 
-/** 오른쪽 위 톱니바퀴. 누르면 바로 아래에 설정 창이 열린다 */
+/** 오른쪽 위 버튼 줄의 톱니바퀴. 누르면 버튼 줄 왼쪽에 설정 창이 열린다 */
 export function SettingsMenu({ settings, onChange }: SettingsProps) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -57,14 +72,14 @@ export function SettingsMenu({ settings, onChange }: SettingsProps) {
 
   return (
     <div ref={rootRef} className="relative">
-      <button ref={buttonRef} type="button" onClick={() => setOpen((value) => !value)} aria-label="설정" aria-expanded={open} className={ROUND_BUTTON}>
-        <Settings aria-hidden className={cn("size-5 transition-transform duration-200 motion-reduce:transition-none", open && "rotate-45")} />
+      <button ref={buttonRef} type="button" onClick={() => setOpen((value) => !value)} aria-label="설정" aria-expanded={open} className={FELT_BUTTON}>
+        <FeltButtonImage src={SETTINGS_BUTTON_SRC} className={cn(open && "rotate-45")} />
       </button>
       {open && (
         <section
           role="dialog"
           aria-label="설정"
-          className="absolute right-0 top-full mt-2 flex w-60 flex-col gap-4 rounded-2xl bg-card/95 p-4 text-text-strong shadow-lg backdrop-blur"
+          className="absolute right-full top-0 mr-2 flex w-60 flex-col gap-4 rounded-2xl bg-card/95 p-4 text-text-strong shadow-lg backdrop-blur"
         >
           <h2 className="text-title-3 font-bold">설정</h2>
           <Checkbox label="효과음" checked={!settings.muted} onCheckedChange={(checked) => onChange({ ...settings, muted: checked !== true })} />
