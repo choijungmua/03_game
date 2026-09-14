@@ -38,6 +38,8 @@ import {
   WALK_SPEED,
 } from "@/lib/lobby/world";
 
+import { Wardrobe } from "./wardrobe";
+
 type Pose = "stand" | "walk1" | "walk2";
 type SpriteKey = `${Pose}-${Facing}` |`sit-${Direction}` | `punch-${Direction}` | "stun" | `scratch-${1 | 2 | 3}`;
 type Texture = GroundId;
@@ -472,7 +474,6 @@ export function Lobby({ games }: { games: DoorGame[] }) {
   const [seatNearby, setSeatNearby] = useState(false);
   const [stunned, setStunned] = useState(false);
   const [notice, setNotice] = useState("");
-  const [online, setOnline] = useState<number | null>(null);
   const [offline, setOffline] = useState(false);
   // 게임 루프 effect가 router 변경으로 다시 실행되면 캐릭터·멀티 상태가 초기화되므로 이벤트로 감싼다
   const goToGame = useEffectEvent((slug: string) => router.push(`/games/${slug}`));
@@ -719,7 +720,6 @@ export function Lobby({ games }: { games: DoorGame[] }) {
           }
           for (const id of remotes.keys()) if (!seen.has(id)) remotes.delete(id);
           if (data.hit) hitEffects.set(data.hit, received + 450);
-          setOnline(data.online ?? null);
           setOffline(false);
         })
         .catch(() => setOffline(true))
@@ -1025,7 +1025,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
     };
   }, [world]);
 
-  const status = stunned ? "기절! 2초 동안 못 움직여요" : notice || (activeDoor ? `${activeDoor.title} 들어가는 중… (Enter로 바로)` : "");
+  const status = stunned ? "기절! 2초 동안 못 움직여요" : notice || (activeDoor ? `${activeDoor.title} 들어가는 중… (Enter로 바로)` : offline ? "혼자 모드 (연결 끊김)" : "");
 
   return (
     <>
@@ -1037,12 +1037,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
         className="absolute inset-0 size-full touch-none select-none"
       />
 
-      <p
-        className="pointer-events-none absolute right-4 top-[max(1rem,env(safe-area-inset-top))] rounded-xl bg-card/85 px-3 py-2 text-caption-1 tabular-nums text-text-caption shadow-sm backdrop-blur"
-        aria-live="polite"
-      >
-        {offline ? "혼자 모드 (연결 끊김)" : online === null ? "연결 중…" : `접속 ${online}명`}
-      </p>
+      <Wardrobe />
 
       <div className="pointer-events-none absolute inset-x-0 bottom-0 flex flex-col items-center gap-2 px-4 pb-[max(1.25rem,env(safe-area-inset-bottom))]">
         <p
