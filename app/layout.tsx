@@ -9,6 +9,9 @@ import { Providers } from "./providers";
 export const metadata: Metadata = {
   title: "ggpli",
   description: "ggpli 게임 모음",
+  verification: {
+    other: { "naver-site-verification": "9515f491bca12bedec4cbf4d83d09b9950554a92" },
+  },
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
