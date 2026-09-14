@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  BOMB_BOSS_RATIO,
   BOSS_CLEAR_SCORE,
   BOSS_PATTERN_MS,
   BOSS_PATTERNS,
@@ -31,6 +32,9 @@ import {
   pickDrop,
   PITY_KILLS,
   PLANE_HALF_WIDTH,
+  SKILL_GAUGE_MAX,
+  SKILL_PER_KILL,
+  SKILLS,
   spawnEnemy,
   STAGE_BANNER_MS,
   step,
@@ -334,6 +338,67 @@ describe("새 천적", () => {
     for (let t = 0; t < 500; t += 16) step(state, 16, IDLE);
     expect(bat.vx).toBeGreaterThan(0);
     expect(bat.x).toBeGreaterThan(100);
+  });
+});
+
+describe("스킬", () => {
+  const basicBullet = () => ({ x: 200, y: 300, r: 3, vx: 0, vy: 0, weapon: "basic" as const, damage: 1, hitIds: [] });
+
+  it("격추할 때마다 스킬 게이지가 차고, 최대를 넘지 않는다", () => {
+    const fresh = playing({ enemies: [enemy()], bullets: [basicBullet()] });
+    step(fresh, 16, IDLE, noLuck);
+    expect(fresh.skillGauge).toBe(SKILL_PER_KILL);
+
+    const almost = playing({ skillGauge: SKILL_GAUGE_MAX - 1, enemies: [enemy()], bullets: [basicBullet()] });
+    step(almost, 16, IDLE, noLuck);
+    expect(almost.skillGauge).toBe(SKILL_GAUGE_MAX);
+  });
+
+  it("게이지가 비용보다 모자라면 스킬이 나가지 않는다", () => {
+    const shot = { x: 200, y: 100, r: 5, vx: 0, vy: 0, fromBoss: false };
+    const state = playing({ skillGauge: SKILLS.bomb.cost - 1, shots: [shot] });
+    step(state, 16, { ...IDLE, skill: "bomb" });
+    expect(state.shots).toHaveLength(1);
+    expect(state.bombMs).toBe(0);
+    expect(state.skillGauge).toBe(SKILLS.bomb.cost - 1);
+  });
+
+  it("방어막 동안은 적 탄에 맞지 않고 닿은 탄이 사라지며, 끝나면 다시 맞는다", () => {
+    const planeY = getPlaneY(playing());
+    const shot = () => ({ x: 200, y: planeY, r: 5, vx: 0, vy: 0, fromBoss: false });
+    const state = playing({ skillGauge: SKILLS.barrier.cost, shots: [shot()] });
+    step(state, 16, { ...IDLE, skill: "barrier" });
+    expect(state.hp).toBe(MAX_HP);
+    expect(state.shots).toHaveLength(0);
+    expect(state.skillGauge).toBe(0);
+
+    for (let t = 0; t < SKILLS.barrier.ms; t += 16) step(state, 16, IDLE);
+    state.shots.push(shot());
+    step(state, 16, IDLE);
+    expect(state.hp).toBe(MAX_HP - 1);
+  });
+
+  it("폭주 동안은 무기 레벨이 3 높은 것처럼 쏜다", () => {
+    const state = playing({ weaponLevel: 1, skillGauge: SKILLS.overdrive.cost, fireInMs: 0 });
+    step(state, 16, { ...IDLE, skill: "overdrive" });
+    expect(state.overdriveMs).toBeGreaterThan(0);
+    expect(state.bullets).toHaveLength(getWeaponSpec("basic", 4).pattern.length);
+    expect(state.bullets.length).toBeGreaterThan(getWeaponSpec("basic", 1).pattern.length);
+  });
+
+  it("폭탄은 적 탄을 지우고 방패병까지 일반 적을 부수며, 보스에게는 최대 체력 비율만큼 피해를 준다", () => {
+    const shield = enemy({ id: 1, kind: "shield", r: 18, x: 100, hp: 5, maxHp: 5 });
+    const boss = enemy({ id: 2, kind: "boss", r: 44, x: 300, y: 200, hp: 1000, maxHp: 1000 });
+    const state = playing({
+      skillGauge: SKILLS.bomb.cost,
+      enemies: [shield, boss],
+      shots: [{ x: 50, y: 500, r: 5, vx: 0, vy: 0, fromBoss: true }],
+    });
+    step(state, 16, { ...IDLE, skill: "bomb" }, noLuck);
+    expect(state.shots).toHaveLength(0);
+    expect(state.enemies).toEqual([boss]);
+    expect(boss.hp).toBe(1000 - Math.ceil(1000 * BOMB_BOSS_RATIO));
+    expect(state.bombMs).toBeGreaterThan(0);
   });
 });
 

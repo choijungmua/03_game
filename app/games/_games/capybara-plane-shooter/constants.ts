@@ -1,7 +1,14 @@
 import { GAME_SOUNDS } from "@/lib/games/constants";
 import type { SoundLayer } from "@/lib/lobby/settings";
 
-import type { WeaponKind } from "./logic";
+import type { SkillKind, WeaponKind } from "./logic";
+
+/** 스킬 버튼 순서(위→아래)와 키보드 단축키. key는 버튼 이름에 붙여 보여준다 */
+export const SKILL_KEYS: Record<SkillKind, { key: string; keys: readonly string[] }> = {
+  barrier: { key: "Z", keys: ["z", "Z", "1"] },
+  overdrive: { key: "X", keys: ["x", "X", "2"] },
+  bomb: { key: "C", keys: ["c", "C", "3"] },
+};
 
 /** 소리 묶음을 ms만큼 늦게 시작시킨다 (다른 소리 뒤에 이어 붙일 때) */
 function delay(layers: readonly SoundLayer[], ms: number): SoundLayer[] {
@@ -131,6 +138,27 @@ export const PLANE_SHOOTER_SOUNDS = {
   chargeDash: [{ kind: "noise", filter: "bandpass", q: 1, from: 2200, to: 300, ms: 450, level: 0.3, attack: 30 }],
   /** 콰광 뒤 뿌우우: 격추당해 게임 오버 */
   gameOver: [...GAME_SOUNDS.explosion, ...delay(GAME_SOUNDS.fail, 350)],
+  /** 우웅↑ 반짝: 방어막 */
+  barrier: [
+    { kind: "tone", wave: "sine", from: 300, to: 900, ms: 300, level: 0.1, attack: 40 },
+    { at: 120, kind: "tone", wave: "triangle", from: 1200, to: 1600, ms: 260, level: 0.06 },
+  ],
+  /** 지지징↑: 폭주 */
+  overdrive: [
+    { kind: "tone", wave: "sawtooth", from: 200, to: 1200, ms: 380, level: 0.07, attack: 30 },
+    { kind: "noise", filter: "bandpass", q: 1.5, from: 800, to: 4000, ms: 380, level: 0.1, attack: 30 },
+  ],
+  /** 콰-아앙: 폭탄 */
+  bomb: [
+    ...GAME_SOUNDS.explosion,
+    { kind: "noise", filter: "lowpass", q: 0.7, from: 3000, to: 200, ms: 800, level: 0.35, attack: 20 },
+    { kind: "tone", wave: "sine", from: 90, to: 30, ms: 700, level: 0.2 },
+  ],
+  /** 띠링띠링: 스킬 게이지가 가득 참 */
+  skillReady: [
+    { kind: "tone", wave: "sine", from: 1319, to: 1319, ms: 90, level: 0.09 },
+    { at: 90, kind: "tone", wave: "sine", from: 1760, to: 1760, ms: 160, level: 0.09 },
+  ],
   /** 반짝반짝: 무기 레벨 최대 도달 */
   weaponMax: delay(GAME_SOUNDS.record, 200),
   /** 뚜루↓: 맞아서 무기 레벨이 내려감 (피격음 뒤) */
@@ -161,6 +189,9 @@ export const EFFECTS = {
   popupRise: 34,
   muzzleMs: 50,
   damageFlashMs: 320,
+  /** 폭탄 고리가 퍼지는 시간과 최대 반경 */
+  ringMs: 520,
+  ringRadius: 520,
   /** 맞은 순간 게임을 잠깐 멈춰 맞았다는 걸 느끼게 한다 */
   hitStopMs: 70,
   shake: {

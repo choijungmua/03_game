@@ -5,6 +5,8 @@ export type EnemyKind = "straight" | "zigzag" | "shooter" | "shield" | "dasher" 
 export type DropKind = Exclude<ItemKind, "basic">;
 /** 보스 공격 패턴: 원형 확산 · 돌격 · 격자 · 조준 부채꼴 · 나선 */
 export type BossPattern = "ring" | "charge" | "grid" | "fan" | "spiral";
+/** 스킬: 방어막(잠깐 무적) · 폭주(무기 레벨 잠깐 +3) · 폭탄(적 탄 제거 + 큰 피해) */
+export type SkillKind = "barrier" | "overdrive" | "bomb";
 
 export interface Circle {
   x: number;
@@ -71,6 +73,14 @@ export interface GameState {
   shieldBlocks: number;
   /** 독화살개구리가 갈라진 횟수 */
   splits: number;
+  /** 스킬 게이지 0~SKILL_GAUGE_MAX. 격추·보스 피해로 차고, 스킬을 쓰면 비용만큼 준다 */
+  skillGauge: number;
+  /** 방어막 남은 시간 */
+  barrierMs: number;
+  /** 폭주 남은 시간 */
+  overdriveMs: number;
+  /** 폭탄이 터진 뒤 남은 연출 시간 (0보다 커지는 순간이 터진 프레임) */
+  bombMs: number;
   fireInMs: number;
   stage: number;
   stageKills: number;
@@ -100,6 +110,8 @@ export interface GameInput {
   direction: -1 | 0 | 1;
   /** 드래그 중이면 비행기가 가야 할 x, 아니면 null */
   targetX: number | null;
+  /** 이번 프레임에 쓰려는 스킬. 게이지가 모자라면 나가지 않는다 */
+  skill?: SkillKind | null;
 }
 
 /** 비행기 중심이 화면 높이의 몇 % 지점에 있는지 */
@@ -159,6 +171,26 @@ export const HOMING_ACCEL = 320;
 export const HOMING_MAX_VX = 180;
 /** 독화살개구리가 갈라질 때 작은 개구리가 양옆으로 튀는 속도(px/초) */
 export const SPLIT_SPREAD_SPEED = 110;
+
+export const SKILL_GAUGE_MAX = 100;
+/** 일반 적 한 마리를 격추할 때 차는 스킬 게이지 */
+export const SKILL_PER_KILL = 4;
+/** 보스 최대 체력만큼 피해를 주면 차는 스킬 게이지 (보스 하나를 다 깎으면 게이지 1.5칸) */
+export const SKILL_PER_BOSS_FILL = 150;
+/** 스킬별 이름·게이지 비용·지속 시간(폭탄은 연출 시간) */
+export const SKILLS: Record<SkillKind, { label: string; cost: number; ms: number }> = {
+  barrier: { label: "방어막", cost: 50, ms: 3000 },
+  overdrive: { label: "폭주", cost: 70, ms: 5000 },
+  bomb: { label: "폭탄", cost: 100, ms: 600 },
+};
+/** 폭주 동안 무기 레벨에 더하는 값 (최대 레벨은 넘지 않는다) */
+export const OVERDRIVE_LEVELS = 3;
+/** 방어막 반경. 닿는 적 탄은 사라지고 들이받은 일반 적은 부서진다 */
+export const BARRIER_RADIUS = 34;
+/** 폭탄이 일반 적에게 주는 피해 (방패도 무시한다) */
+export const BOMB_DAMAGE = 40;
+/** 폭탄이 보스에게 주는 피해 = 보스 최대 체력 × 이 비율 */
+export const BOMB_BOSS_RATIO = 0.08;
 
 /** 적 종류별 크기(반경 px)와 스테이지 기준 속도·체력에 곱하는 배수 */
 const ENEMY_TRAITS: Record<Exclude<EnemyKind, "boss">, { r: number; speed: number; hp: number }> = {
@@ -346,6 +378,10 @@ export function createState(width: number, height: number): GameState {
     killsSinceDrop: 0,
     shieldBlocks: 0,
     splits: 0,
+    skillGauge: 0,
+    barrierMs: 0,
+    overdriveMs: 0,
+    bombMs: 0,
     fireInMs: 0,
     stage: 1,
     stageKills: 0,
@@ -405,7 +441,7 @@ function explode(state: GameState, enemy: Enemy) {
 
 /** 지금 무기·레벨 모양대로 한 번 쏘고, 다음 발사까지의 간격을 돌려준다 */
 export function fireWeapon(state: GameState) {
-  const spec = getWeaponSpec(state.weapon, state.weaponLevel);
+  const spec = getWeaponSpec(state.weapon, getFireLevel(state));
   const x = state.planeX;
   const y = getPlaneY(state) - 22;
   for (const { dx, angle } of spec.pattern) {
@@ -667,6 +703,69 @@ function defeatBoss(state: GameState, boss: Enemy) {
   state.shots = [];
 }
 
+/** 지금 실제로 쏘는 무기 레벨. 폭주 중이면 OVERDRIVE_LEVELS만큼 높다 */
+export function getFireLevel(state: Pick<GameState, "weaponLevel" | "overdriveMs">) {
+  return Math.min(MAX_WEAPON_LEVEL, state.weaponLevel + (state.overdriveMs > 0 ? OVERDRIVE_LEVELS : 0));
+}
+
+function addSkillGauge(state: GameState, amount: number) {
+  state.skillGauge = Math.min(SKILL_GAUGE_MAX, state.skillGauge + amount);
+}
+
+/** 일반 적 격추: 점수·폭발·스킬 게이지·아이템(보장 드롭 포함). 독화살개구리가 갈라져 생긴 작은 적을 돌려준다 */
+function destroyEnemy(state: GameState, enemy: Enemy, random: () => number): Enemy[] {
+  state.score += KILL_SCORE;
+  state.stageKills += 1;
+  addSkillGauge(state, SKILL_PER_KILL);
+  explode(state, enemy);
+  const children = enemy.split ? splitEnemy(state, enemy) : [];
+  const pity = state.killsSinceDrop + 1 >= PITY_KILLS;
+  const kind = pickDrop(random) ?? (pity ? WEAPON_DROPS[Math.floor(random() * WEAPON_DROPS.length)] : null);
+  if (kind) {
+    state.items.push({ kind, x: enemy.x, y: enemy.y, r: ITEM_RADIUS, vx: 60, vy: 90 });
+    state.killsSinceDrop = 0;
+  } else {
+    state.killsSinceDrop += 1;
+  }
+  return children;
+}
+
+/** 보스에게 피해를 주고 준 만큼 스킬 게이지를 채운다. 체력이 0이 되면 격파 */
+function damageBoss(state: GameState, boss: Enemy, damage: number) {
+  boss.hp -= damage;
+  addSkillGauge(state, (damage / boss.maxHp) * SKILL_PER_BOSS_FILL);
+  if (boss.hp <= 0) defeatBoss(state, boss);
+}
+
+/** 폭탄: 화면의 적 탄을 모두 지우고, 일반 적(방패 무시)에게 큰 피해, 보스에게는 최대 체력 비율 피해 */
+function detonateBomb(state: GameState, random: () => number) {
+  state.bombMs = SKILLS.bomb.ms;
+  state.shots = [];
+  const spawned: Enemy[] = [];
+  for (const enemy of state.enemies) {
+    if (enemy.hp <= 0) continue;
+    enemy.flashMs = 80;
+    if (enemy.kind === "boss") {
+      damageBoss(state, enemy, Math.ceil(enemy.maxHp * BOMB_BOSS_RATIO));
+      continue;
+    }
+    enemy.hp -= BOMB_DAMAGE;
+    if (enemy.hp <= 0) spawned.push(...destroyEnemy(state, enemy, random));
+  }
+  state.enemies.push(...spawned);
+}
+
+/** 게이지가 비용만큼 있으면 스킬을 쓴다. 쓰면 true */
+export function castSkill(state: GameState, kind: SkillKind, random: () => number = Math.random) {
+  const { cost, ms } = SKILLS[kind];
+  if (state.skillGauge < cost) return false;
+  state.skillGauge -= cost;
+  if (kind === "barrier") state.barrierMs = ms;
+  else if (kind === "overdrive") state.overdriveMs = ms;
+  else detonateBomb(state, random);
+  return true;
+}
+
 function applyItem(state: GameState, kind: DropKind) {
   if (kind === "heal") {
     state.hp = Math.min(MAX_HP, state.hp + 1);
@@ -713,6 +812,9 @@ export function step(
 
   state.invincibleMs = Math.max(0, state.invincibleMs - dt);
   state.bannerMs = Math.max(0, state.bannerMs - dt);
+  state.barrierMs = Math.max(0, state.barrierMs - dt);
+  state.overdriveMs = Math.max(0, state.overdriveMs - dt);
+  state.bombMs = Math.max(0, state.bombMs - dt);
 
   const movedX =
     input.targetX !== null ? input.targetX : state.planeX + input.direction * PLANE_SPEED * seconds;
@@ -721,11 +823,14 @@ export function step(
   const movedBy = state.planeX - prevX;
   state.bank = Math.abs(movedBy) < 0.5 ? 0 : movedBy < 0 ? -1 : 1;
 
+  // 스킬은 쏘기 전에 써서 폭주가 이번 발사부터 바로 반영된다
+  if (input.skill) castSkill(state, input.skill, random);
+
   // 총은 항상 자동으로 나간다. 화면에 탄이 너무 많으면 이번 발사만 건너뛰고 간격은 그대로 센다
   state.fireInMs -= dt;
   if (state.fireInMs <= 0) {
     state.fireInMs +=
-      state.bullets.length < MAX_BULLETS ? fireWeapon(state) : getWeaponSpec(state.weapon, state.weaponLevel).intervalMs;
+      state.bullets.length < MAX_BULLETS ? fireWeapon(state) : getWeaponSpec(state.weapon, getFireLevel(state)).intervalMs;
   }
 
   for (const bullet of state.bullets) {
@@ -774,28 +879,14 @@ export function step(
         break;
       }
       enemy.flashMs = 80;
-      enemy.hp -= bullet.damage;
       if (enemy.kind === "boss") {
         // 보스는 관통탄도 뚫지 못한다
         spent.add(bullet);
-        if (enemy.hp <= 0) defeatBoss(state, enemy);
+        damageBoss(state, enemy, bullet.damage);
         break;
       }
-      if (enemy.hp <= 0) {
-        state.score += KILL_SCORE;
-        state.stageKills += 1;
-        explode(state, enemy);
-        if (enemy.split) spawned.push(...splitEnemy(state, enemy));
-        const pity = state.killsSinceDrop + 1 >= PITY_KILLS;
-        const kind =
-          pickDrop(random) ?? (pity ? WEAPON_DROPS[Math.floor(random() * WEAPON_DROPS.length)] : null);
-        if (kind) {
-          state.items.push({ kind, x: enemy.x, y: enemy.y, r: ITEM_RADIUS, vx: 60, vy: 90 });
-          state.killsSinceDrop = 0;
-        } else {
-          state.killsSinceDrop += 1;
-        }
-      }
+      enemy.hp -= bullet.damage;
+      if (enemy.hp <= 0) spawned.push(...destroyEnemy(state, enemy, random));
       if (bullet.weapon !== "pierce") {
         spent.add(bullet);
         break;
@@ -807,7 +898,15 @@ export function step(
   state.enemies.push(...spawned);
 
   const plane: Circle = { x: state.planeX, y: planeY, r: PLANE_HIT_RADIUS, vx: 0, vy: 0 };
-  if (state.invincibleMs <= 0) {
+  if (state.barrierMs > 0) {
+    // 방어막은 닿는 적 탄을 지우고, 들이받은 일반 적은 같이 부순다 (비행기는 다치지 않는다)
+    state.shots = state.shots.filter((shot) => !overlaps(shot, plane, BARRIER_RADIUS + shot.r));
+    for (const enemy of state.enemies) {
+      if (enemy.kind === "boss" || enemy.hp <= 0 || !overlaps(enemy, plane, BARRIER_RADIUS + enemy.r)) continue;
+      enemy.hp = 0;
+      explode(state, enemy);
+    }
+  } else if (state.invincibleMs <= 0) {
     const rammed = state.enemies.find((enemy) => enemy.hp > 0 && overlaps(enemy, plane));
     const shot = state.shots.find((candidate) => overlaps(candidate, plane));
     if (rammed || shot) {

@@ -34,6 +34,10 @@ export interface Effects {
   hitStopMs: number;
   damageFlashMs: number;
   muzzleMs: number;
+  /** 폭탄이 터진 자리에서 퍼져 나가는 고리 */
+  ringMs: number;
+  ringX: number;
+  ringY: number;
   particles: Particle[];
   popups: Popup[];
 }
@@ -46,6 +50,9 @@ export function createEffects(): Effects {
     hitStopMs: 0,
     damageFlashMs: 0,
     muzzleMs: 0,
+    ringMs: 0,
+    ringX: 0,
+    ringY: 0,
     particles: [],
     popups: [],
   };
@@ -107,6 +114,7 @@ export function updateEffects(effects: Effects, dt: number) {
   effects.hitStopMs = Math.max(0, effects.hitStopMs - dt);
   effects.damageFlashMs = Math.max(0, effects.damageFlashMs - dt);
   effects.muzzleMs = Math.max(0, effects.muzzleMs - dt);
+  effects.ringMs = Math.max(0, effects.ringMs - dt);
 
   for (const particle of effects.particles) {
     particle.ageMs += dt;
@@ -128,6 +136,17 @@ export function drawEffects(
   font: string,
   rise: boolean,
 ) {
+  if (effects.ringMs > 0) {
+    // 폭탄 고리: 터진 자리에서 크게 퍼지며 흐려진다
+    const t = 1 - effects.ringMs / EFFECTS.ringMs;
+    ctx.globalAlpha = 1 - t;
+    ctx.strokeStyle = palette.warning;
+    ctx.lineWidth = 8 * (1 - t) + 2;
+    ctx.beginPath();
+    ctx.arc(effects.ringX, effects.ringY, EFFECTS.ringRadius * t, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+
   for (const particle of effects.particles) {
     ctx.globalAlpha = 1 - particle.ageMs / EFFECTS.particleLifeMs;
     ctx.fillStyle = palette[particle.color];
