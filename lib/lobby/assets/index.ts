@@ -20,7 +20,7 @@ import logSeat from "./props/log-seat";
 import onsen from "./props/onsen";
 import type { LobbyAsset } from "./types";
 
-export type { GroundAsset, LobbyAsset, LobbyAssetCategory, SpriteAsset } from "./types";
+export type { BuildingAsset, GroundAsset, LobbyAsset, LobbyAssetCategory, SpriteAsset } from "./types";
 
 export const GROUND_ASSETS = [meadow, mud, water, deck] as const;
 export const SPRITE_ASSETS = [treeTropical, palm, lotus, bananaBush, grassBush, rocks, reeds, fence, logSeat, lantern, onsen] as const;

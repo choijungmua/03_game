@@ -25,4 +25,11 @@ export interface SpriteAsset {
   offsetY?: number;
 }
 
+/** 게임 오두막. 간판 화면 자리에 그 게임 아이콘을 그린다 */
+export interface BuildingAsset extends SpriteAsset {
+  category: "buildings";
+  /** 이미지 안 간판 화면 영역(이미지 크기 대비 0~1) */
+  screen: { x: number; y: number; width: number; height: number };
+}
+
 export type LobbyAsset = GroundAsset | SpriteAsset;

@@ -135,8 +135,6 @@ const CHUNK = 16;
 /** 오두막 문 앞 이 거리 안에 들어오면 입장 준비 */
 const DOOR_RADIUS = TILE * 0.9;
 const ENTER_CHARGE_MS = 900;
-/** 지붕 위 게임 아이콘 폭 */
-const ICON_WIDTH = TILE * 2.2;
 /** 통나무 의자 앞 이 거리 안에서 앉을 수 있다 */
 const SEAT_REACH = TILE * 1.4;
 const SYNC_MS = 150;
@@ -294,29 +292,35 @@ function drawChunk(
   return canvas;
 }
 
-/** 오두막 + 지붕 위에 둥실 떠 있는 게임 아이콘 하나(펠트 소품: 비행기·스톱워치 등). 게임 표시는 이 아이콘 하나뿐이다 */
+/** 오두막 + 간판 화면에 켜진 게임 아이콘 하나(펠트 소품: 비행기·스톱워치 등). 게임 표시는 이 아이콘 하나뿐이다 */
 function drawBuilding(
   ctx: CanvasRenderingContext2D,
   building: Building,
   image: HTMLImageElement | undefined,
   icon: HTMLImageElement | undefined,
-  now: number,
-  animate: boolean,
 ) {
-  const width = BUILDING_ASSETS[building.variant].width * TILE;
+  const asset = BUILDING_ASSETS[building.variant];
   const centerX = (building.tx + BUILDING_WIDTH / 2) * TILE;
   const bottom = building.frontY + TILE * 0.5;
   if (!ready(image)) return;
-  const box = drawImageBottom(ctx, image, centerX, bottom, width);
+  const box = drawImageBottom(ctx, image, centerX, bottom, asset.width * TILE);
   if (!ready(icon)) return;
 
-  // 오두막마다 박자가 조금씩 다르게 위아래로 둥실
-  const bob = animate ? Math.sin(now / 520 + building.tx) * 5 : 0;
-  ctx.fillStyle = "rgba(40,30,10,0.18)";
-  ctx.beginPath();
-  ctx.ellipse(centerX, box.top + TILE * 0.5, ICON_WIDTH * 0.32 - bob * 0.8, 6, 0, 0, Math.PI * 2);
-  ctx.fill();
-  drawImageBottom(ctx, icon, centerX, box.top + TILE * 0.35 + bob, ICON_WIDTH);
+  const screenX = box.left + asset.screen.x * box.width;
+  const screenY = box.top + asset.screen.y * box.height;
+  const screenW = asset.screen.width * box.width;
+  const screenH = asset.screen.height * box.height;
+  // 켜진 화면처럼 가운데가 은은하게 밝다
+  const glow = ctx.createRadialGradient(screenX + screenW / 2, screenY + screenH / 2, 2, screenX + screenW / 2, screenY + screenH / 2, screenW * 0.6);
+  glow.addColorStop(0, "rgba(255,226,150,0.35)");
+  glow.addColorStop(1, "rgba(255,226,150,0)");
+  ctx.fillStyle = glow;
+  ctx.fillRect(screenX, screenY, screenW, screenH);
+  // 화면 안에 비율 유지로 꽉 차게(여백 8%)
+  const scale = Math.min((screenW * 0.84) / icon.naturalWidth, (screenH * 0.84) / icon.naturalHeight);
+  const iconW = icon.naturalWidth * scale;
+  const iconH = icon.naturalHeight * scale;
+  ctx.drawImage(icon, screenX + (screenW - iconW) / 2, screenY + (screenH - iconH) / 2, iconW, iconH);
 }
 
 /** 문 앞 따뜻한 빛. 가까이 가면 밝아지고, 입장 준비 중이면 숨 쉬듯 깜빡인다 */
@@ -1145,7 +1149,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
         drawables.push({
           y: building.frontY,
           draw: () =>
-            drawBuilding(ctx, building, buildingImages[building.variant], icons.get(building.slug), now, !reducedMotion),
+            drawBuilding(ctx, building, buildingImages[building.variant], icons.get(building.slug)),
         });
       });
       // 문 앞 빛은 오두막 그림 아래 테두리 위에 얹히고, 문 앞에 선 캐릭터보다는 먼저 그린다
