@@ -1,10 +1,12 @@
 export type WeaponKind = "basic" | "double" | "spread" | "rapid" | "pierce";
 export type ItemKind = WeaponKind | "heal";
-export type EnemyKind = "straight" | "zigzag" | "shooter" | "boss";
+export type EnemyKind = "straight" | "zigzag" | "shooter" | "shield" | "dasher" | "splitter" | "homing" | "boss";
 /** 적이 떨어뜨리는 아이템 (기본총은 시작할 때만 쓴다) */
 export type DropKind = Exclude<ItemKind, "basic">;
 /** 보스 공격 패턴: 원형 확산 · 돌격 · 격자 · 조준 부채꼴 · 나선 */
 export type BossPattern = "ring" | "charge" | "grid" | "fan" | "spiral";
+/** 스킬: 방어막(잠깐 무적) · 폭주(무기 레벨 잠깐 +3) · 폭탄(적 탄 제거 + 큰 피해) */
+export type SkillKind = "barrier" | "overdrive" | "bomb";
 
 export interface Circle {
   x: number;
@@ -27,9 +29,15 @@ export interface Enemy extends Circle {
   id: number;
   kind: EnemyKind;
   hp: number;
+  /** 처음 체력. 보스 체력바·페이즈 계산에 쓴다 */
+  maxHp: number;
   fireInMs: number;
   /** 맞았을 때 잠깐 하얗게 번쩍이는 시간 */
   flashMs: number;
+  /** 종류별 타이머: 칼새는 멈춰서 경고하는 남은 시간, 아르마딜로는 방패를 내린 남은 시간 */
+  timerMs: number;
+  /** 격추되면 작은 적 둘로 갈라지는지 (독화살개구리만, 갈라진 작은 개구리는 false) */
+  split: boolean;
 }
 
 export interface Item extends Circle {
@@ -61,11 +69,23 @@ export interface GameState {
   weaponLevel: number;
   /** 아이템 없이 격추한 횟수. PITY_KILLS에 닿으면 무기 간식을 반드시 떨어뜨린다 */
   killsSinceDrop: number;
+  /** 아르마딜로 방패에 막힌 총알 수 (화면이 막힌 순간에 소리를 내려고 센다) */
+  shieldBlocks: number;
+  /** 독화살개구리가 갈라진 횟수 */
+  splits: number;
+  /** 스킬 게이지 0~SKILL_GAUGE_MAX. 격추·보스 피해로 차고, 스킬을 쓰면 비용만큼 준다 */
+  skillGauge: number;
+  /** 방어막 남은 시간 */
+  barrierMs: number;
+  /** 폭주 남은 시간 */
+  overdriveMs: number;
+  /** 폭탄이 터진 뒤 남은 연출 시간 (0보다 커지는 순간이 터진 프레임) */
+  bombMs: number;
   fireInMs: number;
   stage: number;
   stageKills: number;
-  /** 배너가 끝난 뒤 이번 스테이지를 진행한 시간 */
-  stageTimeMs: number;
+  /** 이번 보스 스테이지의 보스를 격파했는지 (격파한 프레임에 다음 스테이지로 넘어간다) */
+  bossDown: boolean;
   bannerMs: number;
   score: number;
   spawnInMs: number;
@@ -90,6 +110,8 @@ export interface GameInput {
   direction: -1 | 0 | 1;
   /** 드래그 중이면 비행기가 가야 할 x, 아니면 null */
   targetX: number | null;
+  /** 이번 프레임에 쓰려는 스킬. 게이지가 모자라면 나가지 않는다 */
+  skill?: SkillKind | null;
 }
 
 /** 비행기 중심이 화면 높이의 몇 % 지점에 있는지 */
@@ -132,6 +154,54 @@ export const BOSS_PATTERN_LABELS: Record<BossPattern, string> = {
 export const CHARGE_WINDUP_MS = 700;
 /** 예고 뒤 비행기 높이까지 내리꽂는 시간 */
 export const CHARGE_DASH_MS = 800;
+/** 첫 보스(5스테이지) 체력. 뒤 보스일수록 (보스 순번^1.3)배로 늘어 무기 레벨이 쌓인 만큼 버틴다 */
+export const BOSS_BASE_HP = 600;
+/** 보스 페이즈(1·2·3)별 발사·패턴 간격 배수. 체력이 줄수록 빨라진다 (돌격 예고 시간은 공정하게 그대로 둔다) */
+export const BOSS_PHASE_TEMPO = [1, 0.8, 0.6] as const;
+/** 보스를 격파하면 무기 레벨을 이만큼 올려 준다 */
+export const BOSS_REWARD_LEVELS = 2;
+/** 아르마딜로(방패병)가 쏜 뒤 방패를 내리고 있는 시간. 이때만 일반 총알이 들어간다 (관통탄은 늘 뚫는다) */
+export const SHIELD_OPEN_MS = 900;
+/** 칼새(돌진병)가 멈추는 높이(화면 비율), 붉은 경고선을 보여주는 시간, 내리꽂는 속도(px/초) */
+export const DASHER_STOP_RATIO = 0.12;
+export const DASHER_WINDUP_MS = 650;
+export const DASHER_SPEED = 900;
+/** 흡혈박쥐(추적병)가 비행기 쪽으로 방향을 트는 가속도(px/초²)와 옆 속도 상한 */
+export const HOMING_ACCEL = 320;
+export const HOMING_MAX_VX = 180;
+/** 독화살개구리가 갈라질 때 작은 개구리가 양옆으로 튀는 속도(px/초) */
+export const SPLIT_SPREAD_SPEED = 110;
+
+export const SKILL_GAUGE_MAX = 100;
+/** 일반 적 한 마리를 격추할 때 차는 스킬 게이지 */
+export const SKILL_PER_KILL = 4;
+/** 보스 최대 체력만큼 피해를 주면 차는 스킬 게이지 (보스 하나를 다 깎으면 게이지 1.5칸) */
+export const SKILL_PER_BOSS_FILL = 150;
+/** 스킬별 이름·게이지 비용·지속 시간(폭탄은 연출 시간) */
+export const SKILLS: Record<SkillKind, { label: string; cost: number; ms: number }> = {
+  barrier: { label: "방어막", cost: 50, ms: 3000 },
+  overdrive: { label: "폭주", cost: 70, ms: 5000 },
+  bomb: { label: "폭탄", cost: 100, ms: 600 },
+};
+/** 폭주 동안 무기 레벨에 더하는 값 (최대 레벨은 넘지 않는다) */
+export const OVERDRIVE_LEVELS = 3;
+/** 방어막 반경. 닿는 적 탄은 사라지고 들이받은 일반 적은 부서진다 */
+export const BARRIER_RADIUS = 34;
+/** 폭탄이 일반 적에게 주는 피해 (방패도 무시한다) */
+export const BOMB_DAMAGE = 40;
+/** 폭탄이 보스에게 주는 피해 = 보스 최대 체력 × 이 비율 */
+export const BOMB_BOSS_RATIO = 0.08;
+
+/** 적 종류별 크기(반경 px)와 스테이지 기준 속도·체력에 곱하는 배수 */
+const ENEMY_TRAITS: Record<Exclude<EnemyKind, "boss">, { r: number; speed: number; hp: number }> = {
+  straight: { r: 15, speed: 1, hp: 1 },
+  zigzag: { r: 15, speed: 1, hp: 1 },
+  shooter: { r: 18, speed: 0.45, hp: 1 },
+  shield: { r: 18, speed: 0.35, hp: 2 },
+  dasher: { r: 13, speed: 1.1, hp: 0.5 },
+  splitter: { r: 17, speed: 0.6, hp: 1.5 },
+  homing: { r: 12, speed: 0.7, hp: 0.6 },
+};
 export const ITEM_RADIUS = 13;
 /** 폭발 애니메이션 4프레임이 재생되는 시간 */
 export const EXPLOSION_MS = 400;
@@ -279,13 +349,17 @@ export function getStageConfig(stage: number) {
   return {
     boss,
     killGoal: Math.round(lerp(10, 40, d)),
-    // 보스전은 패턴 다섯 가지를 한 바퀴 볼 만큼 길다
-    bossSurviveMs: Math.round(lerp(22_000, 38_000, d)),
+    bossHp: Math.round(BOSS_BASE_HP * (stage / BOSS_STAGE_EVERY) ** 1.3),
     spawnIntervalMs: lerp(750, 260, d) * (boss ? 2.5 : 1),
     enemyHp: Math.round(lerp(2, 10, d)),
     enemySpeed: lerp(100, 360, d),
-    zigzagChance: stage >= 2 ? lerp(0.2, 0.35, d) : 0,
-    shooterChance: stage >= 3 ? lerp(0.1, 0.5, d) : 0,
+    // 새 천적은 스테이지가 오를 때마다 하나씩 합류한다. 확률 합은 최고 난이도에서도 0.9를 넘지 않아 하피독수리가 늘 섞인다
+    zigzagChance: stage >= 2 ? 0.2 : 0,
+    shooterChance: stage >= 3 ? lerp(0.1, 0.25, d) : 0,
+    dasherChance: stage >= 4 ? lerp(0.08, 0.12, d) : 0,
+    shieldChance: stage >= 6 ? lerp(0.06, 0.12, d) : 0,
+    splitterChance: stage >= 7 ? lerp(0.06, 0.1, d) : 0,
+    homingChance: stage >= 8 ? lerp(0.05, 0.1, d) : 0,
     enemyFireIntervalMs: lerp(2000, 550, d),
     shotSpeed: lerp(160, 420, d),
   };
@@ -302,10 +376,16 @@ export function createState(width: number, height: number): GameState {
     weapon: "basic",
     weaponLevel: 1,
     killsSinceDrop: 0,
+    shieldBlocks: 0,
+    splits: 0,
+    skillGauge: 0,
+    barrierMs: 0,
+    overdriveMs: 0,
+    bombMs: 0,
     fireInMs: 0,
     stage: 1,
     stageKills: 0,
-    stageTimeMs: 0,
+    bossDown: false,
     bannerMs: STAGE_BANNER_MS,
     score: 0,
     spawnInMs: 0,
@@ -327,10 +407,10 @@ export function getPlaneY(state: Pick<GameState, "height">) {
   return state.height * PLANE_Y_RATIO;
 }
 
-/** 보스 스테이지면 남은 버티기 시간, 아니면 null */
-export function getBossLeftMs(state: GameState) {
-  const config = getStageConfig(state.stage);
-  return config.boss ? Math.max(0, config.bossSurviveMs - state.stageTimeMs) : null;
+/** 보스 체력 비율로 나눈 페이즈: 2/3 초과 1, 1/3 초과 2, 그 아래 3 */
+export function getBossPhase(boss: Pick<Enemy, "hp" | "maxHp">): 1 | 2 | 3 {
+  const ratio = boss.hp / boss.maxHp;
+  return ratio > 2 / 3 ? 1 : ratio > 1 / 3 ? 2 : 3;
 }
 
 function overlaps(a: Circle, b: Circle, radius = a.r + b.r) {
@@ -361,7 +441,7 @@ function explode(state: GameState, enemy: Enemy) {
 
 /** 지금 무기·레벨 모양대로 한 번 쏘고, 다음 발사까지의 간격을 돌려준다 */
 export function fireWeapon(state: GameState) {
-  const spec = getWeaponSpec(state.weapon, state.weaponLevel);
+  const spec = getWeaponSpec(state.weapon, getFireLevel(state));
   const x = state.planeX;
   const y = getPlaneY(state) - 22;
   for (const { dx, angle } of spec.pattern) {
@@ -381,15 +461,26 @@ export function fireWeapon(state: GameState) {
 
 export function spawnEnemy(state: GameState, random: () => number = Math.random): Enemy {
   const config = getStageConfig(state.stage);
-  const roll = random();
-  const kind: EnemyKind =
-    roll < config.shooterChance
-      ? "shooter"
-      : roll < config.shooterChance + config.zigzagChance
-        ? "zigzag"
-        : "straight";
-  const r = kind === "shooter" ? 18 : 15;
-  const speed = config.enemySpeed * (kind === "shooter" ? 0.45 : 1);
+  // 한 번 굴린 값이 어느 종류 확률 구간에 들어가느냐로 정하고, 어디에도 안 들어가면 기본 하피독수리
+  let roll = random();
+  let kind: Exclude<EnemyKind, "boss"> = "straight";
+  for (const [candidate, chance] of [
+    ["shooter", config.shooterChance],
+    ["zigzag", config.zigzagChance],
+    ["dasher", config.dasherChance],
+    ["shield", config.shieldChance],
+    ["splitter", config.splitterChance],
+    ["homing", config.homingChance],
+  ] as const) {
+    if (roll < chance) {
+      kind = candidate;
+      break;
+    }
+    roll -= chance;
+  }
+  const { r, speed: speedRatio, hp: hpRatio } = ENEMY_TRAITS[kind];
+  const speed = config.enemySpeed * speedRatio;
+  const hp = Math.max(1, Math.round(config.enemyHp * hpRatio));
   return {
     id: state.nextId++,
     kind,
@@ -398,13 +489,46 @@ export function spawnEnemy(state: GameState, random: () => number = Math.random)
     r,
     vx: kind === "zigzag" ? (random() < 0.5 ? -1 : 1) * speed * 0.7 : 0,
     vy: speed,
-    hp: config.enemyHp,
+    hp,
+    maxHp: hp,
     fireInMs: config.enemyFireIntervalMs * random(),
     flashMs: 0,
+    timerMs: kind === "dasher" ? DASHER_WINDUP_MS : 0,
+    split: kind === "splitter",
   };
 }
 
+/** 방패를 들고 있어 일반 총알을 막는 중인지 (아르마딜로가 쏜 직후 SHIELD_OPEN_MS 동안만 내린다) */
+export function isShieldUp(enemy: Pick<Enemy, "kind" | "timerMs">) {
+  return enemy.kind === "shield" && enemy.timerMs <= 0;
+}
+
+/** 독화살개구리가 격추되면 작은 개구리 둘로 갈라진다. 작은 개구리는 더 갈라지지 않는다 */
+function splitEnemy(state: GameState, parent: Enemy): Enemy[] {
+  state.splits += 1;
+  const r = Math.round(parent.r * 0.65);
+  const hp = Math.max(1, Math.ceil(parent.maxHp / 2));
+  return [-1, 1].map(
+    (side): Enemy => ({
+      id: state.nextId++,
+      kind: "splitter",
+      x: parent.x + side * r,
+      y: parent.y,
+      r,
+      vx: side * SPLIT_SPREAD_SPEED,
+      vy: Math.abs(parent.vy) + 40,
+      hp,
+      maxHp: hp,
+      fireInMs: 0,
+      flashMs: 0,
+      timerMs: 0,
+      split: false,
+    }),
+  );
+}
+
 function spawnBoss(state: GameState): Enemy {
+  const hp = getStageConfig(state.stage).bossHp;
   // 보스마다 시작 패턴을 한 칸씩 밀어 매번 다른 순서로 시작한다
   state.bossPatternIndex = state.stage / BOSS_STAGE_EVERY - 1;
   state.bossPatternMs = 0;
@@ -417,9 +541,12 @@ function spawnBoss(state: GameState): Enemy {
     r: BOSS_RADIUS,
     vx: 80 + state.stage * 4,
     vy: 70,
-    hp: 1,
+    hp,
+    maxHp: hp,
     fireInMs: 600,
     flashMs: 0,
+    timerMs: 0,
+    split: false,
   };
 }
 
@@ -494,6 +621,7 @@ function updateBoss(state: GameState, boss: Enemy, dt: number, random: () => num
   }
 
   const pattern = getBossPattern(state);
+  const tempo = BOSS_PHASE_TEMPO[getBossPhase(boss) - 1];
   state.bossPatternMs += dt;
 
   if (pattern === "charge") {
@@ -508,22 +636,134 @@ function updateBoss(state: GameState, boss: Enemy, dt: number, random: () => num
       boss.y = Math.max(homeY, boss.y - 420 * seconds);
     }
   } else {
-    // 좌우로 오가며 쏜다
-    boss.x += boss.vx * seconds;
+    // 좌우로 오가며 쏜다. 페이즈가 오를수록 빨리 움직인다
+    boss.x += (boss.vx * seconds) / tempo;
     if (boss.x < boss.r || boss.x > state.width - boss.r) {
       boss.vx = -boss.vx;
       boss.x = Math.min(state.width - boss.r, Math.max(boss.r, boss.x));
     }
     boss.fireInMs -= dt;
-    if (boss.fireInMs <= 0) boss.fireInMs = fireBoss(state, boss, pattern, random);
+    if (boss.fireInMs <= 0) boss.fireInMs = fireBoss(state, boss, pattern, random) * tempo;
   }
 
   // 돌격에서 제자리로 돌아온 뒤에야 다음 패턴으로 넘어간다
-  if (state.bossPatternMs >= BOSS_PATTERN_MS[pattern] && boss.y <= homeY) {
+  if (state.bossPatternMs >= BOSS_PATTERN_MS[pattern] * tempo && boss.y <= homeY) {
     state.bossPatternIndex += 1;
     state.bossPatternMs = 0;
     boss.fireInMs = 500;
   }
+}
+
+/** 일반 적 한 프레임: 종류별 움직임(칼새 멈춤·돌진, 흡혈박쥐 추적, 아르마딜로 방패) 뒤 이동하고, 쏘는 적은 쏜다 */
+function updateEnemy(state: GameState, enemy: Enemy, dt: number, config: ReturnType<typeof getStageConfig>) {
+  const seconds = dt / 1000;
+  switch (enemy.kind) {
+    case "dasher":
+      // 정해진 높이에 멈춰 붉은 경고선을 보여준 뒤 곧장 내리꽂는다 (경고 중에는 vy가 0)
+      if (enemy.vy === 0) {
+        enemy.timerMs -= dt;
+        if (enemy.timerMs <= 0) enemy.vy = DASHER_SPEED;
+      } else if (enemy.timerMs > 0 && enemy.y >= state.height * DASHER_STOP_RATIO) {
+        enemy.vy = 0;
+      }
+      break;
+    case "homing": {
+      // 비행기 쪽으로 옆 속도를 조금씩 틀어 따라온다
+      const toward = Math.sign(state.planeX - enemy.x);
+      enemy.vx = Math.max(-HOMING_MAX_VX, Math.min(HOMING_MAX_VX, enemy.vx + toward * HOMING_ACCEL * seconds));
+      break;
+    }
+    case "shield":
+      enemy.timerMs = Math.max(0, enemy.timerMs - dt);
+      break;
+  }
+
+  moveCircle(enemy, seconds, state.width);
+  if ((enemy.kind !== "shooter" && enemy.kind !== "shield") || enemy.y < 0) return;
+  enemy.fireInMs -= dt;
+  if (enemy.fireInMs > 0) return;
+  state.shots.push(aimedShot(state, enemy.x, enemy.y + enemy.r, config.shotSpeed, 0, false));
+  if (enemy.kind === "shield") {
+    // 아르마딜로는 느리게 쏘고, 쏠 때 방패를 잠깐 내린다 — 그때가 일반 총알로 잡을 기회
+    enemy.fireInMs = config.enemyFireIntervalMs * 1.3;
+    enemy.timerMs = SHIELD_OPEN_MS;
+  } else {
+    enemy.fireInMs = config.enemyFireIntervalMs;
+  }
+}
+
+/** 보스 체력이 0이 되면: 크게 한 번 + 둘레 네 번 터지고, 남은 보스 탄이 사라지며, 무기 레벨을 올려 준다 */
+function defeatBoss(state: GameState, boss: Enemy) {
+  state.bossDown = true;
+  state.weaponLevel = Math.min(MAX_WEAPON_LEVEL, state.weaponLevel + BOSS_REWARD_LEVELS);
+  explode(state, boss);
+  for (const [dx, dy] of [[-1, -1], [1, -1], [-1, 1], [1, 1]] as const) {
+    state.explosions.push({ x: boss.x + dx * boss.r * 0.6, y: boss.y + dy * boss.r * 0.6, size: boss.r * 2, ageMs: 0 });
+  }
+  state.shots = [];
+}
+
+/** 지금 실제로 쏘는 무기 레벨. 폭주 중이면 OVERDRIVE_LEVELS만큼 높다 */
+export function getFireLevel(state: Pick<GameState, "weaponLevel" | "overdriveMs">) {
+  return Math.min(MAX_WEAPON_LEVEL, state.weaponLevel + (state.overdriveMs > 0 ? OVERDRIVE_LEVELS : 0));
+}
+
+function addSkillGauge(state: GameState, amount: number) {
+  state.skillGauge = Math.min(SKILL_GAUGE_MAX, state.skillGauge + amount);
+}
+
+/** 일반 적 격추: 점수·폭발·스킬 게이지·아이템(보장 드롭 포함). 독화살개구리가 갈라져 생긴 작은 적을 돌려준다 */
+function destroyEnemy(state: GameState, enemy: Enemy, random: () => number): Enemy[] {
+  state.score += KILL_SCORE;
+  state.stageKills += 1;
+  addSkillGauge(state, SKILL_PER_KILL);
+  explode(state, enemy);
+  const children = enemy.split ? splitEnemy(state, enemy) : [];
+  const pity = state.killsSinceDrop + 1 >= PITY_KILLS;
+  const kind = pickDrop(random) ?? (pity ? WEAPON_DROPS[Math.floor(random() * WEAPON_DROPS.length)] : null);
+  if (kind) {
+    state.items.push({ kind, x: enemy.x, y: enemy.y, r: ITEM_RADIUS, vx: 60, vy: 90 });
+    state.killsSinceDrop = 0;
+  } else {
+    state.killsSinceDrop += 1;
+  }
+  return children;
+}
+
+/** 보스에게 피해를 주고 준 만큼 스킬 게이지를 채운다. 체력이 0이 되면 격파 */
+function damageBoss(state: GameState, boss: Enemy, damage: number) {
+  boss.hp -= damage;
+  addSkillGauge(state, (damage / boss.maxHp) * SKILL_PER_BOSS_FILL);
+  if (boss.hp <= 0) defeatBoss(state, boss);
+}
+
+/** 폭탄: 화면의 적 탄을 모두 지우고, 일반 적(방패 무시)에게 큰 피해, 보스에게는 최대 체력 비율 피해 */
+function detonateBomb(state: GameState, random: () => number) {
+  state.bombMs = SKILLS.bomb.ms;
+  state.shots = [];
+  const spawned: Enemy[] = [];
+  for (const enemy of state.enemies) {
+    if (enemy.hp <= 0) continue;
+    enemy.flashMs = 80;
+    if (enemy.kind === "boss") {
+      damageBoss(state, enemy, Math.ceil(enemy.maxHp * BOMB_BOSS_RATIO));
+      continue;
+    }
+    enemy.hp -= BOMB_DAMAGE;
+    if (enemy.hp <= 0) spawned.push(...destroyEnemy(state, enemy, random));
+  }
+  state.enemies.push(...spawned);
+}
+
+/** 게이지가 비용만큼 있으면 스킬을 쓴다. 쓰면 true */
+export function castSkill(state: GameState, kind: SkillKind, random: () => number = Math.random) {
+  const { cost, ms } = SKILLS[kind];
+  if (state.skillGauge < cost) return false;
+  state.skillGauge -= cost;
+  if (kind === "barrier") state.barrierMs = ms;
+  else if (kind === "overdrive") state.overdriveMs = ms;
+  else detonateBomb(state, random);
+  return true;
 }
 
 function applyItem(state: GameState, kind: DropKind) {
@@ -548,7 +788,7 @@ function advanceStage(state: GameState) {
   state.score += getStageConfig(state.stage).boss ? BOSS_CLEAR_SCORE : STAGE_CLEAR_SCORE;
   state.stage += 1;
   state.stageKills = 0;
-  state.stageTimeMs = 0;
+  state.bossDown = false;
   state.bannerMs = STAGE_BANNER_MS;
   state.spawnInMs = 0;
   // 다음 스테이지는 숨 돌릴 틈을 주고 시작한다
@@ -572,6 +812,9 @@ export function step(
 
   state.invincibleMs = Math.max(0, state.invincibleMs - dt);
   state.bannerMs = Math.max(0, state.bannerMs - dt);
+  state.barrierMs = Math.max(0, state.barrierMs - dt);
+  state.overdriveMs = Math.max(0, state.overdriveMs - dt);
+  state.bombMs = Math.max(0, state.bombMs - dt);
 
   const movedX =
     input.targetX !== null ? input.targetX : state.planeX + input.direction * PLANE_SPEED * seconds;
@@ -580,11 +823,14 @@ export function step(
   const movedBy = state.planeX - prevX;
   state.bank = Math.abs(movedBy) < 0.5 ? 0 : movedBy < 0 ? -1 : 1;
 
+  // 스킬은 쏘기 전에 써서 폭주가 이번 발사부터 바로 반영된다
+  if (input.skill) castSkill(state, input.skill, random);
+
   // 총은 항상 자동으로 나간다. 화면에 탄이 너무 많으면 이번 발사만 건너뛰고 간격은 그대로 센다
   state.fireInMs -= dt;
   if (state.fireInMs <= 0) {
     state.fireInMs +=
-      state.bullets.length < MAX_BULLETS ? fireWeapon(state) : getWeaponSpec(state.weapon, state.weaponLevel).intervalMs;
+      state.bullets.length < MAX_BULLETS ? fireWeapon(state) : getWeaponSpec(state.weapon, getFireLevel(state)).intervalMs;
   }
 
   for (const bullet of state.bullets) {
@@ -605,16 +851,10 @@ export function step(
       continue;
     }
 
-    moveCircle(enemy, seconds, state.width);
-    if (enemy.kind !== "shooter" || enemy.y < 0) continue;
-    enemy.fireInMs -= dt;
-    if (enemy.fireInMs > 0) continue;
-    state.shots.push(aimedShot(state, enemy.x, enemy.y + enemy.r, config.shotSpeed, 0, false));
-    enemy.fireInMs = config.enemyFireIntervalMs;
+    updateEnemy(state, enemy, dt, config);
   }
 
   if (state.bannerMs <= 0) {
-    state.stageTimeMs += dt;
     if (config.boss && !state.enemies.some((enemy) => enemy.kind === "boss")) {
       state.enemies.push(spawnBoss(state));
     }
@@ -625,31 +865,28 @@ export function step(
     }
   }
 
-  // 내 총알 → 적. 보스는 맞아도 번쩍이기만 하고 죽지 않는다
+  // 내 총알 → 적. 보스도 맞으면 체력이 깎이고 0이 되면 격파된다
   const spent = new Set<Bullet>();
+  /** 독화살개구리가 갈라져 생긴 적. 도는 중인 목록에 바로 넣으면 같은 총알에 곧바로 맞으므로 다 돈 뒤에 넣는다 */
+  const spawned: Enemy[] = [];
   for (const bullet of state.bullets) {
     for (const enemy of state.enemies) {
       if (enemy.hp <= 0 || bullet.hitIds.includes(enemy.id) || !overlaps(bullet, enemy)) continue;
+      // 방패를 든 아르마딜로는 관통탄이 아니면 막아낸다 (총알만 사라지고 체력은 그대로)
+      if (isShieldUp(enemy) && bullet.weapon !== "pierce") {
+        spent.add(bullet);
+        state.shieldBlocks += 1;
+        break;
+      }
       enemy.flashMs = 80;
       if (enemy.kind === "boss") {
+        // 보스는 관통탄도 뚫지 못한다
         spent.add(bullet);
+        damageBoss(state, enemy, bullet.damage);
         break;
       }
       enemy.hp -= bullet.damage;
-      if (enemy.hp <= 0) {
-        state.score += KILL_SCORE;
-        state.stageKills += 1;
-        explode(state, enemy);
-        const pity = state.killsSinceDrop + 1 >= PITY_KILLS;
-        const kind =
-          pickDrop(random) ?? (pity ? WEAPON_DROPS[Math.floor(random() * WEAPON_DROPS.length)] : null);
-        if (kind) {
-          state.items.push({ kind, x: enemy.x, y: enemy.y, r: ITEM_RADIUS, vx: 60, vy: 90 });
-          state.killsSinceDrop = 0;
-        } else {
-          state.killsSinceDrop += 1;
-        }
-      }
+      if (enemy.hp <= 0) spawned.push(...destroyEnemy(state, enemy, random));
       if (bullet.weapon !== "pierce") {
         spent.add(bullet);
         break;
@@ -658,8 +895,18 @@ export function step(
     }
   }
 
+  state.enemies.push(...spawned);
+
   const plane: Circle = { x: state.planeX, y: planeY, r: PLANE_HIT_RADIUS, vx: 0, vy: 0 };
-  if (state.invincibleMs <= 0) {
+  if (state.barrierMs > 0) {
+    // 방어막은 닿는 적 탄을 지우고, 들이받은 일반 적은 같이 부순다 (비행기는 다치지 않는다)
+    state.shots = state.shots.filter((shot) => !overlaps(shot, plane, BARRIER_RADIUS + shot.r));
+    for (const enemy of state.enemies) {
+      if (enemy.kind === "boss" || enemy.hp <= 0 || !overlaps(enemy, plane, BARRIER_RADIUS + enemy.r)) continue;
+      enemy.hp = 0;
+      explode(state, enemy);
+    }
+  } else if (state.invincibleMs <= 0) {
     const rammed = state.enemies.find((enemy) => enemy.hp > 0 && overlaps(enemy, plane));
     const shot = state.shots.find((candidate) => overlaps(candidate, plane));
     if (rammed || shot) {
@@ -686,8 +933,6 @@ export function step(
   state.items = state.items.filter((item) => !picked.includes(item) && item.y - item.r < state.height);
   state.explosions = state.explosions.filter((explosion) => explosion.ageMs < EXPLOSION_MS);
 
-  const cleared = config.boss
-    ? state.stageTimeMs >= config.bossSurviveMs
-    : state.stageKills >= config.killGoal;
+  const cleared = config.boss ? state.bossDown : state.stageKills >= config.killGoal;
   if (cleared && state.hp > 0) advanceStage(state);
 }

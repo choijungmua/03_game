@@ -5,7 +5,7 @@ import { useEffect, useEffectEvent, useRef, useState } from "react";
 
 import { CAPYBARA_EMOTES, emoteImage } from "@/lib/games/emotes";
 
-import { EMOTE_PICKER_ICON } from "./constants";
+import { EMOTE_PICKER_ICON, EMOTES_PER_PAGE } from "./constants";
 import { isShortcutKey } from "./shortcut";
 
 /** 채팅 알약 오른쪽 끝의 카피바라 이모티콘 버튼. 고르면 바로 내 머리 위 말풍선으로 보낸다 */
@@ -56,7 +56,7 @@ export function EmotePicker({ onPick }: { onPick: (id: number) => void }) {
   }, [open]);
 
   return (
-    <div ref={rootRef} className="relative shrink-0">
+    <div ref={rootRef} className="shrink-0">
       <button
         type="button"
         onClick={() => setOpen((value) => !value)}
@@ -67,27 +67,35 @@ export function EmotePicker({ onPick }: { onPick: (id: number) => void }) {
       >
         <NextImage src={emoteImage(EMOTE_PICKER_ICON)} alt="" width={56} height={56} unoptimized draggable={false} className="size-7" />
       </button>
+      {/* 화면 위쪽을 크게 덮는 창. 한 쪽에 8개(4×2)씩, 세로로 넘기면 다음 8개에 딱 맞춰 멈춘다. 고르거나 바깥을 누르면 닫힌다 */}
       {open && (
         <div
           role="group"
           aria-label="카피바라 이모티콘 고르기"
-          className="absolute left-0 top-full mt-2 grid w-72 max-w-[calc(100vw-1.5rem)] grid-cols-4 gap-1 rounded-2xl bg-card/95 p-2 shadow-lg backdrop-blur"
+          className="fixed inset-x-3 top-[max(0.75rem,env(safe-area-inset-top))] z-20 mx-auto aspect-2/1 max-h-[45dvh] max-w-3xl snap-y snap-mandatory overflow-y-auto overscroll-contain scroll-smooth rounded-2xl bg-card/95 shadow-lg backdrop-blur animate-in fade-in slide-in-from-top-4 duration-200 motion-reduce:animate-none motion-reduce:scroll-auto"
         >
-          {CAPYBARA_EMOTES.map((text, id) => (
-            <button
-              key={id}
-              ref={id === 0 ? firstEmoteRef : undefined}
-              type="button"
-              aria-label={text}
-              title={text}
-              onClick={() => {
-                onPick(id);
-                setOpen(false);
-              }}
-              className="flex aspect-square items-center justify-center rounded-xl p-1 hover:bg-muted focus-visible:outline-2 focus-visible:outline-primary"
-            >
-              <NextImage src={emoteImage(id)} alt="" width={96} height={96} unoptimized draggable={false} className="size-full object-contain" />
-            </button>
+          {Array.from({ length: Math.ceil(CAPYBARA_EMOTES.length / EMOTES_PER_PAGE) }, (_, page) => (
+            <div key={page} className="grid h-full snap-start snap-always grid-cols-4 grid-rows-2 gap-2 p-2">
+              {CAPYBARA_EMOTES.slice(page * EMOTES_PER_PAGE, (page + 1) * EMOTES_PER_PAGE).map((text, index) => {
+                const id = page * EMOTES_PER_PAGE + index;
+                return (
+                  <button
+                    key={id}
+                    ref={id === 0 ? firstEmoteRef : undefined}
+                    type="button"
+                    aria-label={text}
+                    title={text}
+                    onClick={() => {
+                      onPick(id);
+                      setOpen(false);
+                    }}
+                    className="flex min-h-0 items-center justify-center rounded-xl p-1 hover:bg-muted focus-visible:outline-2 focus-visible:outline-primary"
+                  >
+                    <NextImage src={emoteImage(id)} alt="" width={96} height={96} unoptimized draggable={false} className="size-full object-contain" />
+                  </button>
+                );
+              })}
+            </div>
           ))}
         </div>
       )}

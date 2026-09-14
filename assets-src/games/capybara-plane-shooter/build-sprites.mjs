@@ -195,7 +195,72 @@ function jaguar() {
     <path d="M33 36 L48 41 M79 36 L64 41" stroke="${OUTLINE}" stroke-width="3.5" stroke-linecap="round"/>`;
 }
 
-/** 카이만 보스: 등딱지 비늘을 두른 거대 비행선, 쓰러지지 않는다 */
+/** 아르마딜로(방패병): 비늘 등딱지를 두르고, 머리 방패판으로 아래에서 오는 총알을 막는다 */
+function armadillo() {
+  const band = (y, w) => `<path d="M${48 - w} ${y} Q48 ${y + 7} ${48 + w} ${y}" stroke="#6b5440" stroke-width="3" fill="none" stroke-linecap="round"/>`;
+  return `
+    <path d="M44 20 L48 3 L52 20 Z" fill="#8f7a64" stroke="${OUTLINE}" stroke-width="2.5" stroke-linejoin="round"/>
+    <ellipse cx="22" cy="44" rx="7" ry="5" fill="#d4b596" stroke="${OUTLINE}" stroke-width="2.5"/>
+    <ellipse cx="74" cy="44" rx="7" ry="5" fill="#d4b596" stroke="${OUTLINE}" stroke-width="2.5"/>
+    <ellipse cx="48" cy="42" rx="30" ry="26" fill="#b89a7a" stroke="${OUTLINE}" stroke-width="3"/>
+    ${band(28, 22)}${band(38, 28)}${band(48, 28)}${band(58, 22)}
+    <ellipse cx="48" cy="42" rx="30" ry="26" fill="none" stroke="${OUTLINE}" stroke-width="3"/>
+    <ellipse cx="37" cy="68" rx="5" ry="7" fill="#d4b596" stroke="${OUTLINE}" stroke-width="2.5"/>
+    <ellipse cx="59" cy="68" rx="5" ry="7" fill="#d4b596" stroke="${OUTLINE}" stroke-width="2.5"/>
+    <path d="M36 66 Q48 60 60 66 L53 88 Q48 94 43 88 Z" fill="#d4b596" stroke="${OUTLINE}" stroke-width="3" stroke-linejoin="round"/>
+    <path d="M37 66 Q48 58 59 66 L56 74 Q48 69 40 74 Z" fill="#8f7a64" stroke="${OUTLINE}" stroke-width="2.5" stroke-linejoin="round"/>
+    <circle cx="43" cy="77" r="2.6" fill="${OUTLINE}"/><circle cx="53" cy="77" r="2.6" fill="${OUTLINE}"/>
+    <circle cx="42.3" cy="76.2" r="0.9" fill="#fff"/><circle cx="52.3" cy="76.2" r="0.9" fill="#fff"/>
+    <ellipse cx="48" cy="90" rx="3" ry="2" fill="#5a3a2a"/>`;
+}
+
+/** 칼새(돌진병): 뒤로 젖힌 날카로운 날개. 멈춰서 노려보다 곧장 내리꽂는다 */
+function swift() {
+  const wing = `<path d="M44 38 C30 28 14 18 3 16 C14 30 26 44 42 56 Z" fill="#3a4a6b" stroke="${OUTLINE}" stroke-width="3" stroke-linejoin="round"/>
+    <path d="M40 42 C30 34 20 27 11 22" stroke="#6d80a8" stroke-width="2.5" fill="none" stroke-linecap="round"/>`;
+  return `
+    <path d="M42 16 L35 2 L48 10 L61 2 L54 16 Z" fill="#2f3b57" stroke="${OUTLINE}" stroke-width="2.5" stroke-linejoin="round"/>
+    ${wing}${mirror(96, wing)}
+    <path d="M48 8 C59 24 59 60 48 86 C37 60 37 24 48 8 Z" fill="#2f3b57" stroke="${OUTLINE}" stroke-width="3"/>
+    <ellipse cx="48" cy="58" rx="6" ry="14" fill="#e9eef7"/>
+    <circle cx="43" cy="72" r="3.4" fill="#ff5a5a" stroke="${OUTLINE}" stroke-width="1.5"/><circle cx="43" cy="72.6" r="1.4" fill="${OUTLINE}"/>
+    <circle cx="53" cy="72" r="3.4" fill="#ff5a5a" stroke="${OUTLINE}" stroke-width="1.5"/><circle cx="53" cy="72.6" r="1.4" fill="${OUTLINE}"/>
+    <path d="M38 67 L45 70 M58 67 L51 70" stroke="${OUTLINE}" stroke-width="2.5" stroke-linecap="round"/>
+    <path d="M45 80 L51 80 L48 93 Z" fill="#f2b233" stroke="${OUTLINE}" stroke-width="2" stroke-linejoin="round"/>`;
+}
+
+/** 독화살개구리(분열체): 파란 몸에 검은 점. 격추하면 작은 개구리 둘로 갈라진다 */
+function dartFrog() {
+  const hind = `<path d="M30 30 Q12 20 8 6 Q22 12 34 24 Z" fill="#1f7ae0" stroke="${OUTLINE}" stroke-width="3" stroke-linejoin="round"/>`;
+  const fore = `<path d="M30 60 Q16 70 13 84 Q24 78 35 67 Z" fill="#1f7ae0" stroke="${OUTLINE}" stroke-width="3" stroke-linejoin="round"/>`;
+  return `
+    ${hind}${mirror(96, hind)}${fore}${mirror(96, fore)}
+    <ellipse cx="48" cy="46" rx="26" ry="28" fill="#2d8cff" stroke="${OUTLINE}" stroke-width="3"/>
+    <circle cx="38" cy="33" r="5" fill="#16213a"/><circle cx="58" cy="29" r="4" fill="#16213a"/>
+    <circle cx="52" cy="48" r="6" fill="#16213a"/><circle cx="35" cy="54" r="4" fill="#16213a"/><circle cx="63" cy="55" r="3" fill="#16213a"/>
+    <circle cx="37" cy="66" r="8" fill="#2d8cff" stroke="${OUTLINE}" stroke-width="3"/>
+    <circle cx="59" cy="66" r="8" fill="#2d8cff" stroke="${OUTLINE}" stroke-width="3"/>
+    <circle cx="37" cy="67" r="4" fill="${OUTLINE}"/><circle cx="59" cy="67" r="4" fill="${OUTLINE}"/>
+    <circle cx="35.8" cy="65.6" r="1.3" fill="#fff"/><circle cx="57.8" cy="65.6" r="1.3" fill="#fff"/>
+    <path d="M40 76 Q48 83 56 76" stroke="${OUTLINE}" stroke-width="2.5" fill="none" stroke-linecap="round"/>`;
+}
+
+/** 흡혈박쥐(추적병): 물결 모양 날개를 펼치고 비행기를 쫓아와 들이받는다 */
+function vampireBat() {
+  const wing = `<path d="M42 36 C30 20 14 14 3 18 C9 26 7 34 13 40 C19 36 23 42 25 48 C31 44 37 48 41 54 Z" fill="#4a2f5c" stroke="${OUTLINE}" stroke-width="3" stroke-linejoin="round"/>
+    <path d="M40 40 C32 32 22 26 12 24 M38 46 C32 42 26 40 20 40" stroke="#7a5690" stroke-width="2" fill="none" stroke-linecap="round"/>`;
+  return `
+    ${wing}${mirror(96, wing)}
+    <path d="M38 24 L33 8 L46 18 Z M58 24 L63 8 L50 18 Z" fill="#3b2449" stroke="${OUTLINE}" stroke-width="2.5" stroke-linejoin="round"/>
+    <ellipse cx="48" cy="42" rx="14" ry="22" fill="#3b2449" stroke="${OUTLINE}" stroke-width="3"/>
+    <circle cx="48" cy="62" r="12" fill="#5c3a70" stroke="${OUTLINE}" stroke-width="3"/>
+    <circle cx="43" cy="60" r="3.2" fill="#ff4d4d"/><circle cx="53" cy="60" r="3.2" fill="#ff4d4d"/>
+    <circle cx="42.4" cy="59.2" r="1" fill="#fff"/><circle cx="52.4" cy="59.2" r="1" fill="#fff"/>
+    <ellipse cx="48" cy="66" rx="3" ry="2" fill="#2a1830"/>
+    <path d="M43 69 L45.5 78 L48 69 Z M48 69 L50.5 78 L53 69 Z" fill="#ffffff" stroke="${OUTLINE}" stroke-width="1.5" stroke-linejoin="round"/>`;
+}
+
+/** 카이만 보스: 등딱지 비늘을 두른 거대 비행선. 체력바를 모두 깎으면 격파된다 */
 function caiman() {
   const scutes = [];
   for (const [y, xs] of [
@@ -722,6 +787,14 @@ const ASSETS = [
   ["enemy/zigzag-hit", withHit(96, 96, wasp())],
   ["enemy/shooter", svg(112, 112, jaguar())],
   ["enemy/shooter-hit", withHit(112, 112, jaguar())],
+  ["enemy/shield", svg(96, 96, armadillo())],
+  ["enemy/shield-hit", withHit(96, 96, armadillo())],
+  ["enemy/dasher", svg(96, 96, swift())],
+  ["enemy/dasher-hit", withHit(96, 96, swift())],
+  ["enemy/splitter", svg(96, 96, dartFrog())],
+  ["enemy/splitter-hit", withHit(96, 96, dartFrog())],
+  ["enemy/homing", svg(96, 96, vampireBat())],
+  ["enemy/homing-hit", withHit(96, 96, vampireBat())],
   ["enemy/boss", svg(256, 256, caiman())],
   ["enemy/boss-hit", withHit(256, 256, caiman())],
   ...Object.entries(ITEM_ICONS).map(([name, icon]) => [`item/${name}`, itemFrame(icon)]),

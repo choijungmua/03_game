@@ -93,8 +93,8 @@ export function SoundToggle({ settings, onChange }: SettingsProps) {
         aria-label="효과음"
         aria-pressed={!settings.muted}
         aria-keyshortcuts="M"
-        // 크기는 오른쪽 아래 앉기·때리기 버튼(size-18)과 같게. 헤드폰 위치는 버튼 기준 %라 같이 커진다
-        className="relative size-18 rounded-full bg-card/90 shadow-md backdrop-blur focus-visible:outline-2 focus-visible:outline-primary"
+        // 크기는 오른쪽 아래 앉기·때리기 버튼(모바일 size-14, md 이상 size-18)과 같게. 헤드폰 위치는 버튼 기준 %라 같이 커진다
+        className="relative size-14 md:size-18 rounded-full bg-card/90 shadow-md backdrop-blur focus-visible:outline-2 focus-visible:outline-primary"
       >
         {/* 얼굴만 원 안에 자른다(옷장 버튼과 같은 크기·확대). 헤드폰은 이 원 밖에 그려서 바깥으로 삐져나온다 */}
         <span aria-hidden className="relative block size-full overflow-hidden rounded-full">
