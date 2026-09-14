@@ -9,7 +9,9 @@ import { type FormEvent, useEffect, useEffectEvent, useRef, useState } from "rea
 import { pretendard } from "@/config";
 import { cn } from "@/lib";
 import { Armchair, HandFist } from "lucide-react";
-import { fetchApi } from "@/lib/api-url";
+import { API_URL } from "@/lib/api-url";
+
+import { flashButton } from "./shortcut";
 
 /** 캔버스는 CSS 폰트를 물려받지 않으니 사이트 폰트(Pretendard) 이름을 직접 쓴다 */
 const CANVAS_FONT = pretendard.style.fontFamily;
@@ -41,7 +43,10 @@ import {
   CHAT_MS,
   cleanChat,
   graphemes,
-  type PresenceResponse,
+  LOBBY_FULL_CODE,
+  LOBBY_TICK_MS,
+  type LobbyMessage,
+  type PresenceRequest,
 } from "@/lib/lobby/presence";
 import {
   BODY_LAYERS,
@@ -171,13 +176,14 @@ const DOOR_RADIUS = TILE * 0.9;
 const ENTER_CHARGE_MS = 900;
 /** 통나무 의자 앞 이 거리 안에서 앉을 수 있다 */
 const SEAT_REACH = TILE * 1.4;
-const SYNC_MS = 150;
-/** 동기화 한 번을 기다리는 최대 시간. 넘으면 끊긴 것으로 보고 다음에 다시 보낸다 */
-const SYNC_TIMEOUT_MS = 3000;
-/** 연속 실패 횟수별 다시 보내기까지 쉬는 시간 — 서버가 꺼져 있을 때 150ms마다 두드리지 않는다 */
-const SYNC_BACKOFF_MS = [1000, 2000, 5000, 10_000];
-/** 이만큼 연달아 실패하면 화면에 남은 다른 플레이어를 지운다 */
-const STALE_AFTER_FAILURES = 3;
+/** 로비 WebSocket 주소 (http→ws, https→wss) */
+const LOBBY_WS_URL = `${API_URL.replace(/^http/, "ws")}/api/lobby/ws`;
+/** 가만히 있어도 이 간격으로 한 번은 보낸다 (서버가 10초 조용한 플레이어를 지우지 않게) */
+const HEARTBEAT_MS = 2000;
+const RECONNECT_MIN_MS = 1000;
+const RECONNECT_MAX_MS = 8000;
+/** 못 보내고 쌓인 데이터가 이만큼 넘으면(느린 연결) 이번엔 건너뛴다 */
+const MAX_BUFFERED_BYTES = 64 * 1024;
 /** 텍스처 한 장이 덮는 월드 크기(px) — 타일의 배수여야 칸마다 이어진다 */
 const TEXTURE_SIZE = 192;
 const CHARACTER_BASE = "/assets/images/characters/capybara";
@@ -725,6 +731,9 @@ export function Lobby({ games }: { games: DoorGame[] }) {
   /** 보낼 채팅. 게임 루프가 가져가 말풍선을 띄우고 다음 동기화에 실어 보낸다 */
   const chatRequest = useRef<string | null>(null);
   const chatInputRef = useRef<HTMLInputElement>(null);
+  /** F·Space로 때리기·앉기를 누르면 버튼에 hover 아이콘을 잠깐 띄우려고 둔다 */
+  const attackButtonRef = useRef<HTMLButtonElement>(null);
+  const sitButtonRef = useRef<HTMLButtonElement>(null);
   const lastChatAt = useRef(-Infinity);
   /** 화면(설정 창·소리 버튼)은 state, 게임 루프는 ref로 같은 설정을 읽는다 */
   const [settings, setSettings] = useState<LobbySettings>(DEFAULT_LOBBY_SETTINGS);
@@ -989,14 +998,20 @@ export function Lobby({ games }: { games: DoorGame[] }) {
         return;
       }
       if (ATTACK_KEYS.has(event.code)) {
-        if (!event.repeat) attackRequest.current = true;
+        if (!event.repeat) {
+          attackRequest.current = true;
+          flashButton(attackButtonRef.current);
+        }
         return;
       }
       // 버튼·링크에 포커스가 있으면 Space/Enter는 그 요소의 기본 동작(누르기)에 맡긴다
       if (event.target instanceof HTMLElement && event.target.closest("a, button")) return;
       if (event.code === "Space") {
         event.preventDefault();
-        if (!event.repeat) sitRequest.current = true;
+        if (!event.repeat) {
+          sitRequest.current = true;
+          flashButton(sitButtonRef.current);
+        }
       } else if (event.code === "Enter") {
         const door = nearestDoor();
         if (door) {
@@ -1050,116 +1065,143 @@ export function Lobby({ games }: { games: DoorGame[] }) {
       renderStick();
     };
 
-    // --- 멀티: 내 상태를 보내고 근처 플레이어를 받는다 ---
-    let inFlight = false;
-    let failures = 0;
-    let retryAt = 0;
-    const sync = () => {
-      // 탭이 가려져 있으면 보내지 않는다(돌아오면 다음 주기에 바로 보낸다). 실패 뒤에는 쉬는 시간이 지나야 다시 보낸다
-      if (inFlight || document.hidden || performance.now() < retryAt) return;
-      inFlight = true;
-      const sent = { x: me.x, y: me.y };
-      const attack = attackQueued;
+    // --- 멀티: WebSocket으로 내 상태가 바뀔 때 보내고, 서버가 틱마다 밀어 주는 근처 플레이어를 받는다 ---
+    // (HTTP 폴링은 150ms마다 요청을 보내고 응답을 기다려서, 남의 움직임이 최대 두 주기 늦게 보였다)
+    // 서버가 꺼져 있으면 연결이 닫히고 1→8초 간격으로 다시 붙는다. 보내지 못한 때리기·채팅은 큐에 남아 다시 붙으면 나간다
+    let socket: WebSocket | null = null;
+    let disposed = false;
+    let reconnectTimer = 0;
+    let reconnectDelay = RECONNECT_MIN_MS;
+    /** 마지막으로 보낸 위치·방향·앉기·옷. 같으면 HEARTBEAT_MS가 지날 때까지 다시 보내지 않는다 */
+    let lastSentKey = "";
+    let lastSentAt = -Infinity;
+
+    const send = () => {
+      if (!socket || socket.readyState !== WebSocket.OPEN || socket.bufferedAmount > MAX_BUFFERED_BYTES) return;
+      const now = performance.now();
+      const outfit = outfitRef.current;
+      const key = `${me.x},${me.y},${me.facing},${me.sitting},${JSON.stringify(outfit)}`;
+      if (!attackQueued && chatQueued === null && key === lastSentKey && now - lastSentAt < HEARTBEAT_MS) return;
+      const request: PresenceRequest = {
+        token,
+        x: me.x,
+        y: me.y,
+        facing: me.facing,
+        sitting: me.sitting,
+        attack: attackQueued,
+        outfit,
+        ...(chatQueued !== null && { chat: chatQueued }),
+      };
       attackQueued = false;
-      const chat = chatQueued ?? undefined;
       chatQueued = null;
-      // ponytail: 150ms 게임 루프라 React Query 없이 직접 보낸다(렌더 없이 캔버스만 갱신)
-      fetchApi(
-        "/api/lobby",
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ token, ...sent, facing: me.facing, sitting: me.sitting, attack, outfit: outfitRef.current, chat }),
-        },
-        SYNC_TIMEOUT_MS,
-      )
-        .then(async (response) => {
-          const data: Partial<PresenceResponse> = await response.json();
-          if (!response.ok || !data.you || !Array.isArray(data.players)) throw new Error("sync failed");
-          const received = performance.now();
-          me.name = data.you.name;
+      lastSentKey = key;
+      lastSentAt = now;
+      socket.send(JSON.stringify(request));
+    };
 
-          if (data.you.stunMs > 0) {
-            if (me.stunUntil < received) {
-              camera.shakeUntil = received + 300;
-              playSound("hit", settingsRef.current);
-            }
-            me.stunUntil = received + data.you.stunMs;
-            if (me.sitting) standUp();
-          } else if (Math.hypot(data.you.x - sent.x, data.you.y - sent.y) > 1 && !blocked(data.you.x, data.you.y)) {
-            // 서버가 순간이동으로 판단해 위치를 고쳤으면 따른다
-            me.x = data.you.x;
-            me.y = data.you.y;
-          }
+    const receive = (data: Partial<LobbyMessage>) => {
+      if (!data.you || !Array.isArray(data.players)) return;
+      const received = performance.now();
+      me.name = data.you.name;
 
-          const seen = new Set<string>();
-          let heard = "";
-          for (const player of data.players) {
-            seen.add(player.id);
-            // 남은 시간이 0이면 0으로 둔다 (received를 넣으면 같은 프레임의 rAF 시각보다 커서 잠깐 기절처럼 보인다)
-            const stunUntil = player.stunMs > 0 ? received + player.stunMs : 0;
-            const chatUntil = player.chatMs > 0 ? received + player.chatMs : 0;
-            const remote = remotes.get(player.id);
-            if (chatUntil > 0 && (!remote || remote.chat !== player.chat || remote.chatUntil < received)) {
-              const emote = parseEmoteChat(player.chat);
-              heard = `${player.name}: ${emote === null ? player.chat : `${CAPYBARA_EMOTES[emote]} (이모티콘)`}`;
-            }
-            if (remote) {
-              pushSnapshot(remote.snapshots, player.x, player.y, received, SYNC_MS);
-              remote.seenAt = received;
-              remote.facing = player.facing;
-              remote.sitting = player.sitting;
-              remote.outfit = player.outfit ?? {};
-              remote.stunUntil = stunUntil;
-              remote.chat = player.chat;
-              remote.chatUntil = chatUntil;
-              if (player.attackMs > 0) remote.attackUntil = received + player.attackMs;
-            } else {
-              remotes.set(player.id, {
-                id: player.id,
-                name: player.name,
-                x: player.x,
-                y: player.y,
-                snapshots: [{ x: player.x, y: player.y, at: received }],
-                seenAt: received,
-                movedAt: -Infinity,
-                facing: player.facing,
-                sitting: player.sitting,
-                walkDist: 0,
-                idleMs: 0,
-                stunUntil,
-                attackUntil: player.attackMs > 0 ? received + player.attackMs : 0,
-                chat: player.chat,
-                chatUntil,
-                outfit: player.outfit ?? {},
-              });
-            }
-          }
-          // 한 번 응답에서 빠졌다고 바로 지우면 사라졌다 다시 나타나 깜빡인다
-          for (const [id, remote] of remotes) if (!seen.has(id) && received - remote.seenAt > REMOTE_GONE_MS) remotes.delete(id);
-          if (heard) {
-            setHeardChat(heard);
-            playSound("chat", settingsRef.current);
-          }
-          if (data.hit) {
-            hitEffects.set(data.hit, received + 450);
-            playSound("hit", settingsRef.current);
-          }
-          failures = 0;
-          retryAt = 0;
-        })
-        // 연결이 끊겨도 따로 알리지 않는다. 다음 동기화에서 다시 붙으면 다른 유저가 그대로 보인다
-        .catch(() => {
-          // 보내지 못한 채팅은 다음 동기화에 다시 싣는다 (때리기는 지난 입력이라 버린다)
-          if (chat && chatQueued === null) chatQueued = chat;
-          failures += 1;
-          retryAt = performance.now() + SYNC_BACKOFF_MS[Math.min(failures, SYNC_BACKOFF_MS.length) - 1];
-          // 연달아 끊기면 멈춘 다른 플레이어가 그 자리에 서 있지 않게 지운다 (한 번 튀는 끊김에는 그대로 둔다)
-          if (failures >= STALE_AFTER_FAILURES) remotes.clear();
-        })
-        .finally(() => {
-          inFlight = false;
-        });
+      if (data.you.stunMs > 0) {
+        if (me.stunUntil < received) {
+          camera.shakeUntil = received + 300;
+          playSound("hit", settingsRef.current);
+        }
+        me.stunUntil = received + data.you.stunMs;
+        if (me.sitting) standUp();
+      } else if (data.corrected && !blocked(data.you.x, data.you.y)) {
+        // 서버가 순간이동으로 판단해 위치를 고쳤을 때만 따른다 (you는 조금 전에 보낸 위치라 매번 따르면 뒤로 튄다)
+        me.x = data.you.x;
+        me.y = data.you.y;
+      }
+
+      const seen = new Set<string>();
+      let heard = "";
+      for (const player of data.players) {
+        seen.add(player.id);
+        // 남은 시간이 0이면 0으로 둔다 (received를 넣으면 같은 프레임의 rAF 시각보다 커서 잠깐 기절처럼 보인다)
+        const stunUntil = player.stunMs > 0 ? received + player.stunMs : 0;
+        const chatUntil = player.chatMs > 0 ? received + player.chatMs : 0;
+        const remote = remotes.get(player.id);
+        if (chatUntil > 0 && (!remote || remote.chat !== player.chat || remote.chatUntil < received)) {
+          const emote = parseEmoteChat(player.chat);
+          heard = `${player.name}: ${emote === null ? player.chat : `${CAPYBARA_EMOTES[emote]} (이모티콘)`}`;
+        }
+        if (remote) {
+          // 받은 위치를 쌓아 두고 틱 루프가 조금 과거를 보간해 그린다 (서버는 바뀐 게 없으면 안 보내므로 평소 간격은 한 틱)
+          pushSnapshot(remote.snapshots, player.x, player.y, received, LOBBY_TICK_MS);
+          remote.seenAt = received;
+          remote.facing = player.facing;
+          remote.sitting = player.sitting;
+          remote.outfit = player.outfit ?? {};
+          remote.stunUntil = stunUntil;
+          remote.chat = player.chat;
+          remote.chatUntil = chatUntil;
+          if (player.attackMs > 0) remote.attackUntil = received + player.attackMs;
+        } else {
+          remotes.set(player.id, {
+            id: player.id,
+            name: player.name,
+            x: player.x,
+            y: player.y,
+            snapshots: [{ x: player.x, y: player.y, at: received }],
+            seenAt: received,
+            movedAt: -Infinity,
+            facing: player.facing,
+            sitting: player.sitting,
+            walkDist: 0,
+            idleMs: 0,
+            stunUntil,
+            attackUntil: player.attackMs > 0 ? received + player.attackMs : 0,
+            chat: player.chat,
+            chatUntil,
+            outfit: player.outfit ?? {},
+          });
+        }
+      }
+      // 한 번 목록에서 빠졌다고 바로 지우면 시야 경계에서 사라졌다 다시 나타나 깜빡인다
+      for (const [id, remote] of remotes) if (!seen.has(id) && received - remote.seenAt > REMOTE_GONE_MS) remotes.delete(id);
+      if (heard) {
+        setHeardChat(heard);
+        playSound("chat", settingsRef.current);
+      }
+      if (data.hit) {
+        hitEffects.set(data.hit, received + 450);
+        playSound("hit", settingsRef.current);
+      }
+    };
+
+    const connect = () => {
+      if (disposed) return;
+      const current = new WebSocket(LOBBY_WS_URL);
+      socket = current;
+      current.onopen = () => {
+        reconnectDelay = RECONNECT_MIN_MS;
+        lastSentKey = "";
+        send();
+      };
+      current.onmessage = (event) => {
+        if (typeof event.data !== "string") return;
+        let data: Partial<LobbyMessage>;
+        try {
+          data = JSON.parse(event.data);
+        } catch {
+          return;
+        }
+        receive(data);
+      };
+      // 에러 뒤에는 늘 close가 따라오므로 다시 붙는 건 close에서만 한다
+      current.onclose = (event) => {
+        if (socket === current) socket = null;
+        if (disposed) return;
+        // 끊긴 동안 남의 카피바라가 제자리에 멈춘 채 서 있지 않게 치운다
+        remotes.clear();
+        if (event.code === LOBBY_FULL_CODE) showNotice("로비에 사람이 너무 많아요. 잠시 뒤 다시 들어가 볼게요");
+        reconnectTimer = window.setTimeout(connect, reconnectDelay);
+        reconnectDelay = Math.min(RECONNECT_MAX_MS, reconnectDelay * 2);
+      };
     };
 
     let last = performance.now();
@@ -1501,8 +1543,8 @@ export function Lobby({ games }: { games: DoorGame[] }) {
     window.addEventListener("pointercancel", onPointerUp);
     window.addEventListener("blur", onBlur);
     frame = requestAnimationFrame(tick);
-    sync();
-    const syncId = window.setInterval(sync, SYNC_MS);
+    connect();
+    const sendId = window.setInterval(send, LOBBY_TICK_MS);
 
     return () => {
       window.removeEventListener("resize", resize);
@@ -1514,8 +1556,11 @@ export function Lobby({ games }: { games: DoorGame[] }) {
       window.removeEventListener("pointercancel", onPointerUp);
       window.removeEventListener("blur", onBlur);
       cancelAnimationFrame(frame);
-      window.clearInterval(syncId);
+      window.clearInterval(sendId);
+      window.clearTimeout(reconnectTimer);
       window.clearTimeout(noticeTimer);
+      disposed = true;
+      socket?.close();
     };
   }, [world]);
 
@@ -1631,6 +1676,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
         <div className="flex flex-col items-center gap-2">
           {(seatNearby || sitting) && (
             <button
+              ref={sitButtonRef}
               type="button"
               onClick={() => {
                 sitRequest.current = true;
@@ -1654,7 +1700,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
                 {/* 마우스를 올리거나 키보드 포커스면 나무 테 안쪽 판 위에 의자 아이콘 (프로필·효과음과 같은 방식) */}
                 <span
                   aria-hidden
-                  className="absolute inset-[16%] flex items-center justify-center rounded-full bg-overlay text-white opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-visible:opacity-100 motion-reduce:transition-none"
+                  className="absolute inset-[16%] flex items-center justify-center rounded-full bg-overlay text-white opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-visible:opacity-100 group-data-flash:opacity-100 motion-reduce:transition-none"
                 >
                   <Armchair className="size-7" />
                 </span>
@@ -1663,6 +1709,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
             </button>
           )}
           <button
+            ref={attackButtonRef}
             type="button"
             onClick={() => {
               attackRequest.current = true;
@@ -1686,7 +1733,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
               {/* 마우스를 올리거나 키보드 포커스면 나무 테 안쪽 판 위에 주먹 아이콘 (프로필·효과음과 같은 방식) */}
               <span
                 aria-hidden
-                className="absolute inset-[16%] flex items-center justify-center rounded-full bg-overlay text-white opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-visible:opacity-100 motion-reduce:transition-none"
+                className="absolute inset-[16%] flex items-center justify-center rounded-full bg-overlay text-white opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-visible:opacity-100 group-data-flash:opacity-100 motion-reduce:transition-none"
               >
                 <HandFist className="size-7" />
               </span>

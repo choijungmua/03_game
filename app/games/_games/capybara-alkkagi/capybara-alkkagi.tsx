@@ -7,6 +7,7 @@ import {
   type PointerEvent,
   useEffect,
   useEffectEvent,
+  useLayoutEffect,
   useRef,
   useState,
 } from "react";
@@ -76,6 +77,14 @@ function describeEnd(state: AlkkagiState) {
   return `${STONE_NAME[opponent(state.winner)]} 알이 모두 판 밖으로 떨어졌어요.`;
 }
 
+/** 알 버튼 위치. 백은 판을 180도 돌려 보고, 알 크기 기준 %라서 판 좌표 / 지름으로 옮기고 -50%로 가운데 맞춘다 */
+function pieceTransform(piece: Piece, flipped: boolean) {
+  const diameter = radiusOf(piece) * 2;
+  const x = flipped ? FIELD - piece.x : piece.x;
+  const y = flipped ? FIELD - piece.y : piece.y;
+  return `translate(${(x / diameter) * 100 - 50}%, ${(y / diameter) * 100 - 50}%)`;
+}
+
 function aliveCount(pieces: Piece[], owner: Stone) {
   return pieces.filter((piece) => piece.owner === owner && !piece.out).length;
 }
@@ -94,8 +103,8 @@ export function CapybaraAlkkagi() {
   >("capybara-alkkagi");
   const emoteShowing = useEmoteShowing(view?.emote ?? null);
   const [aim, setAim] = useState<Aim | null>(null);
-  /** 샷 애니메이션 중 보여줄 알 위치. null이면 서버 상태 그대로 */
-  const [frame, setFrame] = useState<Piece[] | null>(null);
+  /** 샷 애니메이션 중이면 true. 알 위치는 state가 아니라 DOM에 바로 쓴다 */
+  const [animating, setAnimating] = useState(false);
   const [flash, setFlash] = useState<string | null>(null);
 
   // 포인터 이벤트는 렌더링 사이에 여러 번 올 수 있어서 최신 조준값은 ref로도 들고 있는다
@@ -107,6 +116,8 @@ export function CapybaraAlkkagi() {
   const lastStretch = useRef({ at: 0, step: 0 });
   /** 방마다 대국 시작·끝 소리를 한 번씩만 내려고 직전에 본 상태를 들고 있는다 */
   const seenRound = useRef<{ code: string; started: boolean; over: boolean } | null>(null);
+  /** 알 id → 버튼. 샷 애니메이션이 프레임마다 위치를 바로 쓴다 */
+  const pieceButtons = useRef(new Map<number, HTMLButtonElement>());
 
   function updateAim(next: Aim | null) {
     aimRef.current = next;
@@ -116,7 +127,6 @@ export function CapybaraAlkkagi() {
   const state = view?.state;
   const code = view?.code;
   const shotSeq = state?.lastShot?.seq ?? 0;
-  const animating = frame !== null;
   const canShoot = Boolean(
     view && state && view.joined.white && !state.winner && view.you === state.turn && !animating && !pending && !reconnecting,
   );
@@ -141,8 +151,20 @@ export function CapybaraAlkkagi() {
     );
   });
 
+  /** 알 위치·떨어짐을 React 렌더 없이 버튼에 바로 쓴다 (JSX의 style·className과 같은 값) */
+  const drawPieces = useEffectEvent((pieces: Piece[]) => {
+    for (const piece of pieces) {
+      const button = pieceButtons.current.get(piece.id);
+      if (!button) continue;
+      button.style.transform = pieceTransform(piece, flipped);
+      button.firstElementChild?.classList.toggle("scale-50", piece.out);
+      button.firstElementChild?.classList.toggle("opacity-0", piece.out);
+    }
+  });
+
   // 새 샷이 오면(내가 쳤든 상대가 쳤든) 서버와 같은 시뮬레이션을 돌려 프레임을 만들고 재생한다.
-  // 방에 처음 들어왔을 때는 지난 샷을 다시 틀지 않는다
+  // 방에 처음 들어왔을 때는 지난 샷을 다시 틀지 않는다.
+  // 프레임마다 setState로 판 전체를 다시 그리면 초당 60번 렌더가 돌아서, 알 위치만 DOM에 바로 쓰고 React 렌더는 시작·끝 두 번만 한다
   const playNewShot = useEffectEvent(() => {
     const shot = view?.state.lastShot;
     const seen = seenShot.current;
@@ -190,7 +212,14 @@ export function CapybaraAlkkagi() {
       if (pieces.some((piece, i) => piece.out && !previous[i].out)) fallFrames.add(frames.length);
       frames.push(pieces.map((piece) => ({ ...piece })));
     });
+    if (frames.length === 0) {
+      afterMessage();
+      return;
+    }
 
+    // 화면에 그리기 전에 첫 프레임을 올려 둔다 (서버가 준 샷 이후 위치가 한 번 번쩍 보이지 않게)
+    drawPieces(frames[0]);
+    setAnimating(true);
     const startedAt = performance.now();
     let shown = -1;
     let lastClack = 0;
@@ -216,22 +245,29 @@ export function CapybaraAlkkagi() {
       if (fell) playGameSound(ALKKAGI_SOUNDS.fall);
       shown = index;
       if (index >= frames.length - 1) {
-        setFrame(null);
+        // 마지막은 서버 상태(= JSX가 그린 값)로 맞춘다
+        drawPieces(view?.state.pieces ?? []);
+        setAnimating(false);
         afterMessage();
         return;
       }
-      setFrame(frames[index]);
+      drawPieces(frames[index]);
       rafId = requestAnimationFrame(tick);
     });
 
     return () => cancelAnimationFrame(rafId);
   });
 
-  useEffect(() => {
+  const stopShot = useEffectEvent(() => {
+    drawPieces(view?.state.pieces ?? []);
+    setAnimating(false);
+  });
+
+  useLayoutEffect(() => {
     const cancel = playNewShot();
     return () => {
       cancel?.();
-      setFrame(null);
+      stopShot();
     };
   }, [code, shotSeq]);
 
@@ -357,7 +393,7 @@ export function CapybaraAlkkagi() {
     handler();
   }
 
-  const pieces = frame ?? state?.pieces ?? [];
+  const pieces = state?.pieces ?? [];
   const toScreen = (point: Vector) => (flipped ? { x: FIELD - point.x, y: FIELD - point.y } : point);
   const aimedPiece = aim ? pieces.find((piece) => piece.id === aim.pieceId && !piece.out) : undefined;
   return (
@@ -555,12 +591,15 @@ export function CapybaraAlkkagi() {
                 )}
 
                 {pieces.map((piece) => {
-                  const screen = toScreen(piece);
                   const mine = view.you === piece.owner;
                   const diameter = radiusOf(piece) * 2;
                   return (
                     <button
                       key={piece.id}
+                      ref={(button) => {
+                        if (button) pieceButtons.current.set(piece.id, button);
+                        else pieceButtons.current.delete(piece.id);
+                      }}
                       type="button"
                       aria-label={`${mine ? "내" : "상대"} ${piece.leader ? "대장 " : ""}${STONE_NAME[piece.owner]}${piece.out ? " (떨어짐)" : ""}`}
                       disabled={!canShoot || !mine || piece.out}
@@ -579,8 +618,7 @@ export function CapybaraAlkkagi() {
                       style={{
                         width: `${(diameter / FIELD) * 100}%`,
                         height: `${(diameter / FIELD) * 100}%`,
-                        // 알 크기 기준 %라서 판 좌표 / 지름으로 옮기고 -50%로 가운데 맞춤
-                        transform: `translate(${(screen.x / diameter) * 100 - 50}%, ${(screen.y / diameter) * 100 - 50}%)`,
+                        transform: pieceTransform(piece, flipped),
                       }}
                     >
                       {/* 떨어지면 작아지면서 사라진다 */}

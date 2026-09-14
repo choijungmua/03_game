@@ -53,11 +53,15 @@ function isGone(error: Error | null) {
   return error instanceof ApiError && error.status === 404;
 }
 
+/** 서버 시각 차이가 이만큼 넘게 달라졌을 때만 바꾼다 (남은 시간 표시가 250ms마다 갱신된다) */
+const CLOCK_JITTER_MS = 250;
+
 // 폴링 응답과 수 두기 응답은 보낸 순서와 다르게 도착할 수 있다.
-// 수를 두기 전에 나간 폴링이 늦게 오면 판이 한 수 전으로 되돌아가 깜빡이므로, 같은 방의 더 오래된 버전은 버린다 (서버 시각만 새 값으로)
+// 수를 두기 전에 나간 폴링이 늦게 오면 판이 한 수 전으로 되돌아가 깜빡이므로 같은 방의 더 오래된 버전은 버리고,
+// 같은 버전이면 원래 객체를 그대로 둔다 (1초 폴링마다 새 객체가 되면 판 전체가 매초 다시 그려진다)
 function newer<S>(current: RoomSuccess<S> | undefined, next: RoomSuccess<S>): RoomSuccess<S> {
-  if (!current || current.view.code !== next.view.code || next.view.version >= current.view.version) return next;
-  return { ...current, view: { ...current.view, now: next.view.now } };
+  if (!current || current.view.code !== next.view.code || next.view.version > current.view.version) return next;
+  return current;
 }
 
 /** 초대 코드 온라인 대전 클라이언트: 방 만들기·참가·관전·수 두기·폴링. 서버는 백엔드의 /api/games/<slug>/rooms */
@@ -71,13 +75,21 @@ export function useRoom<S extends RoomState, A extends string>(slug: string) {
   /** 두 명이 이미 들어가 참가하지 못한 방 코드. 있으면 관전하기를 보여준다 */
   const [spectateCode, setSpectateCode] = useState<string | null>(null);
   const joinedFromUrl = useRef(false);
+  /** 서버 시각 - 내 시각(ms). 응답마다 몇 ms씩 흔들리므로 CLOCK_JITTER_MS 넘게 달라질 때만 바꿔 다시 그리지 않는다 */
+  const [clockOffset, setClockOffset] = useState(0);
   /** 연속으로 실패한 폴링 수 (성공하면 0) */
   const failures = useRef(0);
   const emoteSending = useRef(false);
 
   const keyOf = (roomCode: string | null) => ["room", slug, roomCode];
-  const receive = (result: RoomSuccess<S>) =>
+  const syncClock = (result: RoomSuccess<S>) => {
+    const offset = result.view.now - Date.now();
+    setClockOffset((current) => (Math.abs(current - offset) > CLOCK_JITTER_MS ? offset : current));
+  };
+  const receive = (result: RoomSuccess<S>) => {
+    syncClock(result);
     queryClient.setQueryData<RoomSuccess<S>>(keyOf(result.view.code), (current) => newer(current, result));
+  };
 
   // ponytail: 폴링으로 상대 수를 받는다 — 동시 대국이 많아지면 SSE/WebSocket으로 교체
   // 응답이 느려도 요청이 겹치지 않고, 끝난 판·사라진 방은 멈추며, 다른 탭을 보다 돌아오면 바로 다시 받는다(refetchOnWindowFocus)
@@ -89,6 +101,7 @@ export function useRoom<S extends RoomState, A extends string>(slug: string) {
         // 연결이 돌아오면 끊겼을 때 남은 에러 줄을 지운다
         if (failures.current > 0) setError("");
         failures.current = 0;
+        syncClock(result);
         return newer(queryClient.getQueryData<RoomSuccess<S>>(keyOf(code)), result);
       } catch (caught) {
         failures.current += 1;
@@ -232,7 +245,7 @@ export function useRoom<S extends RoomState, A extends string>(slug: string) {
     spectateCode,
     copied,
     /** 서버 시각 - 내 시각(ms). 남은 시간을 서버 기준으로 세는 데 쓴다 */
-    clockOffset: view ? view.now - room.dataUpdatedAt : 0,
+    clockOffset,
     create,
     join,
     watch,

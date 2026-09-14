@@ -223,7 +223,8 @@ describe("ClickSpeed", () => {
       render(<ClickSpeed />);
       await startPlaying();
       expect(screen.getByTestId("play-timer")).toHaveTextContent("5.00초");
-      await advance(1230);
+      // 가짜 타이머의 requestAnimationFrame은 16ms마다 돈다
+      await advance(1232);
       expect(screen.getByTestId("play-timer")).toHaveTextContent("3.77초");
     });
 

@@ -20,7 +20,7 @@ import {
 } from "@/lib/lobby/wardrobe";
 
 import { FRAME_SRC } from "./constants";
-import { isShortcutKey } from "./shortcut";
+import { flashButton, isShortcutKey } from "./shortcut";
 
 export const CAPYBARA_SRC = "/assets/images/characters/capybara/capybara-idle-down.webp";
 
@@ -89,6 +89,7 @@ export function Wardrobe({ onChange }: { onChange: (outfit: Outfit) => void }) {
   const onShortcut = useEffectEvent((event: KeyboardEvent) => {
     if (!isShortcutKey(event, "KeyP")) return;
     event.preventDefault();
+    flashButton(openButtonRef.current);
     if (open) close();
     else openWardrobe();
   });
@@ -115,7 +116,7 @@ export function Wardrobe({ onChange }: { onChange: (outfit: Outfit) => void }) {
         {/* 마우스를 올리거나 키보드 포커스면 얼굴 위에 옷 아이콘 (효과음 버튼의 스피커 아이콘과 같은 방식) */}
         <span
           aria-hidden
-          className="absolute inset-0 flex items-center justify-center bg-overlay text-white opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-visible:opacity-100 motion-reduce:transition-none"
+          className="absolute inset-0 flex items-center justify-center bg-overlay text-white opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-visible:opacity-100 group-data-flash:opacity-100 motion-reduce:transition-none"
         >
           <Shirt className="size-7" />
         </span>
