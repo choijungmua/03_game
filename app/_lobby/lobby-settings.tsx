@@ -4,6 +4,7 @@ import { Settings, Volume2, VolumeX } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 import { Checkbox } from "@/components/inputs/checkbox";
+import { Button } from "@/components/ui/button";
 import { cn } from "@/lib";
 import type { LobbySettings } from "@/lib/lobby/settings";
 
@@ -12,26 +13,30 @@ interface SettingsProps {
   onChange: (settings: LobbySettings) => void;
 }
 
-const ROUND_BUTTON =
-  "flex size-11 items-center justify-center rounded-full bg-card/90 text-text-strong shadow-md backdrop-blur hover:bg-card focus-visible:outline-2 focus-visible:outline-primary";
+/** 세로 툴바 안 아이콘 버튼. 모바일 터치 영역 44px을 지킨다 */
+const TOOL_BUTTON = "size-11 rounded-lg text-text-strong";
 
-/** 카피바라 옆 효과음 켜고 끄기 */
+/** 오른쪽 위 세로 툴바 카드. 설정·효과음 버튼을 한데 묶는다 */
+export const TOOLBAR = "flex flex-col gap-1 rounded-xl border border-border-default bg-card/90 p-1 shadow-md backdrop-blur";
+
+/** 설정 아래 효과음 켜고 끄기 */
 export function SoundToggle({ settings, onChange }: SettingsProps) {
   const Icon = settings.muted ? VolumeX : Volume2;
   return (
-    <button
+    <Button
       type="button"
+      variant="ghost"
       onClick={() => onChange({ ...settings, muted: !settings.muted })}
       aria-label="효과음"
       aria-pressed={!settings.muted}
-      className={ROUND_BUTTON}
+      className={cn(TOOL_BUTTON, settings.muted && "text-text-caption")}
     >
       <Icon aria-hidden className="size-5" />
-    </button>
+    </Button>
   );
 }
 
-/** 오른쪽 위 톱니바퀴. 누르면 바로 아래에 설정 창이 열린다 */
+/** 오른쪽 위 톱니바퀴. 누르면 아래 버튼을 가리지 않게 왼쪽으로 설정 창이 열린다 */
 export function SettingsMenu({ settings, onChange }: SettingsProps) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -57,14 +62,22 @@ export function SettingsMenu({ settings, onChange }: SettingsProps) {
 
   return (
     <div ref={rootRef} className="relative">
-      <button ref={buttonRef} type="button" onClick={() => setOpen((value) => !value)} aria-label="설정" aria-expanded={open} className={ROUND_BUTTON}>
+      <Button
+        ref={buttonRef}
+        type="button"
+        variant="ghost"
+        onClick={() => setOpen((value) => !value)}
+        aria-label="설정"
+        aria-expanded={open}
+        className={cn(TOOL_BUTTON, open && "text-primary")}
+      >
         <Settings aria-hidden className={cn("size-5 transition-transform duration-200 motion-reduce:transition-none", open && "rotate-45")} />
-      </button>
+      </Button>
       {open && (
         <section
           role="dialog"
           aria-label="설정"
-          className="absolute right-0 top-full mt-2 flex w-60 flex-col gap-4 rounded-2xl bg-card/95 p-4 text-text-strong shadow-lg backdrop-blur"
+          className="absolute right-full top-0 mr-2 flex w-60 flex-col gap-4 rounded-xl border border-border-default bg-card/95 p-4 text-text-strong shadow-lg backdrop-blur"
         >
           <h2 className="text-title-3 font-bold">설정</h2>
           <Checkbox label="효과음" checked={!settings.muted} onCheckedChange={(checked) => onChange({ ...settings, muted: checked !== true })} />

@@ -82,7 +82,8 @@ export function Wardrobe({ onChange }: { onChange: (outfit: Outfit) => void }) {
   };
 
   return (
-    <div className="relative flex justify-end">
+    // z-10: 열린 옷 입히기 창이 아래 설정 툴바 위에 그려지게
+    <div className="relative z-10 flex justify-end">
       <button
         ref={openButtonRef}
         type="button"
