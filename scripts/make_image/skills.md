@@ -19,6 +19,7 @@ ggpli의 모든 카피바라 에셋은 **기본 카피바라 이미지(idle 4방
 - 대각선 걷기: `capybara-{stand,walk1,walk2}-{up-left,up-right,down-left,down-right}` — 방향마다 시트 1장(해당 상하 + 좌우 stand 이미지를 참고로)에서 잘라 stand/walk와 같은 크기·정렬로 맞춘다. 없으면 로비가 좌우 옆모습으로 대신한다
 - 로비 UI: `public/assets/images/ui/lobby/{punch,sit,joystick-base,joystick-knob}.webp` (256×256, 원본 `assets-src/ui/lobby/`) — 나무 테·펠트 판 버튼(주먹 앞발, 통나무 의자), 나무 고리 조이스틱 바닥, 카피바라 발바닥 손잡이. 시트 1장에서 자름
 - 로비 UI `bag.webp`: 오른쪽 위 낚시 가방 버튼 — 같은 나무 테·펠트 판 위 카피바라 얼굴 백팩(잎 단추). `sit.png`·`capybara-idle-down.png`를 참고로 넣고 마젠타 배경으로 한 장 생성 → 마젠타 지우고 가장자리까지 잘라 256 WebP. 새 버튼 그림도 이 방식으로 톤을 맞춘다
+- 로비 UI `fish.webp`: 물가에서 뜨는 낚시 버튼 — 같은 나무 테·펠트 판 위 나무 낚싯대(빨강·흰 찌)를 든 카피바라 상반신. `punch.png`·`capybara-idle-down.png`를 참고로 위와 같은 방식으로 생성
 
 ## 서서 걷기 (walk) 이미지
 
@@ -79,6 +80,20 @@ assets-src/lobby/<분류>/<id>/source.png            # 생성 원본
 - 방향마다 시트 1장(하품 3 + 졸기 2 = 5프레임, 참고 이미지는 그 방향 `capybara-stand-<방향>.png`)에서 자른다. 대각선은 가까운 좌우를, 방향 이미지가 없으면 정면(`-down`)을 쓴다
 - 크기·정렬은 stand와 같음. 배율은 첫 프레임(보통 자세) 기준으로 모든 프레임 같게 — 기지개처럼 키가 커지는 프레임도 발바닥 높이 유지
 - 로비는 3.5초 쉬고 긁기(2.2초) → 3.5초 쉬고 하품(2초) → 3.5초 쉬고 졸기(3초)를 반복 (`IDLE_ACTIONS`)
+
+## 옷장 방향별 옷 그림
+
+- 옷장 정면 그림: `public/assets/images/characters/capybara/wardrobe/<slot>/<id>.webp` (시트 3칸 → `scripts/split_wardrobe.py`)
+- 상의·하의·한벌옷·신발·장갑은 로비 맵 방향마다 따로 그린 그림을 쓴다: `<id>-{back,side,front3q,back3q}.webp`. 옆·대각선은 오른쪽을 향한 그림(왼쪽은 코드가 반전), 신발·장갑은 한 짝만
+- 새 옷을 추가하면 `python scripts/wardrobe_views.py gen slot/id` (정면 그림 + 서기 스프라이트 4방향을 참고로 가로 4칸 시트 생성) → `python scripts/wardrobe_views.py split`. 원본 시트는 `assets-src/characters/capybara/wardrobe/views/`
+- 자리는 `lib/lobby/wardrobe.ts`의 `WORLD_ANCHORS` (폭·높이 상자에 비율 유지로 넣음). `lib/lobby/wardrobe.test.ts`가 방향별 그림 누락을 잡는다
+- 동시 생성은 2개까지 (많이 돌리면 PC 메모리 부족으로 죽는다). Codex 사용량 한도에 걸리면 안내된 시각 이후 `gen`을 다시 돌리면 이미 만든 시트는 건너뛴다
+
+## 먹이 먹기 이미지
+
+- `capybara-eating-{1,2}`: 정면, 두 앞발을 턱 아래에 모으고 1 입 크게 벌려 베어 묾 → 2 입 다물고 눈 감고 오물오물. 앞발 사이 먹이(낚은 것 그림)와 머리 위 하트는 로비 코드가 그린다 (`app/_lobby/lobby.tsx` `drawFood`·`drawHearts`, 먹이 높이 `FOOD_Y`)
+- 시트 1장(`assets-src/characters/capybara/sheets/capybara-eating-sheet.png`, 마젠타 배경, 참고 `capybara-stand-down.png` + `capybara-idle-down.png`)에서 자름. 마젠타는 make_image가 못 지워서 초록 대비 빨강·파랑 차이로 알파를 만들고 가장자리 분홍 번짐을 뺐다
+- 크기·정렬은 stand와 같음 (1024 캔버스, 캐릭터 높이 900, 발바닥 y=1000, 384 WebP). 두 프레임 같은 배율
 
 ## 약관 읽기 이미지
 

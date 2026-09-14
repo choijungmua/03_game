@@ -12,6 +12,8 @@ export interface WardrobeAnchor {
   x: number;
   bottom: number;
   width: number;
+  /** 있으면 폭·높이 상자 안에 비율을 지켜 넣는다 (방향별 그림은 옷마다 가로세로 비율이 달라 폭만으로 맞추면 크기가 들쭉날쭉) */
+  height?: number;
   mirror?: boolean;
   /** 가로만 이 비율로 좁힌다 (높이는 width 기준 그대로). 앞모습 옷을 옆모습에 쓸 때 */
   squeeze?: number;
@@ -145,9 +147,9 @@ export const VIEW_OF: Record<Facing, WardrobeView> = {
 
 /**
  * 로비 맵의 서기·걷기·때리기·긁기·졸기 스프라이트(모두 같은 몸 상자 x21–78%, y9–97%)에 얹는 자리.
- * 옷 그림은 방향과 상관없이 앞모습 한 장을 쓴다 — 뒷모습은 그대로(뒤에서 봐도 옷 윤곽이 거의 같다), 옆모습·대각선은 squeeze로 좁힌다.
- * front는 옷장 자리(SLOT_INFO)를 서 있는 몸 상자로 옮긴 값. 뒤·뒤대각선에서는 안경이 안 보여서 없다.
- * 대각선 자리는 서기·걷기 대각선 스프라이트(capybara-stand-down-right 등) 기준. 앉은 정면(idle-down)은 SLOT_INFO 자리를 그대로 쓴다
+ * 상의·하의·한벌옷·신발·장갑은 방향마다 따로 그린 그림(wardrobeViewSrc)을 폭·높이 상자에 맞춰 넣는다. 모자·안경은 앞모습 한 장을 옆모습·대각선에서 squeeze로 좁힌다.
+ * 신발·장갑은 한 짝 그림을 발·앞발마다 찍는다. 옆·대각선 그림은 오른쪽을 향해 있어 두 짝을 반전하지 않고, 앞·뒤는 반대 짝을 좌우 반전한다.
+ * 자리는 서기 스프라이트(capybara-stand-<방향>)의 발·앞발 위치를 잰 값. 뒤·뒤대각선에서는 안경이 안 보여서 없다. 앉은 정면(idle-down)은 SLOT_INFO 자리를 그대로 쓴다
  */
 export const WORLD_ANCHORS: Record<WardrobeView, Partial<Record<WardrobeSlot, readonly WardrobeAnchor[]>>> = {
   front: {
@@ -157,64 +159,67 @@ export const WORLD_ANCHORS: Record<WardrobeView, Partial<Record<WardrobeSlot, re
     bottom: [{ x: 50, bottom: 88, width: 59 }],
     onepiece: [{ x: 50, bottom: 90, width: 56 }],
     shoes: [
-      { x: 32, bottom: 101, width: 17 },
-      { x: 68, bottom: 101, width: 17, mirror: true },
+      { x: 31, bottom: 101, width: 17 },
+      { x: 67, bottom: 101, width: 17, mirror: true },
     ],
     gloves: [
-      { x: 38, bottom: 74, width: 12.5 },
-      { x: 61, bottom: 74, width: 12.5, mirror: true },
+      { x: 32, bottom: 67, width: 13 },
+      { x: 65, bottom: 67, width: 13, mirror: true },
     ],
   },
   back: {
     hat: [{ x: 50, bottom: 23, width: 36 }],
-    top: [{ x: 50, bottom: 85, width: 58 }],
-    bottom: [{ x: 50, bottom: 88, width: 59 }],
-    onepiece: [{ x: 50, bottom: 90, width: 56 }],
+    top: [{ x: 50, bottom: 85, width: 58, height: 42 }],
+    bottom: [{ x: 50, bottom: 88, width: 59, height: 34 }],
+    onepiece: [{ x: 50, bottom: 90, width: 56, height: 58 }],
     shoes: [
-      { x: 38, bottom: 101, width: 17 },
-      { x: 62, bottom: 101, width: 17, mirror: true },
+      { x: 40, bottom: 101, width: 17, height: 22 },
+      { x: 60, bottom: 101, width: 17, height: 22, mirror: true },
     ],
     gloves: [
-      { x: 26, bottom: 70, width: 11 },
-      { x: 74, bottom: 70, width: 11, mirror: true },
+      { x: 25, bottom: 67, width: 12, height: 14 },
+      { x: 74, bottom: 67, width: 12, height: 14, mirror: true },
     ],
   },
   side: {
     hat: [{ x: 50, bottom: 23, width: 36, squeeze: 0.9 }],
     glasses: [{ x: 68, bottom: 42, width: 26, squeeze: 0.7 }],
-    top: [{ x: 46, bottom: 87, width: 70, squeeze: 0.8 }],
-    bottom: [{ x: 46, bottom: 90, width: 70, squeeze: 0.8 }],
-    onepiece: [{ x: 46, bottom: 92, width: 66, squeeze: 0.8 }],
-    shoes: [{ x: 50, bottom: 101, width: 22, squeeze: 0.9 }],
-    gloves: [{ x: 60, bottom: 64, width: 13 }],
+    top: [{ x: 45, bottom: 87, width: 56, height: 46 }],
+    bottom: [{ x: 45, bottom: 90, width: 56, height: 36 }],
+    onepiece: [{ x: 45, bottom: 92, width: 58, height: 62 }],
+    shoes: [
+      { x: 39, bottom: 100, width: 18, height: 22 },
+      { x: 56, bottom: 101, width: 18, height: 22 },
+    ],
+    gloves: [{ x: 57, bottom: 66, width: 13, height: 14 }],
   },
   front3q: {
     hat: [{ x: 52, bottom: 23, width: 36, squeeze: 0.95 }],
     glasses: [{ x: 59, bottom: 40, width: 40, squeeze: 0.85 }],
-    top: [{ x: 50, bottom: 85, width: 62, squeeze: 0.9 }],
-    bottom: [{ x: 50, bottom: 88, width: 62, squeeze: 0.9 }],
-    onepiece: [{ x: 50, bottom: 90, width: 58, squeeze: 0.9 }],
+    top: [{ x: 51, bottom: 85, width: 56, height: 42 }],
+    bottom: [{ x: 51, bottom: 88, width: 56, height: 34 }],
+    onepiece: [{ x: 51, bottom: 90, width: 54, height: 58 }],
     shoes: [
-      { x: 38, bottom: 101, width: 16 },
-      { x: 63, bottom: 101, width: 16, mirror: true },
+      { x: 37, bottom: 100, width: 17, height: 22 },
+      { x: 63, bottom: 101, width: 17, height: 22 },
     ],
     gloves: [
-      { x: 44, bottom: 67, width: 12 },
-      { x: 68, bottom: 67, width: 12, mirror: true },
+      { x: 41, bottom: 66, width: 12, height: 14 },
+      { x: 68, bottom: 66, width: 12, height: 14 },
     ],
   },
   back3q: {
     hat: [{ x: 48, bottom: 23, width: 36, squeeze: 0.95 }],
-    top: [{ x: 46, bottom: 85, width: 62, squeeze: 0.9 }],
-    bottom: [{ x: 46, bottom: 88, width: 62, squeeze: 0.9 }],
-    onepiece: [{ x: 46, bottom: 90, width: 58, squeeze: 0.9 }],
+    top: [{ x: 47, bottom: 85, width: 56, height: 42 }],
+    bottom: [{ x: 47, bottom: 88, width: 56, height: 34 }],
+    onepiece: [{ x: 47, bottom: 90, width: 54, height: 58 }],
     shoes: [
-      { x: 34, bottom: 101, width: 16 },
-      { x: 54, bottom: 101, width: 16, mirror: true },
+      { x: 33, bottom: 100, width: 17, height: 22 },
+      { x: 54, bottom: 101, width: 17, height: 22 },
     ],
     gloves: [
-      { x: 21, bottom: 69, width: 11 },
-      { x: 70, bottom: 69, width: 11, mirror: true },
+      { x: 21, bottom: 69, width: 11, height: 13 },
+      { x: 69, bottom: 65, width: 11, height: 13 },
     ],
   },
 };
@@ -228,6 +233,16 @@ export const WORLD_HEAD_ELLIPSE: Record<WardrobeView, { x: number; y: number; rx
 };
 
 export const wardrobeSrc = (slot: WardrobeSlot, id: string) => `/assets/images/characters/capybara/wardrobe/${slot}/${id}.webp`;
+
+/** 방향별 그림이 따로 있는 칸과 방향 (scripts/wardrobe_views.py 로 생성). 정면·앉기는 wardrobeSrc 그림 그대로 */
+export const VIEW_ART_SLOTS: readonly WardrobeSlot[] = ["top", "bottom", "onepiece", "shoes", "gloves"];
+export const VIEW_ART: readonly WardrobeView[] = ["back", "side", "front3q", "back3q"];
+
+/** 로비 맵에서 그 방향에 쓸 옷 그림. 모자·안경은 앞모습 한 장을 방향마다 자리만 옮겨 쓴다 */
+export const wardrobeViewSrc = (slot: WardrobeSlot, id: string, view: WardrobeView) =>
+  VIEW_ART_SLOTS.includes(slot) && VIEW_ART.includes(view)
+    ? `/assets/images/characters/capybara/wardrobe/${slot}/${id}-${view}.webp`
+    : wardrobeSrc(slot, id);
 
 /** 입거나(id) 벗는다(null). 한벌옷은 상의·하의와 함께 입을 수 없어서 서로 벗긴다 */
 export function wear(outfit: Outfit, slot: WardrobeSlot, id: string | null): Outfit {

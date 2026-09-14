@@ -37,24 +37,25 @@ def key_magenta(image: Image.Image) -> Image.Image:
     return Image.merge("RGBA", (r, g, b, alpha))
 
 
-for sheet_name, (slot, ids) in ITEMS.items():
-    sheet_path = ROOT / f"scripts/make_image/assets/wardrobe-{sheet_name}.png"
-    if not sheet_path.exists():
-        print(f"{sheet_name}: 시트 없음, 건너뜀")
-        continue
-    sheet = key_magenta(Image.open(sheet_path))
-    cell = sheet.width // len(ids)
-    out_dir = ROOT / f"public/assets/images/characters/capybara/wardrobe/{slot}"
-    out_dir.mkdir(parents=True, exist_ok=True)
-    for index, item_id in enumerate(ids):
-        piece = sheet.crop((index * cell, 0, (index + 1) * cell, sheet.height))
-        box = piece.getchannel("A").point(lambda v: 255 if v > 16 else 0).getbbox()
-        if box is None:
-            raise SystemExit(f"{slot}/{item_id}: 빈 칸")
-        piece = piece.crop(box)
-        piece.thumbnail((384, 384), Image.LANCZOS)
-        piece.save(out_dir / f"{item_id}.webp", "WEBP", quality=90, method=6)
-    src_dir = ROOT / "assets-src/characters/capybara/wardrobe"
-    src_dir.mkdir(parents=True, exist_ok=True)
-    shutil.copy(sheet_path, src_dir / f"{sheet_name}.png")
-    print(f"{sheet_name}: {', '.join(ids)}")
+if __name__ == "__main__":
+    for sheet_name, (slot, ids) in ITEMS.items():
+        sheet_path = ROOT / f"scripts/make_image/assets/wardrobe-{sheet_name}.png"
+        if not sheet_path.exists():
+            print(f"{sheet_name}: 시트 없음, 건너뜀")
+            continue
+        sheet = key_magenta(Image.open(sheet_path))
+        cell = sheet.width // len(ids)
+        out_dir = ROOT / f"public/assets/images/characters/capybara/wardrobe/{slot}"
+        out_dir.mkdir(parents=True, exist_ok=True)
+        for index, item_id in enumerate(ids):
+            piece = sheet.crop((index * cell, 0, (index + 1) * cell, sheet.height))
+            box = piece.getchannel("A").point(lambda v: 255 if v > 16 else 0).getbbox()
+            if box is None:
+                raise SystemExit(f"{slot}/{item_id}: 빈 칸")
+            piece = piece.crop(box)
+            piece.thumbnail((384, 384), Image.LANCZOS)
+            piece.save(out_dir / f"{item_id}.webp", "WEBP", quality=90, method=6)
+        src_dir = ROOT / "assets-src/characters/capybara/wardrobe"
+        src_dir.mkdir(parents=True, exist_ok=True)
+        shutil.copy(sheet_path, src_dir / f"{sheet_name}.png")
+        print(f"{sheet_name}: {', '.join(ids)}")
