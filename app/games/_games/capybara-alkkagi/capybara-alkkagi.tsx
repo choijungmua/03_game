@@ -15,11 +15,9 @@ import {
 import { AdSlot } from "@/components/ads/ad-slot";
 import { Progress } from "@/components/feedback/progress";
 import {
-  BotPicker,
   EmoteBubble,
   EmotePicker,
-  RoomList,
-  RoomRecordPanel,
+  RoomLobby,
   TurnTimer,
   useEmoteShowing,
   useRoomRecord,
@@ -432,70 +430,12 @@ export function CapybaraAlkkagi() {
       />
 
       {!view || !state ? (
-        // 시작 카드 + 오른쪽 방 목록. 좁은 화면에서는 위아래로 쌓고 스크롤한다
-        <div className="absolute inset-0 flex flex-col items-center gap-4 overflow-y-auto px-4 pt-[calc(max(1rem,env(safe-area-inset-top))_+_3.5rem)] pb-[max(1rem,env(safe-area-inset-bottom))] lg:flex-row lg:justify-center lg:overflow-hidden">
-          <RoomRecordPanel
-            title={GAME_TITLES["capybara-alkkagi"]}
-            summary={record}
-            className="order-last w-full max-w-md shrink-0 lg:order-none lg:w-64"
-          />
-          <div className={cn(CARD, "flex w-full max-w-md shrink-0 flex-col gap-5 p-6")}>
-            <div className="flex flex-col items-center gap-2">
-              <p aria-hidden="true" className="text-center text-title-1 font-black">
-                {GAME_TITLES["capybara-alkkagi"]}
-              </p>
-              <p className="text-center text-caption-1 text-text-caption">
-                내 카피바라를 뒤로 당겼다 놓아서 상대 카피바라를 판 밖으로 떨어뜨려요. 왕관 쓴 대장은 크고 무거워서 잘 안 밀려요.
-                한 번에 {TURN_TIME_MS / 1000}초
-              </p>
-            </div>
-
-            <div className="flex flex-col gap-2">
-              <BotPicker
-                pending={pending}
-                onPick={(level) => {
-                  playGameSound(GAME_SOUNDS.tap);
-                  create(level);
-                }}
-              />
-              <Button
-                type="button"
-                onClick={() => {
-                  playGameSound(GAME_SOUNDS.tap);
-                  create();
-                }}
-                disabled={pending}
-                className="h-12 w-full text-title-3 font-bold"
-              >
-                방 만들기
-              </Button>
-            </div>
-
-            {error && (
-              <p role="alert" className="text-center text-caption-1 text-error">
-                {error}
-              </p>
-            )}
-            {spectateCode && (
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => {
-                  playGameSound(GAME_SOUNDS.tap);
-                  watch();
-                }}
-                className="h-12 w-full"
-              >
-                관전하기
-              </Button>
-            )}
-          </div>
-
-          <RoomList
-            room={{ slug: "capybara-alkkagi", pending, join }}
-            className="w-full max-w-md shrink-0 lg:h-[min(36rem,100%)] lg:w-96"
-          />
-        </div>
+        <RoomLobby
+          title={GAME_TITLES["capybara-alkkagi"]}
+          guide={`내 카피바라를 뒤로 당겼다 놓아서 상대 카피바라를 판 밖으로 떨어뜨려요. 왕관 쓴 대장은 크고 무거워서 잘 안 밀려요. 한 번에 ${TURN_TIME_MS / 1000}초`}
+          room={{ slug: "capybara-alkkagi", pending, join, create, error, spectateCode, watch }}
+          record={record}
+        />
       ) : (
         <div className="absolute inset-0 flex flex-col items-center gap-3 pt-[calc(max(1rem,env(safe-area-inset-top))_+_3.5rem)] pb-[max(1rem,env(safe-area-inset-bottom))]">
           {/* 위·아래 영역은 높이를 고정한다 — 안의 내용(초대 버튼↔남은 시간, 에러, 버튼 줄)이 바뀌어도 판 크기와 위치가 그대로다 */}
