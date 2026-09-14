@@ -6,6 +6,7 @@ import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { AdSlot } from "@/components/ads/ad-slot";
 import { ShareButton } from "@/components/games/share-button";
 import { cn } from "@/lib";
+import { submitGameRecord } from "@/lib/games/supabase";
 import { useInView } from "@/lib/games/use-in-view";
 
 import { ClickSpeedLeaderboard } from "./leaderboard";
@@ -109,6 +110,7 @@ export function ClickSpeed() {
     const record = { id: String(now), count, cps, at: now };
     const rank = getRank(records, record);
     saveRecords(insertRecord(records, record));
+    void submitGameRecord("click-speed", record.count, record);
 
     setResult({ count, cps, recordId: record.id, rank });
   });

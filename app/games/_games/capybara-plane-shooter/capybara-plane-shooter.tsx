@@ -7,6 +7,7 @@ import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { AdSlot } from "@/components/ads/ad-slot";
 import { ShareButton } from "@/components/games/share-button";
 import { cn } from "@/lib";
+import { submitGameRecord } from "@/lib/games/supabase";
 import { useInView } from "@/lib/games/use-in-view";
 
 import { PlaneShooterLeaderboard } from "./leaderboard";
@@ -280,6 +281,7 @@ export function CapybaraPlaneShooter() {
     const record = { id: String(now), score, stage, at: now };
     const rank = getRank(records, record);
     saveRecords(insertRecord(records, record));
+    void submitGameRecord("capybara-plane-shooter", record.score, record);
     setResult({ score, stage, recordId: record.id, rank });
     setPhase("result");
   });

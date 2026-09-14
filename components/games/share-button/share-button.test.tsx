@@ -3,6 +3,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 const toastMock = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn() }));
 vi.mock("sonner", () => ({ toast: toastMock }));
+const recordGameShareMock = vi.hoisted(() => vi.fn());
+vi.mock("@/lib/games/supabase", () => ({ recordGameShare: recordGameShareMock }));
 
 import { ShareButton } from "./share-button";
 
@@ -49,6 +51,7 @@ describe("ShareButton", () => {
     fireEvent.click(renderButton());
 
     await waitFor(() => expect(share).toHaveBeenCalled());
+    expect(recordGameShareMock).not.toHaveBeenCalled();
     expect(writeText).not.toHaveBeenCalled();
     expect(toastMock.success).not.toHaveBeenCalled();
     expect(toastMock.error).not.toHaveBeenCalled();
@@ -64,6 +67,19 @@ describe("ShareButton", () => {
       expect(writeText).toHaveBeenCalledWith(`182ms 게이머 등급! 너도 도전해 봐 ${window.location.href}`),
     );
     expect(toastMock.success).toHaveBeenCalledWith("링크를 복사했어요");
+  });
+
+  it("게임 페이지에서 공유를 마치면 방법별로 공유 수를 기록한다", async () => {
+    window.history.pushState({}, "", "/games/reaction-time");
+    setNavigator("share", vi.fn().mockResolvedValue(undefined));
+    fireEvent.click(renderButton());
+    await waitFor(() => expect(recordGameShareMock).toHaveBeenCalledWith("reaction-time", "native"));
+
+    setNavigator("share", undefined);
+    setNavigator("clipboard", { writeText: vi.fn().mockResolvedValue(undefined) });
+    fireEvent.click(screen.getAllByRole("button", { name: "공유하기" })[0]);
+    await waitFor(() => expect(recordGameShareMock).toHaveBeenCalledWith("reaction-time", "clipboard"));
+    window.history.pushState({}, "", "/");
   });
 
   it("복사도 실패하면 직접 복사하도록 안내한다", async () => {

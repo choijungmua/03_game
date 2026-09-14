@@ -3,6 +3,8 @@ import { notFound } from "next/navigation";
 
 import { GAMES, getGame } from "@/lib/games/registry";
 
+import { GameVisitTracker } from "./visit-tracker";
+
 interface GamePageProps {
   params: Promise<{ slug: string }>;
 }
@@ -26,5 +28,10 @@ export default async function GamePage({ params }: GamePageProps) {
   if (!game) notFound();
 
   const Game = game.component;
-  return <Game />;
+  return (
+    <>
+      <GameVisitTracker slug={slug} />
+      <Game />
+    </>
+  );
 }

@@ -6,6 +6,7 @@ import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { AdSlot } from "@/components/ads/ad-slot";
 import { ShareButton } from "@/components/games/share-button";
 import { cn } from "@/lib";
+import { submitGameRecord } from "@/lib/games/supabase";
 import { useInView } from "@/lib/games/use-in-view";
 
 import { ReactionLeaderboard } from "./leaderboard";
@@ -82,6 +83,7 @@ export function ReactionTime() {
     const record = { id: String(now), ms: now - startAt, at: now };
     const rank = getRank(records, record);
     saveRecords(insertRecord(records, record));
+    void submitGameRecord("reaction-time", record.ms, record);
 
     setResult({ ms: record.ms, recordId: record.id, rank });
     setPhase("result");
