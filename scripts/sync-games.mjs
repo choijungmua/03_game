@@ -1,4 +1,4 @@
-// lib/games/registry.ts(코드)의 게임 목록을 Supabase games 테이블에 upsert한다
+// lib/games/registry.ts(코드)의 게임 목록을 Supabase g_game 테이블에 upsert한다
 // 게임을 registry에 추가한 뒤 실행: pnpm games:sync  (입장 수 visit_count는 건드리지 않음)
 import { register } from "node:module";
 
@@ -21,7 +21,7 @@ if (!url || !key) {
   process.exit(1);
 }
 
-const res = await fetch(`${url}/rest/v1/games?on_conflict=slug`, {
+const res = await fetch(`${url}/rest/v1/g_game?on_conflict=slug`, {
   method: "POST",
   headers: {
     apikey: key,
@@ -34,4 +34,4 @@ if (!res.ok) {
   console.error(`동기화 실패 ${res.status}: ${await res.text()}`);
   process.exit(1);
 }
-console.log(`games ${rows.length}개 동기화 완료`);
+console.log(`g_game ${rows.length}개 동기화 완료`);

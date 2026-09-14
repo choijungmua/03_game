@@ -26,19 +26,19 @@ describe("Supabase RPC", () => {
 
     const sessionId = sessionStorage.getItem("game-session-id");
     expect(sessionId).toMatch(/^[0-9a-f-]{36}$/);
-    expect(fetchMock).toHaveBeenNthCalledWith(1, `${RPC}/record_game_visit`, {
+    expect(fetchMock).toHaveBeenNthCalledWith(1, `${RPC}/g_add_visit`, {
       method: "POST",
       headers: { apikey: "sb_publishable_test", "Content-Type": "application/json" },
       body: JSON.stringify({ p_slug: "reaction-time", p_session_id: sessionId }),
       keepalive: true,
     });
-    expect(fetchMock.mock.calls[1][0]).toBe(`${RPC}/submit_game_record`);
+    expect(fetchMock.mock.calls[1][0]).toBe(`${RPC}/g_add_record`);
     expect(fetchMock.mock.calls[1][1].body).toBe(
       JSON.stringify({ p_slug: "reaction-time", p_session_id: sessionId, p_score: 231, p_data: record }),
     );
 
     await recordGameShare("reaction-time", "clipboard");
-    expect(fetchMock.mock.calls[2][0]).toBe(`${RPC}/record_game_share`);
+    expect(fetchMock.mock.calls[2][0]).toBe(`${RPC}/g_add_share`);
     expect(fetchMock.mock.calls[2][1].body).toBe(
       JSON.stringify({ p_slug: "reaction-time", p_session_id: sessionId, p_method: "clipboard" }),
     );
