@@ -11,6 +11,7 @@ export const GAMES: GameEntry[] = [
     tier: "S",
     playDifficulty: "쉬움",
     component: dynamic(() => import("@/app/games/_games/reaction-time")),
+    seo: () => import("@/app/games/_games/reaction-time/seo"),
   },
   {
     slug: "click-speed",
@@ -19,6 +20,7 @@ export const GAMES: GameEntry[] = [
     tier: "S",
     playDifficulty: "쉬움",
     component: dynamic(() => import("@/app/games/_games/click-speed")),
+    seo: () => import("@/app/games/_games/click-speed/seo"),
   },
   {
     slug: "capybara-sneak",
@@ -27,6 +29,7 @@ export const GAMES: GameEntry[] = [
     tier: "A",
     playDifficulty: "쉬움",
     component: dynamic(() => import("@/app/games/_games/capybara-sneak")),
+    seo: () => import("@/app/games/_games/capybara-sneak/seo"),
   },
   {
     slug: "capybara-plane-shooter",
@@ -35,6 +38,7 @@ export const GAMES: GameEntry[] = [
     tier: "A",
     playDifficulty: "보통",
     component: dynamic(() => import("@/app/games/_games/capybara-plane-shooter")),
+    seo: () => import("@/app/games/_games/capybara-plane-shooter/seo"),
   },
   {
     slug: "capybara-baduk",
@@ -43,6 +47,7 @@ export const GAMES: GameEntry[] = [
     tier: "C",
     playDifficulty: "보통",
     component: dynamic(() => import("@/app/games/_games/capybara-baduk")),
+    seo: () => import("@/app/games/_games/capybara-baduk/seo"),
   },
   {
     slug: "capybara-gomoku",
@@ -51,6 +56,7 @@ export const GAMES: GameEntry[] = [
     tier: "C",
     playDifficulty: "보통",
     component: dynamic(() => import("@/app/games/_games/capybara-gomoku")),
+    seo: () => import("@/app/games/_games/capybara-gomoku/seo"),
   },
   {
     slug: "capybara-alkkagi",
@@ -59,6 +65,7 @@ export const GAMES: GameEntry[] = [
     tier: "B",
     playDifficulty: "보통",
     component: dynamic(() => import("@/app/games/_games/capybara-alkkagi")),
+    seo: () => import("@/app/games/_games/capybara-alkkagi/seo"),
   },
   {
     slug: "capybara-log-dodge",
@@ -67,10 +74,16 @@ export const GAMES: GameEntry[] = [
     tier: "A",
     playDifficulty: "보통",
     component: dynamic(() => import("@/app/games/_games/capybara-log-dodge")),
+    seo: () => import("@/app/games/_games/capybara-log-dodge/seo"),
   },
   // 새 게임은 여기에 한 줄씩 추가 (제목은 constants.ts GAME_TITLES에, CLAUDE.md "새 게임 추가 절차" 참고)
 ];
 
 export function getGame(slug: string) {
   return GAMES.find((game) => game.slug === slug);
+}
+
+/** 모든 게임의 SEO 문구 (sitemap·RSS·llms.txt) */
+export function getAllGameSeo() {
+  return Promise.all(GAMES.map(async (game) => ({ game, seo: (await game.seo()).seo })));
 }

@@ -9,6 +9,7 @@ import { ShareButton } from "@/components/games/share-button";
 import { cn } from "@/lib";
 import { GAME_TITLES } from "@/lib/games/constants";
 import { useInView } from "@/lib/games/use-in-view";
+import { useLockPageScroll } from "@/lib/games/use-lock-page-scroll";
 import { lobbyAssetSrc } from "@/lib/lobby/assets";
 
 import { LogDodgeLeaderboard } from "./leaderboard";
@@ -231,6 +232,7 @@ export function CapybaraLogDodge() {
   /** 게임 좌표 1px이 화면에서 몇 CSS px인지. 드래그 거리를 게임 좌표로 바꿀 때 쓴다 */
   const scaleRef = useRef(1);
   const { ref: recordsRef, inView: recordsVisible } = useInView<HTMLElement>(phase === "result");
+  useLockPageScroll(phase === "countdown" || phase === "playing");
 
   const course = mode === "daily" ? courseDate : null;
   const courseBest = courseDate ? getCourseBest(records, courseDate) : null;
