@@ -108,6 +108,42 @@ export const PLANE_SHOOTER_SOUNDS = {
   chargeDash: [{ kind: "noise", filter: "bandpass", q: 1, from: 2200, to: 300, ms: 450, level: 0.3, attack: 30 }],
   /** 콰광 뒤 뿌우우: 격추당해 게임 오버 */
   gameOver: [...GAME_SOUNDS.explosion, ...delay(GAME_SOUNDS.fail, 350)],
-  /** 반짝반짝: 1위 기록 (게임 오버 소리 뒤) */
-  newRecord: delay(GAME_SOUNDS.record, 1500),
+  /** 반짝반짝: 1위 기록 (격추 뒤 결과 화면이 뜨고 조금 있다가) */
+  newRecord: delay(GAME_SOUNDS.record, 400),
 } as const satisfies Record<string, readonly SoundLayer[] | Record<WeaponKind, readonly SoundLayer[]>>;
+
+/** 결과 화면이 뜬 뒤 이 시간 동안은 탭·Space·Enter로 다시 시작하지 않는다 — 드래그하던 손을 떼는 click이 결과를 보기도 전에 새 판을 열지 않게 */
+export const RESULT_TAP_GUARD_MS = 800;
+/** 격추당한 뒤 세상을 멈추고 비행기가 터지는 모습을 보여준 다음 결과 화면으로 넘어가기까지 */
+export const GAME_OVER_MS = 1100;
+/** 격추당한 비행기 폭발 그림을 재생하는 시간과 크기(게임 좌표 px) */
+export const PLANE_EXPLOSION_MS = 600;
+export const PLANE_EXPLOSION_SIZE = 120;
+
+/** 손맛 연출 값 (거리는 게임 좌표 px, 시간은 ms). 움직임 줄이기 설정이면 흔들림·파편은 끈다 */
+export const EFFECTS = {
+  maxParticles: 160,
+  particleLifeMs: 520,
+  /** 파편이 떨어지는 가속도 (px/초²) */
+  particleGravity: 420,
+  popupMs: 800,
+  /** 떠오르는 글자가 사라질 때까지 올라가는 거리 */
+  popupRise: 34,
+  muzzleMs: 50,
+  damageFlashMs: 320,
+  /** 맞은 순간 게임을 잠깐 멈춰 맞았다는 걸 느끼게 한다 */
+  hitStopMs: 70,
+  shake: {
+    enemyDown: { power: 2, ms: 110 },
+    damage: { power: 7, ms: 260 },
+    chargeDash: { power: 5, ms: 320 },
+    bossClear: { power: 4, ms: 280 },
+    gameOver: { power: 10, ms: 520 },
+  },
+  burst: {
+    hit: { count: 3, speed: 90 },
+    enemyDown: { count: 12, speed: 170 },
+    pickup: { count: 10, speed: 120 },
+    gameOver: { count: 40, speed: 260 },
+  },
+} as const;
