@@ -1,4 +1,7 @@
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useEffectEvent, useRef, useState } from "react";
+
+import { API_URL } from "@/lib/api-url";
 
 import type { RoomAction, RoomResult, RoomState, Vector } from "./rooms";
 
@@ -22,7 +25,7 @@ function saveToken(key: string, token: string) {
   } catch {}
 }
 
-async function callApi<S>(path: string, body?: RoomAction | Record<string, never>): Promise<RoomSuccess<S>> {
+async function callApi<S>(path: string, body?: RoomAction | { bot?: boolean }): Promise<RoomSuccess<S>> {
   const response = await fetch(
     path,
     body
@@ -34,46 +37,60 @@ async function callApi<S>(path: string, body?: RoomAction | Record<string, never
   return { ok: true, view: data.view, token: data.token ?? null };
 }
 
-/** 초대 코드 온라인 대전 클라이언트: 방 만들기·참가·수 두기·1초 폴링. 서버는 /api/games/<slug>/rooms */
+// 폴링 응답과 수 두기 응답은 보낸 순서와 다르게 도착할 수 있다.
+// 수를 두기 전에 나간 폴링이 늦게 오면 판이 한 수 전으로 되돌아가 깜빡이므로, 같은 방의 더 오래된 버전은 버린다 (서버 시각만 새 값으로)
+function newer<S>(current: RoomSuccess<S> | undefined, next: RoomSuccess<S>): RoomSuccess<S> {
+  if (!current || current.view.code !== next.view.code || next.view.version >= current.view.version) return next;
+  return { ...current, view: { ...current.view, now: next.view.now } };
+}
+
+/** 초대 코드 온라인 대전 클라이언트: 방 만들기·참가·수 두기·1초 폴링. 서버는 백엔드의 /api/games/<slug>/rooms */
 export function useRoom<S extends RoomState, A extends string>(slug: string) {
-  const api = `/api/games/${slug}/rooms`;
-  const [view, setView] = useState<RoomSuccess<S>["view"] | null>(null);
+  const api = `${API_URL}/api/games/${slug}/rooms`;
+  const queryClient = useQueryClient();
+  const [code, setCode] = useState<string | null>(null);
   const [token, setToken] = useState<string | null>(null);
   const [error, setError] = useState("");
-  const [pending, setPending] = useState(false);
   const [copied, setCopied] = useState(false);
-  /** 서버 시각 - 내 시각(ms). 남은 시간을 서버 기준으로 세는 데 쓴다 */
-  const [clockOffset, setClockOffset] = useState(0);
   const joinedFromUrl = useRef(false);
 
-  // 폴링 응답과 수 두기 응답은 보낸 순서와 다르게 도착할 수 있다.
-  // 수를 두기 전에 나간 폴링이 늦게 오면 판이 한 수 전으로 되돌아가 깜빡이므로, 같은 방의 더 오래된 버전은 버린다
-  function receive(result: RoomSuccess<S>) {
-    const next = result.view;
-    setView((current) => (current && current.code === next.code && next.version < current.version ? current : next));
-    setClockOffset(next.now - Date.now());
-  }
+  const keyOf = (roomCode: string | null) => ["room", slug, roomCode];
+  const receive = (result: RoomSuccess<S>) =>
+    queryClient.setQueryData<RoomSuccess<S>>(keyOf(result.view.code), (current) => newer(current, result));
 
-  async function run(task: () => Promise<RoomSuccess<S>>) {
-    setPending(true);
-    setError("");
-    try {
-      const result = await task();
+  // ponytail: 1초 폴링으로 상대 수를 받는다 — 동시 대국이 많아지면 SSE/WebSocket으로 교체
+  // 응답이 느려도 요청이 겹치지 않고, 끝난 판은 멈추며, 다른 탭을 보다 돌아오면 바로 다시 받는다(refetchOnWindowFocus)
+  const room = useQuery({
+    queryKey: keyOf(code),
+    queryFn: async () => {
+      const result = await callApi<S>(`${api}/${code}${token ? `?token=${encodeURIComponent(token)}` : ""}`);
+      return newer(queryClient.getQueryData<RoomSuccess<S>>(keyOf(code)), result);
+    },
+    enabled: code !== null,
+    retry: false,
+    refetchInterval: (query) => (query.state.data?.view.state.endReason ? false : POLL_MS),
+  });
+  const view = room.data?.view ?? null;
+
+  const action = useMutation({
+    mutationFn: (task: () => Promise<RoomSuccess<S>>) => task(),
+    onMutate: () => setError(""),
+    onError: (caught) => setError(caught.message),
+    onSuccess: (result) => {
       if (result.token) {
         saveToken(`${slug}:${result.view.code}`, result.token);
         setToken(result.token);
       }
       receive(result);
+      setCode(result.view.code);
       window.history.replaceState(null, "", `?code=${result.view.code}`);
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "문제가 생겼어요");
-    } finally {
-      setPending(false);
-    }
-  }
+    },
+  });
+  const run = action.mutate;
 
-  function create() {
-    void run(() => callApi<S>(api, {}));
+  /** bot이면 컴퓨터(백)와 두는 방 */
+  function create(bot = false) {
+    run(() => callApi<S>(api, bot ? { bot: true } : {}));
   }
 
   function join(rawCode: string) {
@@ -82,7 +99,7 @@ export function useRoom<S extends RoomState, A extends string>(slug: string) {
       setError("초대 코드를 입력해 주세요");
       return;
     }
-    void run(() => callApi<S>(`${api}/${code}`, { type: "join", token: loadToken(`${slug}:${code}`) ?? undefined }));
+    run(() => callApi<S>(`${api}/${code}`, { type: "join", token: loadToken(`${slug}:${code}`) ?? undefined }));
   }
 
   // 초대 링크(?code=)로 들어오면 바로 참가. 새로고침해도 sessionStorage 토큰으로 같은 자리에 돌아온다
@@ -97,49 +114,11 @@ export function useRoom<S extends RoomState, A extends string>(slug: string) {
     joinFromUrl();
   }, []);
 
-  const receivePolled = useEffectEvent((result: RoomSuccess<S>) => receive(result));
-
-  // ponytail: 1초 폴링으로 상대 수를 받는다 — 동시 대국이 많아지면 SSE/WebSocket으로 교체
-  const code = view?.code;
-  const isOver = Boolean(view?.state.endReason);
-  useEffect(() => {
-    if (!code || isOver) return;
-    const path = `${api}/${code}${token ? `?token=${encodeURIComponent(token)}` : ""}`;
-
-    // 응답이 느려도 요청이 쌓이지 않게 한 번에 하나만 보낸다
-    let inFlight = false;
-    const poll = () => {
-      if (inFlight) return;
-      inFlight = true;
-      callApi<S>(path)
-        .then(
-          (result) => receivePolled(result),
-          (caught) => setError(caught instanceof Error ? caught.message : "서버와 연결하지 못했어요"),
-        )
-        .finally(() => {
-          inFlight = false;
-        });
-    };
-    // 다른 창·탭을 보다 돌아오면(숨은 탭은 브라우저가 타이머를 늦춘다) 다음 폴링을 기다리지 않고 바로 받는다
-    const pollIfVisible = () => {
-      if (document.visibilityState === "visible") poll();
-    };
-
-    const id = setInterval(poll, POLL_MS);
-    window.addEventListener("focus", poll);
-    document.addEventListener("visibilitychange", pollIfVisible);
-    return () => {
-      clearInterval(id);
-      window.removeEventListener("focus", poll);
-      document.removeEventListener("visibilitychange", pollIfVisible);
-    };
-  }, [api, code, isOver, token]);
-
   function act(type: A, index?: number, aim?: Vector) {
     if (!view || !token) return;
     const { you, state } = view;
     const path = `${api}/${view.code}`;
-    void run(async () => {
+    run(async () => {
       // 내 화면의 차례 정보는 폴링 간격만큼 늦을 수 있다. 상대 차례로 보이면 보내기 전에 서버에서 다시 확인하고,
       // 정말 상대 차례면 보내지 않고 화면만 최신으로 맞춘다 (보내면 409 에러 줄이 생겨 판이 밀린다)
       if (!ANY_TURN_ACTIONS.includes(type) && you !== state.turn) {
@@ -168,14 +147,28 @@ export function useRoom<S extends RoomState, A extends string>(slug: string) {
   }
 
   function leave() {
-    setView(null);
+    setCode(null);
     setToken(null);
     setError("");
     setCopied(false);
     window.history.replaceState(null, "", window.location.pathname);
   }
 
-  return { view, error, pending, copied, clockOffset, create, join, act, sendEmote, copyInvite, leave, setError };
+  return {
+    view,
+    error: error || (room.error?.message ?? ""),
+    pending: action.isPending,
+    copied,
+    /** 서버 시각 - 내 시각(ms). 남은 시간을 서버 기준으로 세는 데 쓴다 */
+    clockOffset: view ? view.now - room.dataUpdatedAt : 0,
+    create,
+    join,
+    act,
+    sendEmote,
+    copyInvite,
+    leave,
+    setError,
+  };
 }
 
 /** 게임 공용 화면에 넘기는 방 핸들. 행동(act)은 게임마다 이름이 달라서 빼고 콜백으로 받는다 */

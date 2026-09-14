@@ -44,7 +44,7 @@ function renderRoom(view: RoomView<GomokuState>, sendEmote = vi.fn()) {
 
 function viewAs(you: Stone | null): RoomView<GomokuState> {
   // 흑 차례 판 — 백 화면 입장에서는 "상대 차례"로 알고 있는 상태
-  return { code: "ABCDEF", state: createGame(), joined: { black: true, white: true }, you, now: Date.now(), version: 1, emote: null };
+  return { code: "ABCDEF", state: createGame(), joined: { black: true, white: true }, you, now: Date.now(), version: 1, emote: null, bot: false };
 }
 
 describe("놀리기 이모티콘", () => {

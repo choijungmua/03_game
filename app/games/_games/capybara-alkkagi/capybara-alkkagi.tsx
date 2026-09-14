@@ -65,7 +65,7 @@ function describeStatus(view: RoomView<AlkkagiState>, animating: boolean) {
     return state.winner === you ? "이겼다!" : "졌다…";
   }
   if (!you) return `관전 중 · ${STONE_NAME[state.turn]} 차례`;
-  if (state.turn !== you) return "상대가 조준하는 중…";
+  if (state.turn !== you) return view.bot ? "컴퓨터가 조준하는 중…" : "상대가 조준하는 중…";
   return state.combo > 0 ? `한 번 더! (${state.combo}콤보)` : `내 차례예요 (${STONE_NAME[you]})`;
 }
 
@@ -305,9 +305,14 @@ export function CapybaraAlkkagi() {
               </p>
             </div>
 
-            <Button type="button" onClick={create} disabled={pending} className="h-12 w-full text-title-3 font-bold">
-              방 만들고 초대하기
-            </Button>
+            <div className="flex flex-col gap-2">
+              <Button type="button" onClick={() => create()} disabled={pending} className="h-12 w-full text-title-3 font-bold">
+                방 만들고 초대하기
+              </Button>
+              <Button type="button" variant="outline" onClick={() => create(true)} disabled={pending} className="h-12 w-full text-title-3 font-bold">
+                컴퓨터와 두기
+              </Button>
+            </div>
 
             <form onSubmit={handleJoinSubmit} className="flex w-full gap-2">
               <Input

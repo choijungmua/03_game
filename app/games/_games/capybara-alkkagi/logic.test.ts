@@ -4,7 +4,6 @@ import { describe, expect, it } from "vitest";
 import type { Stone } from "@/lib/games/rooms";
 
 import { type AlkkagiState, createGame, FIELD, MAX_SPEED, type Piece, shoot, simulateShot, timeOut } from "./logic";
-import { alkkagiRooms } from "./rooms";
 
 function piece(id: number, owner: Stone, x: number, y: number, leader = false): Piece {
   return { id, owner, x, y, out: false, leader };
@@ -101,17 +100,5 @@ describe("shoot", () => {
 
   it("제한시간을 넘기면 그 차례인 쪽이 진다", () => {
     expect(timeOut(createGame(), "black")).toMatchObject({ winner: "white", endReason: "timeout" });
-  });
-});
-
-describe("알까기 방", () => {
-  it("방향(aim)이 서버까지 전달된다", () => {
-    const created = alkkagiRooms.createRoom();
-    if (!created.ok || !created.token) throw new Error("방 생성 실패");
-    alkkagiRooms.actOnRoom(created.view.code, { type: "join" });
-    expect(alkkagiRooms.actOnRoom(created.view.code, { type: "shoot", token: created.token, index: 0 })).toMatchObject({ ok: false, status: 409 });
-    expect(
-      alkkagiRooms.actOnRoom(created.view.code, { type: "shoot", token: created.token, index: 0, aim: { x: 0, y: -20 } }),
-    ).toMatchObject({ ok: true, view: { state: { lastShot: { seq: 1 } } } });
   });
 });
