@@ -13,7 +13,7 @@ import { useFrameText } from "@/lib/games/use-frame-text";
 import { useInView } from "@/lib/games/use-in-view";
 import { playGameSound, type SoundLayer } from "@/lib/lobby/settings";
 
-import { CLICK_SPEED_SOUNDS, FAIL_TIER_INDEX, RESULT_SOUND_DELAY_MS } from "./constants";
+import { CLICK_SPEED_SOUNDS, FAIL_TIER_INDEX, RESULT_SOUND_DELAY_MS, RESULT_TAP_GUARD_MS } from "./constants";
 import { ClickSpeedLeaderboard } from "./leaderboard";
 import {
   calculateCps,
@@ -120,6 +120,8 @@ export function ClickSpeed() {
   const containerRef = useRef<HTMLDivElement>(null);
   /** 탭 물결을 붙이는 층. 플레이가 끝나 층이 사라지면 남은 물결도 같이 사라진다 */
   const rippleLayerRef = useRef<HTMLDivElement>(null);
+  /** 결과 화면이 뜬 시각. 연타하던 손이 바로 다시 시작하지 않도록 잠깐 탭을 무시하는 기준 */
+  const resultAtRef = useRef(0);
   const { ref: recordsRef, inView: recordsVisible } = useInView<HTMLElement>(phase === "result");
 
   const secondsRecords = records.filter((record) => record.seconds === seconds);
@@ -145,6 +147,7 @@ export function ClickSpeed() {
   }, [phase]);
 
   const finishRound = useEffectEvent(() => {
+    resultAtRef.current = Date.now();
     setPhase("result");
 
     if (count === 0) {
@@ -216,9 +219,15 @@ export function ClickSpeed() {
     registerTap(event.clientX - (rect?.left ?? 0), event.clientY - (rect?.top ?? 0));
   }
 
+  /** 시작 화면이거나, 결과 화면이 뜨고 연타 여운이 지나갔으면 새 판을 연다 */
+  function canStart() {
+    if (phase === "idle") return true;
+    return phase === "result" && Date.now() - resultAtRef.current >= RESULT_TAP_GUARD_MS;
+  }
+
   // 시작/재시작은 click으로 받아 스크롤하려고 끄는 동작에는 반응하지 않게 한다
   function handleClick() {
-    if (phase === "idle" || phase === "result") startCountdown();
+    if (canStart()) startCountdown();
   }
 
   const handleKeyDown = useEffectEvent((event: KeyboardEvent) => {
@@ -234,7 +243,7 @@ export function ClickSpeed() {
       registerTap((rect?.width ?? 0) / 2, (rect?.height ?? 0) / 2);
       return;
     }
-    if (phase === "idle" || phase === "result") startCountdown();
+    if (canStart()) startCountdown();
   });
 
   useEffect(() => {
