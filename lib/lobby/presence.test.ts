@@ -132,4 +132,16 @@ describe("로비 멀티", () => {
     updatePresence(player(base + 30, 30), 80_000);
     expect(updatePresence({ ...attacker, attack: true }, 80_100)?.hit).toBeTruthy();
   });
+
+  // 최대 인원을 채우므로 맨 마지막에 둔다
+  it("최대 인원이 동시에 들어와도 이름표가 겹치지 않는다", () => {
+    const now = 10_000_000; // 앞선 테스트의 플레이어는 오래돼서 지워진다
+    const names = new Set<string>();
+    for (let i = 0; i < 500; i++) {
+      const name = updatePresence(player(spot()), now)?.you.name;
+      expect(name).toMatch(/^\S+ \S+바라$/);
+      if (name) names.add(name);
+    }
+    expect(names.size).toBe(500);
+  });
 });
