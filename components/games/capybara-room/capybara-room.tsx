@@ -86,14 +86,16 @@ export function CapybaraRoom<S extends BoardRoomState>({
   resultText,
   adPlacement,
 }: CapybaraRoomProps<S>) {
-  const { view, error, pending, copied, clockOffset, create, sendEmote, copyInvite, leave } = room;
+  const { view, error, pending, reconnecting, gone, spectateCode, copied, clockOffset, create, watch, sendEmote, copyInvite, leave } =
+    room;
   const emoteShowing = useEmoteShowing(view?.emote ?? null);
 
   const state = view?.state;
   const isOver = Boolean(state?.endReason);
   // 누구 차례인지로 판을 막지 않는다 — 내 화면의 차례 정보는 폴링 간격만큼 늦을 수 있어서, 막으면 상대가 둔 직후 클릭이 씹힌다.
   // 차례 확인은 room.act가 보내기 전에 서버 기준으로 다시 한다
-  const canTouch = Boolean(view && state && view.you && view.joined.white && !state.endReason);
+  // 서버와 연결이 끊긴 동안에는 눌러도 보내지 못하니 막는다
+  const canTouch = Boolean(view && state && view.you && view.joined.white && !state.endReason && !reconnecting);
 
   return (
     <div className="relative h-dvh w-full touch-manipulation select-none overflow-hidden bg-background text-text-strong [-webkit-tap-highlight-color:transparent]">
@@ -144,6 +146,11 @@ export function CapybaraRoom<S extends BoardRoomState>({
               <p role="alert" className="text-center text-caption-1 text-error">
                 {error}
               </p>
+            )}
+            {spectateCode && (
+              <Button type="button" variant="outline" onClick={watch} className="h-12 w-full">
+                관전하기
+              </Button>
             )}
           </div>
 
@@ -292,7 +299,7 @@ export function CapybaraRoom<S extends BoardRoomState>({
                 <Button
                   type="button"
                   variant="outline"
-                  disabled={pending}
+                  disabled={pending || reconnecting}
                   onClick={() => window.confirm("정말 기권할까요?") && onResign()}
                   className="h-11 flex-1"
                 >
@@ -307,7 +314,7 @@ export function CapybaraRoom<S extends BoardRoomState>({
         leaveConfirm={view?.you && view.joined.white && !state?.endReason ? LEAVE_CONFIRM_MESSAGE : undefined}
       />
 
-      <Dialog open={isOver} onOpenChange={(open) => !open && leave()}>
+      <Dialog open={isOver || gone} onOpenChange={(open) => !open && leave()}>
         <Dialog.Content showCloseButton={false} closeOnOverlayClick={false} className="text-center">
           {view && state?.endReason && (
             <div className="flex flex-col items-center gap-3">
@@ -322,6 +329,14 @@ export function CapybaraRoom<S extends BoardRoomState>({
               )}
               <Dialog.Title className="text-title-1 font-black">{describeStatus(view, stoneName)}</Dialog.Title>
               <Dialog.Description className="tabular-nums">{resultText}</Dialog.Description>
+            </div>
+          )}
+          {gone && !state?.endReason && (
+            <div className="flex flex-col items-center gap-3">
+              <Dialog.Title className="text-title-1 font-black">방이 사라졌어요</Dialog.Title>
+              <Dialog.Description>
+                오래 비어 있어 방이 정리됐거나 서버에서 방을 찾을 수 없어요. 처음 화면에서 새로 시작해 주세요.
+              </Dialog.Description>
             </div>
           )}
 

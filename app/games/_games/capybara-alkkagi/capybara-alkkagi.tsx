@@ -79,10 +79,11 @@ function aliveCount(pieces: Piece[], owner: Stone) {
 }
 
 export function CapybaraAlkkagi() {
-  const { view, error, pending, copied, clockOffset, create, join, act, sendEmote, copyInvite, leave } = useRoom<
+  const { view, error, pending, reconnecting, gone, spectateCode, copied, clockOffset, create, join, watch, act, sendEmote, copyInvite, leave } = useRoom<
     AlkkagiState,
     AlkkagiAction
-  >("capybara-alkkagi");  const emoteShowing = useEmoteShowing(view?.emote ?? null);
+  >("capybara-alkkagi");
+  const emoteShowing = useEmoteShowing(view?.emote ?? null);
   const [aim, setAim] = useState<Aim | null>(null);
   /** 샷 애니메이션 중 보여줄 알 위치. null이면 서버 상태 그대로 */
   const [frame, setFrame] = useState<Piece[] | null>(null);
@@ -105,7 +106,7 @@ export function CapybaraAlkkagi() {
   const shotSeq = state?.lastShot?.seq ?? 0;
   const animating = frame !== null;
   const canShoot = Boolean(
-    view && state && view.joined.white && !state.winner && view.you === state.turn && !animating && !pending,
+    view && state && view.joined.white && !state.winner && view.you === state.turn && !animating && !pending && !reconnecting,
   );
   // 백은 판을 180도 돌려서 본다 — 내 알이 항상 아래쪽
   const flipped = view?.you === "white";
@@ -310,6 +311,11 @@ export function CapybaraAlkkagi() {
               <p role="alert" className="text-center text-caption-1 text-error">
                 {error}
               </p>
+            )}
+            {spectateCode && (
+              <Button type="button" variant="outline" onClick={watch} className="h-12 w-full">
+                관전하기
+              </Button>
             )}
           </div>
 
@@ -517,7 +523,7 @@ export function CapybaraAlkkagi() {
                 <Button
                   type="button"
                   variant="outline"
-                  disabled={pending}
+                  disabled={pending || reconnecting}
                   onClick={() => window.confirm("정말 기권할까요?") && act("resign")}
                   className="h-11 shrink-0"
                 >
@@ -532,7 +538,7 @@ export function CapybaraAlkkagi() {
         leaveConfirm={view?.you && view.joined.white && !state?.endReason ? LEAVE_CONFIRM_MESSAGE : undefined}
       />
 
-      <Dialog open={isOver} onOpenChange={(open) => !open && leave()}>
+      <Dialog open={isOver || gone} onOpenChange={(open) => !open && leave()}>
         <Dialog.Content showCloseButton={false} closeOnOverlayClick={false} className="text-center">
           {view && state?.winner && (
             <div className="flex flex-col items-center gap-3">
@@ -545,6 +551,14 @@ export function CapybaraAlkkagi() {
               />
               <Dialog.Title className="text-title-1 font-black">{describeStatus(view, false)}</Dialog.Title>
               <Dialog.Description>{describeEnd(state)}</Dialog.Description>
+            </div>
+          )}
+          {gone && !state?.winner && (
+            <div className="flex flex-col items-center gap-3">
+              <Dialog.Title className="text-title-1 font-black">방이 사라졌어요</Dialog.Title>
+              <Dialog.Description>
+                오래 비어 있어 방이 정리됐거나 서버에서 방을 찾을 수 없어요. 처음 화면에서 새로 시작해 주세요.
+              </Dialog.Description>
             </div>
           )}
 

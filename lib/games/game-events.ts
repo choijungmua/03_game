@@ -1,8 +1,10 @@
 // 게임 이벤트(입장·한 판 기록·공유)를 백엔드(API_URL)로 한 번씩 보낸다. 저장은 백엔드가 맡는다. 실패해도 게임에는 영향 없음
 
-import { API_URL } from "@/lib/api-url";
+import { fetchApi } from "@/lib/api-url";
 
 const SESSION_KEY = "game-session-id";
+/** 통계 전송은 서버가 꺼져 있어도 오래 매달리지 않게 짧게 끊는다 */
+const EVENT_TIMEOUT_MS = 5000;
 
 /** 브라우저 탭 단위 세션 id. 같은 탭에서의 입장·기록은 같은 id로 묶인다 */
 function getSessionId() {
@@ -18,12 +20,16 @@ function getSessionId() {
 }
 
 function post(slug: string, kind: "visits" | "records" | "shares", body: object): Promise<void> {
-  return fetch(`${API_URL}/api/games/${slug}/${kind}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ sessionId: getSessionId(), ...body }),
-    keepalive: true,
-  }).then(
+  return fetchApi(
+    `/api/games/${slug}/${kind}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sessionId: getSessionId(), ...body }),
+      keepalive: true,
+    },
+    EVENT_TIMEOUT_MS,
+  ).then(
     () => undefined,
     () => undefined,
   );
