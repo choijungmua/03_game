@@ -1,18 +1,18 @@
 "use client";
 
 import Image from "next/image";
-import { type FormEvent, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 
 import { AdSlot } from "@/components/ads/ad-slot";
 import { Progress } from "@/components/feedback/progress";
 import { GameControls, LEAVE_CONFIRM_MESSAGE } from "@/components/games/game-controls";
 import { Button } from "@/components/inputs/button";
-import { Input } from "@/components/inputs/input";
 import { Dialog } from "@/components/overlay/dialog";
 import { cn } from "@/lib";
 import type { Cell, RoomView, Stone } from "@/lib/games/rooms";
 
 import { EmoteBubble, EmotePicker, useEmoteShowing } from "./capybara-emotes";
+import { RoomList } from "./room-list";
 import type { BoardRoomState, CapybaraRoomProps } from "./type";
 
 const ASSET = "/assets/images/games/capybara-board";
@@ -86,15 +86,9 @@ export function CapybaraRoom<S extends BoardRoomState>({
   resultText,
   adPlacement,
 }: CapybaraRoomProps<S>) {
-  const { view, error, pending, reconnecting, gone, spectateCode, copied, clockOffset, create, join, watch, sendEmote, copyInvite, leave } =
+  const { view, error, pending, reconnecting, gone, spectateCode, copied, clockOffset, create, watch, sendEmote, copyInvite, leave } =
     room;
-  const [codeInput, setCodeInput] = useState("");
   const emoteShowing = useEmoteShowing(view?.emote ?? null);
-
-  function handleJoinSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    join(codeInput);
-  }
 
   const state = view?.state;
   const isOver = Boolean(state?.endReason);
@@ -129,8 +123,9 @@ export function CapybaraRoom<S extends BoardRoomState>({
       />
 
       {!view || !state ? (
-        <div className="absolute inset-0 flex items-center justify-center px-4">
-          <div className={cn(CARD, "flex w-full max-w-md flex-col gap-5 p-6")}>
+        // 시작 카드 + 오른쪽 방 목록. 좁은 화면에서는 위아래로 쌓고 스크롤한다
+        <div className="absolute inset-0 flex flex-col items-center gap-4 overflow-y-auto px-4 pt-[calc(max(1rem,env(safe-area-inset-top))_+_3.5rem)] pb-[max(1rem,env(safe-area-inset-bottom))] md:flex-row md:justify-center md:overflow-hidden">
+          <div className={cn(CARD, "flex w-full max-w-md shrink-0 flex-col gap-5 p-6")}>
             <div className="flex flex-col items-center gap-2">
               <p aria-hidden="true" className="text-center text-title-1 font-black">
                 {title}
@@ -140,30 +135,12 @@ export function CapybaraRoom<S extends BoardRoomState>({
 
             <div className="flex flex-col gap-2">
               <Button type="button" onClick={() => create()} disabled={pending} className="h-12 w-full text-title-3 font-bold">
-                방 만들고 초대하기
+                방 만들기
               </Button>
               <Button type="button" variant="outline" onClick={() => create(true)} disabled={pending} className="h-12 w-full text-title-3 font-bold">
                 컴퓨터와 두기
               </Button>
             </div>
-
-            <form onSubmit={handleJoinSubmit} className="flex w-full gap-2">
-              <Input
-                name="invite-code"
-                aria-label="초대 코드"
-                placeholder="초대 코드 6자리…"
-                autoComplete="off"
-                autoCapitalize="characters"
-                spellCheck={false}
-                maxLength={6}
-                value={codeInput}
-                onChange={(event) => setCodeInput(event.target.value.toUpperCase())}
-                className="h-12 text-base tracking-widest"
-              />
-              <Button type="submit" variant="outline" disabled={pending} className="h-12 shrink-0">
-                참가
-              </Button>
-            </form>
 
             {error && (
               <p role="alert" className="text-center text-caption-1 text-error">
@@ -176,6 +153,8 @@ export function CapybaraRoom<S extends BoardRoomState>({
               </Button>
             )}
           </div>
+
+          <RoomList room={room} className="w-full max-w-md shrink-0 md:h-[min(36rem,100%)] md:w-80" />
         </div>
       ) : (
         <div className="absolute inset-0 flex flex-col items-center gap-3 pt-[calc(max(1rem,env(safe-area-inset-top))_+_3.5rem)] pb-[max(1rem,env(safe-area-inset-bottom))]">

@@ -3,7 +3,7 @@ import { useEffect, useEffectEvent, useRef, useState } from "react";
 
 import { ApiError, fetchApi, SERVER_ERROR_MESSAGE } from "@/lib/api-url";
 
-import type { RoomAction, RoomResult, RoomState, Vector } from "./rooms";
+import type { RoomAction, RoomResult, RoomState, RoomSummary, Vector } from "./rooms";
 
 type RoomSuccess<S> = Extract<RoomResult<S>, { ok: true }>;
 type RoomFailure<S> = Extract<RoomResult<S>, { ok: false }>;
@@ -221,6 +221,7 @@ export function useRoom<S extends RoomState, A extends string>(slug: string) {
   const pollError = room.error && !gone ? `${room.error.message} (다시 연결하는 중…)` : "";
 
   return {
+    slug,
     view,
     error: error || pollError,
     pending: action.isPending,
@@ -241,6 +242,24 @@ export function useRoom<S extends RoomState, A extends string>(slug: string) {
     leave,
     setError,
   };
+}
+
+/** 방 목록(기다리는 방·게임 중인 방). 쓰는 화면이 떠 있는 동안 3초마다, 서버가 응답하지 않으면 10초마다 새로 받는다 */
+export function useRoomList(slug: string) {
+  const rooms = useQuery({
+    queryKey: ["room-list", slug],
+    queryFn: async () => {
+      const response = await fetchApi(`/api/games/${slug}/rooms`, { cache: "no-store" });
+      const data: Partial<{ rooms: RoomSummary[] }> = await response.json().catch(() => ({}));
+      if (!response.ok || !Array.isArray(data.rooms)) throw new ApiError(SERVER_ERROR_MESSAGE, response.status || null);
+      return data.rooms;
+    },
+    retry: false,
+    networkMode: "always",
+    refetchInterval: (query) => (query.state.status === "error" ? MAX_POLL_MS : POLL_MS * 3),
+  });
+  // 못 받았을 때 "열린 방이 없어요"로 보이면 헷갈리니 실패를 따로 알린다 (전에 받은 목록은 그대로 둔다)
+  return { rooms: rooms.data ?? [], failed: rooms.isError };
 }
 
 /** 게임 공용 화면에 넘기는 방 핸들. 행동(act)은 게임마다 이름이 달라서 빼고 콜백으로 받는다 */

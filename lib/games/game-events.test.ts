@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { recordGameShare, recordGameVisit, submitGameRecord } from "./supabase";
+import { recordGameShare, recordGameVisit, submitGameRecord } from "./game-events";
 
 const API = "http://localhost:4000/api/games/reaction-time";
 

@@ -4,7 +4,7 @@ import { Share2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { cn } from "@/lib";
-import { recordGameShare } from "@/lib/games/supabase";
+import { recordGameShare } from "@/lib/games/game-events";
 
 import type { ShareButtonProps } from "./type";
 

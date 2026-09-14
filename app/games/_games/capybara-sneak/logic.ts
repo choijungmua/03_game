@@ -18,6 +18,11 @@ export const EAT_DELAY_MS = 200;
 /** 꾹 누르고 있는 동안 한 입씩 먹는 간격 */
 export const EAT_INTERVAL_MS = 80;
 
+/** 꾹 누르고 먹는 동안 접시 반대편으로 자리를 옮기는 간격 */
+export const SIDE_SWITCH_MS = 900;
+/** 들킨 뒤 화난 주인을 보여주고 결과 팝업을 띄우기까지의 시간 */
+export const CAUGHT_REVEAL_MS = 2000;
+
 /** 주인이 등을 돌리고 있는 시간 */
 export const AWAY_MS_RANGE: DurationRange = { min: 800, max: 3500 };
 /** 주인이 돌아보기 전 "!" 경고 시간. 사람이 보고 손을 떼는 데 0.25초쯤 걸리므로 0.3초보다 짧게 두지 않는다 */

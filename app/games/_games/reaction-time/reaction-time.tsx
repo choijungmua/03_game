@@ -8,7 +8,7 @@ import { GameControls } from "@/components/games/game-controls";
 import { ShareButton } from "@/components/games/share-button";
 import { cn } from "@/lib";
 import { GAME_TITLES } from "@/lib/games/constants";
-import { submitGameRecord } from "@/lib/games/supabase";
+import { submitGameRecord } from "@/lib/games/game-events";
 import { useInView } from "@/lib/games/use-in-view";
 
 import { ReactionLeaderboard } from "./leaderboard";
