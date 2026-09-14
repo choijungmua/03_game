@@ -17,7 +17,7 @@ ggpli의 모든 카피바라 에셋은 **기본 카피바라 이미지(idle 4방
 ## 대각선 걷기 · 로비 UI
 
 - 대각선 걷기: `capybara-{stand,walk1,walk2}-{up-left,up-right,down-left,down-right}` — 방향마다 시트 1장(해당 상하 + 좌우 stand 이미지를 참고로)에서 잘라 stand/walk와 같은 크기·정렬로 맞춘다. 없으면 로비가 좌우 옆모습으로 대신한다
-- 로비 UI: `public/assets/images/ui/lobby/{punch,sit,joystick-base,joystick-knob}.webp` (256×256, 원본 `assets-src/ui/lobby/`) — 나무 테·펠트 판 버튼(주먹 앞발, 통나무 의자), 나무 고리 조이스틱 바닥, 카피바라 발바닥 손잡이. 시트 1장에서 자름
+- 로비 UI: `public/assets/images/ui/lobby/{punch,sit,fish,joystick-base,joystick-knob}.webp` (256×256, 원본 `assets-src/ui/lobby/`) — 나무 테·펠트 판 버튼(주먹 앞발, 통나무 의자, 낚싯대 든 카피바라 — fish는 punch.png를 참고 이미지로 따로 생성해 punch와 같은 크기로 맞춤), 나무 고리 조이스틱 바닥, 카피바라 발바닥 손잡이. 시트 1장에서 자름
 
 ## 서서 걷기 (walk) 이미지
 
