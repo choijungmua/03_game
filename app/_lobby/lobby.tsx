@@ -34,6 +34,9 @@ import {
   FISH_BITE_WINDOW_MS,
   FISH_CATCHES,
   FISH_REACH,
+  MINIMAP_COLORS,
+  MINIMAP_REFRESH_MS,
+  MINIMAP_TILES,
   REMOTE_GONE_MS,
   REMOTE_RENDER_DELAY_MS,
 } from "@/lib/lobby/constants";
@@ -738,6 +741,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
   const attackRequest = useRef(false);
   const joystickRef = useRef<HTMLDivElement>(null);
   const knobRef = useRef<HTMLDivElement>(null);
+  const minimapRef = useRef<HTMLCanvasElement>(null);
   /** 입은 옷. 게임 루프가 매 프레임 읽어서 그리고 서버에 보낸다 */
   const outfitRef = useRef<Outfit>({});
   /** 보낼 채팅. 게임 루프가 가져가 말풍선을 띄우고 다음 동기화에 실어 보낸다 */
@@ -1434,6 +1438,10 @@ export function Lobby({ games }: { games: DoorGame[] }) {
       }
 
       draw(now, door, isStunned, attacking);
+      if (now - minimapAt >= MINIMAP_REFRESH_MS) {
+        minimapAt = now;
+        drawMinimap();
+      }
       frame = requestAnimationFrame(tick);
     };
 
@@ -1647,6 +1655,56 @@ export function Lobby({ games }: { games: DoorGame[] }) {
       ctx.restore();
     };
 
+    // 미니맵: 내 둘레 MINIMAP_TILES칸을 타일 하나 = 픽셀 하나로 찍어 키워 그리고, 오두막 문(노랑)·다른 유저(흰색)·나(빨강)를 점으로 얹는다
+    const minimap = minimapRef.current;
+    const minimapCtx = minimap?.getContext("2d");
+    const terrain = document.createElement("canvas");
+    terrain.width = MINIMAP_TILES;
+    terrain.height = MINIMAP_TILES;
+    const terrainCtx = terrain.getContext("2d");
+    const terrainPixels = new ImageData(MINIMAP_TILES, MINIMAP_TILES);
+    let minimapAt = -Infinity;
+    const drawMinimap = () => {
+      if (!minimap || !minimapCtx || !terrainCtx) return;
+      const size = Math.round(minimap.clientWidth * pixelRatio);
+      if (minimap.width !== size) {
+        minimap.width = size;
+        minimap.height = size;
+      }
+      const originTx = Math.floor(me.x / TILE) - MINIMAP_TILES / 2;
+      const originTy = Math.floor(me.y / TILE) - MINIMAP_TILES / 2;
+      const { data } = terrainPixels;
+      for (let y = 0; y < MINIMAP_TILES; y++) {
+        for (let x = 0; x < MINIMAP_TILES; x++) {
+          const [r, g, b] = MINIMAP_COLORS[tileAt(originTx + x, originTy + y)];
+          const i = (y * MINIMAP_TILES + x) * 4;
+          data[i] = r;
+          data[i + 1] = g;
+          data[i + 2] = b;
+          data[i + 3] = 255;
+        }
+      }
+      terrainCtx.putImageData(terrainPixels, 0, 0);
+      minimapCtx.imageSmoothingEnabled = false;
+      minimapCtx.drawImage(terrain, 0, 0, size, size);
+      const scale = size / MINIMAP_TILES;
+      const dot = (x: number, y: number, radius: number, fill: string) => {
+        const mx = (x / TILE - originTx) * scale;
+        const my = (y / TILE - originTy) * scale;
+        if (mx < 0 || my < 0 || mx > size || my > size) return;
+        minimapCtx.beginPath();
+        minimapCtx.arc(mx, my, radius * pixelRatio, 0, Math.PI * 2);
+        minimapCtx.fillStyle = fill;
+        minimapCtx.fill();
+        minimapCtx.lineWidth = pixelRatio;
+        minimapCtx.strokeStyle = "rgba(40,28,16,0.9)";
+        minimapCtx.stroke();
+      };
+      for (const item of world.doors) dot(item.x, item.y, 2.5, "#ffd84a");
+      for (const remote of remotes.values()) dot(remote.x, remote.y, 2, "#fff");
+      dot(me.x, me.y, 3.5, "#e5484d");
+    };
+
     window.addEventListener("resize", resize);
     window.addEventListener("keydown", onKeyDown);
     window.addEventListener("keyup", onKeyUp);
@@ -1759,8 +1817,15 @@ export function Lobby({ games }: { games: DoorGame[] }) {
         <SoundToggle settings={settings} onChange={updateSettings} />
       </div>
 
-      {/* 가운데 안내 글: 오른쪽 아래 버튼 줄(폭 ~5.5rem)을 가리지 않게 양옆을 비우고, 맨 아래 사이트 링크 줄 위에 둔다 */}
-      <div className="pointer-events-none absolute inset-x-0 bottom-0 flex flex-col items-center gap-2 px-24 pb-[max(2.75rem,calc(env(safe-area-inset-bottom)+2rem))]">
+      {/* 왼쪽 아래 미니맵: 보기 전용이라 터치는 아래 로비 캔버스(조이스틱)로 지나간다 */}
+      <canvas
+        ref={minimapRef}
+        aria-hidden="true"
+        className="pointer-events-none absolute bottom-[max(0.75rem,env(safe-area-inset-bottom))] left-3 size-20 rounded-lg border-2 border-white/40 shadow-md sm:size-32"
+      />
+
+      {/* 가운데 안내 글: 왼쪽 아래 미니맵(모바일 폭 ~5.75rem, sm 이상 ~8.75rem)·오른쪽 아래 버튼 줄(폭 ~5.5rem)을 가리지 않게 양옆을 비우고, 맨 아래 사이트 링크 줄 위에 둔다 */}
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 flex flex-col items-center gap-2 px-24 sm:px-40 pb-[max(2.75rem,calc(env(safe-area-inset-bottom)+2rem))]">
         <p
           role="status"
           aria-live="polite"

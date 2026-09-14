@@ -1,4 +1,5 @@
 import type { LobbySettings, LobbySound, SoundLayer } from "./settings";
+import type { Tile } from "./world";
 
 /** 이모지를 이어 붙이는 보이지 않는 문자(ZWJ). 지우면 가족·직업 이모지 같은 조합 이모지가 낱개로 흩어진다 (보이지 않는 글자라 코드값으로 쓴다) */
 export const ZWJ = String.fromCharCode(0x200d);
@@ -18,6 +19,26 @@ export const REMOTE_GONE_MS = 1_000;
  * 서버가 알려 주는 위치는 왕복 지연만큼 지난 자리라, 작은 보정까지 따르면 걷는 중에 뒤로 튀고 보정이 되풀이된다
  */
 export const CORRECTION_SNAP_PX = 192;
+/** 미니맵: 내 둘레 이만큼(타일, 한 변)을 그린다. 화면 한 장(가로 약 40타일)보다 넉넉하게 */
+export const MINIMAP_TILES = 64;
+/** 미니맵은 매 프레임이 아니라 이 간격(ms)으로만 다시 그린다 (64×64 = 4096칸 조회) */
+export const MINIMAP_REFRESH_MS = 200;
+/** 미니맵 타일 색 [r, g, b]. ImageData에 바로 쓰려고 숫자로 둔다 (바닥은 로비 바닥 에셋 fallbackColor 계열) */
+export const MINIMAP_COLORS: Record<Tile, readonly [number, number, number]> = {
+  meadow: [140, 191, 63],
+  grass: [120, 170, 60],
+  mud: [154, 90, 51],
+  water: [95, 160, 170],
+  deck: [168, 104, 63],
+  tree: [52, 104, 40],
+  rock: [128, 128, 118],
+  fence: [196, 170, 110],
+  building: [120, 60, 40],
+  spring: [250, 214, 110],
+  log: [110, 63, 34],
+  lantern: [140, 191, 63],
+  reeds: [90, 130, 50],
+};
 /** 유저마다 들고 있는 과거 위치 개수 */
 export const MAX_SNAPSHOTS = 8;
 /** 이보다 오래 같은 자리에 있다가 움직이면, 서 있던 시간에 걸쳐 느리게 오지 않고 한 틱 동안 걷게 한다 */
