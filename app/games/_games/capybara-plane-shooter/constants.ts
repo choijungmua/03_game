@@ -108,6 +108,13 @@ export const PLANE_SHOOTER_SOUNDS = {
   chargeDash: [{ kind: "noise", filter: "bandpass", q: 1, from: 2200, to: 300, ms: 450, level: 0.3, attack: 30 }],
   /** 콰광 뒤 뿌우우: 격추당해 게임 오버 */
   gameOver: [...GAME_SOUNDS.explosion, ...delay(GAME_SOUNDS.fail, 350)],
+  /** 반짝반짝: 무기 레벨 최대 도달 */
+  weaponMax: delay(GAME_SOUNDS.record, 200),
+  /** 뚜루↓: 맞아서 무기 레벨이 내려감 (피격음 뒤) */
+  levelDown: [
+    { at: 120, kind: "tone", wave: "triangle", from: 700, to: 660, ms: 90, level: 0.08 },
+    { at: 210, kind: "tone", wave: "triangle", from: 520, to: 380, ms: 160, level: 0.08 },
+  ],
   /** 반짝반짝: 1위 기록 (격추 뒤 결과 화면이 뜨고 조금 있다가) */
   newRecord: delay(GAME_SOUNDS.record, 400),
 } as const satisfies Record<string, readonly SoundLayer[] | Record<WeaponKind, readonly SoundLayer[]>>;

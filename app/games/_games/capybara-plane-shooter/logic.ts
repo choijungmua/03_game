@@ -17,6 +17,8 @@ export interface Circle {
 export interface Bullet extends Circle {
   /** 무기마다 총알 그림이 다르고, 관통총 총알은 적을 뚫고 지나간다 */
   weapon: WeaponKind;
+  /** 한 발이 깎는 적 체력. 무기 레벨이 오를수록 커진다 */
+  damage: number;
   /** 관통탄이 같은 적을 매 프레임 다시 맞히지 않도록 이미 맞힌 적 id를 기억한다 */
   hitIds: number[];
 }
@@ -55,6 +57,10 @@ export interface GameState {
   hp: number;
   invincibleMs: number;
   weapon: WeaponKind;
+  /** 무기 레벨 1~MAX_WEAPON_LEVEL. 어떤 무기 간식이든 먹으면 1 오르고, 맞으면 1 내려간다 */
+  weaponLevel: number;
+  /** 아이템 없이 격추한 횟수. PITY_KILLS에 닿으면 무기 간식을 반드시 떨어뜨린다 */
+  killsSinceDrop: number;
   fireInMs: number;
   stage: number;
   stageKills: number;
@@ -145,6 +151,7 @@ export const ITEMS: Record<ItemKind, { label: string }> = {
   heal: { label: "유자 온천 회복" },
 };
 
+/** 1레벨 발사 간격. 레벨이 오를수록 짧아진다 (getWeaponSpec) */
 export const FIRE_INTERVAL_MS: Record<WeaponKind, number> = {
   basic: 120,
   double: 130,
@@ -153,16 +160,86 @@ export const FIRE_INTERVAL_MS: Record<WeaponKind, number> = {
   pierce: 150,
 };
 
+/** 1레벨 총알 반경. 관통탄만 레벨이 오를수록 굵어진다 */
+export const BULLET_RADIUS: Record<WeaponKind, number> = {
+  basic: 3,
+  double: 3,
+  spread: 3,
+  rapid: 3,
+  pierce: 5,
+};
+
+export const MAX_WEAPON_LEVEL = 10;
+/** 화면에 내 총알이 이보다 많으면 이번 발사는 건너뛴다 — 고레벨 연사로 프레임이 무너지지 않게 */
+export const MAX_BULLETS = 240;
+/** 아이템 없이 이만큼 격추하면 다음 격추에서 무기 간식을 반드시 떨어뜨린다 (운이 나빠도 레벨을 쌓을 수 있게) */
+export const PITY_KILLS = 12;
+/** 반드시 떨어뜨릴 때 고르는 무기 간식 */
+export const WEAPON_DROPS: readonly Exclude<DropKind, "heal">[] = ["double", "spread", "rapid", "pierce"];
+
+export interface WeaponSpec {
+  /** 한 번에 나가는 총알들: 비행기 가운데서 옆으로 벌어진 거리(px)와 기울기(라디안, 0 = 똑바로 위) */
+  pattern: readonly { dx: number; angle: number }[];
+  damage: number;
+  intervalMs: number;
+  radius: number;
+}
+
+/** count개를 gap 간격으로 가운데 맞춰 벌린 값 */
+function fan(count: number, gap: number) {
+  return Array.from({ length: count }, (_, index) => (index - (count - 1) / 2) * gap);
+}
+
+/** 무기 레벨(1~MAX_WEAPON_LEVEL) → 한 번 발사하는 모양. 레벨이 오를수록 탄 줄·피해·연사가 늘어 10레벨이면 화면을 덮을 만큼 쏜다 */
+export function getWeaponSpec(weapon: WeaponKind, level: number): WeaponSpec {
+  const step = Math.min(MAX_WEAPON_LEVEL, Math.max(1, Math.round(level))) - 1;
+  const faster = (perLevel: number) => FIRE_INTERVAL_MS[weapon] * (1 - perLevel * step);
+  const straight = (count: number, gap: number) => fan(count, gap).map((dx) => ({ dx, angle: 0 }));
+
+  switch (weapon) {
+    case "double": {
+      // 나란히 두 줄에서 시작해 3레벨마다 바깥에 조금 벌어진 한 쌍을 더한다 (최대 4쌍)
+      const pairs = 1 + Math.floor(step / 3);
+      const pattern = Array.from({ length: pairs }, (_, index) => [
+        { dx: -7 - index * 9, angle: -index * 0.06 },
+        { dx: 7 + index * 9, angle: index * 0.06 },
+      ]).flat();
+      return { pattern, damage: 1 + Math.floor(step / 4), intervalMs: faster(0.03), radius: BULLET_RADIUS.double };
+    }
+    case "spread": {
+      // 3갈래에서 2레벨마다 2갈래씩 늘어 11갈래까지. 부채꼴 전체 폭은 넘지 않게 사이 각을 좁힌다
+      const count = 3 + 2 * Math.floor(step / 2);
+      const gap = Math.min(0.22, 1.1 / (count - 1));
+      const pattern = fan(count, gap).map((angle) => ({ dx: 0, angle }));
+      return { pattern, damage: 1 + Math.floor(step / 5), intervalMs: faster(0.03), radius: BULLET_RADIUS.spread };
+    }
+    case "rapid":
+      // 가장 빨리 쏘는 무기: 3레벨마다 한 줄씩 늘고(최대 4줄), 간격이 가장 크게 줄어든다
+      return { pattern: straight(1 + Math.floor(step / 3), 8), damage: 1 + Math.floor(step / 5), intervalMs: faster(0.04), radius: BULLET_RADIUS.rapid };
+    case "pierce":
+      // 뚫고 지나가는 굵은 탄: 줄은 적게(최대 3줄) 늘고 대신 피해와 굵기가 크게 오른다
+      return {
+        pattern: straight(1 + Math.floor(step / 4), 14),
+        damage: 1 + Math.floor(step / 3),
+        intervalMs: faster(0.03),
+        radius: BULLET_RADIUS.pierce + step * 0.45,
+      };
+    default:
+      // 풀잎탄: 2레벨마다 한 줄씩 늘어 5줄까지
+      return { pattern: straight(1 + Math.floor(step / 2), 9), damage: 1 + Math.floor(step / 4), intervalMs: faster(0.03), radius: BULLET_RADIUS.basic };
+  }
+}
+
 /**
- * 적 한 마리를 격추할 때 아이템 종류별로 떨어질 확률 (합계 2.2%).
- * 무기는 쌍발 < 산탄 < 연사 < 관통 순으로 강하고, 좋은 무기일수록 드물다
+ * 적 한 마리를 격추할 때 아이템 종류별로 떨어질 확률 (합계 11%).
+ * 무기 간식은 먹을 때마다 레벨이 쌓이므로 넉넉히 떨어뜨리되, 쌍발 < 산탄 < 연사 < 관통 순으로 강한 무기일수록 드물다
  */
 export const DROP_CHANCES: Record<DropKind, number> = {
-  double: 0.008,
-  heal: 0.006,
-  spread: 0.004,
-  rapid: 0.0025,
-  pierce: 0.0015,
+  double: 0.03,
+  heal: 0.02,
+  spread: 0.025,
+  rapid: 0.02,
+  pierce: 0.015,
 };
 
 /** 한 번만 굴려서 아이템 하나를 고르거나, 아무것도 떨어뜨리지 않는다(null) */
@@ -223,6 +300,8 @@ export function createState(width: number, height: number): GameState {
     hp: MAX_HP,
     invincibleMs: 0,
     weapon: "basic",
+    weaponLevel: 1,
+    killsSinceDrop: 0,
     fireInMs: 0,
     stage: 1,
     stageKills: 0,
@@ -280,30 +359,24 @@ function explode(state: GameState, enemy: Enemy) {
   state.explosions.push({ x: enemy.x, y: enemy.y, size: enemy.r * 3.2, ageMs: 0 });
 }
 
+/** 지금 무기·레벨 모양대로 한 번 쏘고, 다음 발사까지의 간격을 돌려준다 */
 export function fireWeapon(state: GameState) {
+  const spec = getWeaponSpec(state.weapon, state.weaponLevel);
   const x = state.planeX;
   const y = getPlaneY(state) - 22;
-  const weapon = state.weapon;
-  const bullet = (dx: number, angle = 0): Bullet => ({
-    x: x + dx,
-    y,
-    r: weapon === "pierce" ? 5 : 3,
-    vx: Math.sin(angle) * BULLET_SPEED,
-    vy: -Math.cos(angle) * BULLET_SPEED,
-    weapon,
-    hitIds: [],
-  });
-
-  switch (weapon) {
-    case "double":
-      state.bullets.push(bullet(-7), bullet(7));
-      break;
-    case "spread":
-      state.bullets.push(bullet(0, -0.22), bullet(0), bullet(0, 0.22));
-      break;
-    default:
-      state.bullets.push(bullet(0));
+  for (const { dx, angle } of spec.pattern) {
+    state.bullets.push({
+      x: x + dx,
+      y,
+      r: spec.radius,
+      vx: Math.sin(angle) * BULLET_SPEED,
+      vy: -Math.cos(angle) * BULLET_SPEED,
+      weapon: state.weapon,
+      damage: spec.damage,
+      hitIds: [],
+    });
   }
+  return spec.intervalMs;
 }
 
 export function spawnEnemy(state: GameState, random: () => number = Math.random): Enemy {
@@ -454,14 +527,21 @@ function updateBoss(state: GameState, boss: Enemy, dt: number, random: () => num
 }
 
 function applyItem(state: GameState, kind: DropKind) {
-  if (kind === "heal") state.hp = Math.min(MAX_HP, state.hp + 1);
-  else state.weapon = kind;
+  if (kind === "heal") {
+    state.hp = Math.min(MAX_HP, state.hp + 1);
+  } else {
+    // 어떤 무기 간식이든 레벨은 하나로 쌓이고, 무기 종류는 방금 먹은 것으로 바뀐다
+    state.weapon = kind;
+    state.weaponLevel = Math.min(MAX_WEAPON_LEVEL, state.weaponLevel + 1);
+  }
   state.score += 50;
 }
 
 function damagePlane(state: GameState) {
   state.hp -= 1;
   state.invincibleMs = INVINCIBLE_MS;
+  // 맞으면 무기 레벨이 하나 내려간다 — 강해져도 긴장을 놓지 않게
+  state.weaponLevel = Math.max(1, state.weaponLevel - 1);
 }
 
 function advanceStage(state: GameState) {
@@ -500,11 +580,11 @@ export function step(
   const movedBy = state.planeX - prevX;
   state.bank = Math.abs(movedBy) < 0.5 ? 0 : movedBy < 0 ? -1 : 1;
 
-  // 총은 항상 자동으로 나간다
+  // 총은 항상 자동으로 나간다. 화면에 탄이 너무 많으면 이번 발사만 건너뛰고 간격은 그대로 센다
   state.fireInMs -= dt;
   if (state.fireInMs <= 0) {
-    fireWeapon(state);
-    state.fireInMs += FIRE_INTERVAL_MS[state.weapon];
+    state.fireInMs +=
+      state.bullets.length < MAX_BULLETS ? fireWeapon(state) : getWeaponSpec(state.weapon, state.weaponLevel).intervalMs;
   }
 
   for (const bullet of state.bullets) {
@@ -555,13 +635,20 @@ export function step(
         spent.add(bullet);
         break;
       }
-      enemy.hp -= 1;
+      enemy.hp -= bullet.damage;
       if (enemy.hp <= 0) {
         state.score += KILL_SCORE;
         state.stageKills += 1;
         explode(state, enemy);
-        const kind = pickDrop(random);
-        if (kind) state.items.push({ kind, x: enemy.x, y: enemy.y, r: ITEM_RADIUS, vx: 60, vy: 90 });
+        const pity = state.killsSinceDrop + 1 >= PITY_KILLS;
+        const kind =
+          pickDrop(random) ?? (pity ? WEAPON_DROPS[Math.floor(random() * WEAPON_DROPS.length)] : null);
+        if (kind) {
+          state.items.push({ kind, x: enemy.x, y: enemy.y, r: ITEM_RADIUS, vx: 60, vy: 90 });
+          state.killsSinceDrop = 0;
+        } else {
+          state.killsSinceDrop += 1;
+        }
       }
       if (bullet.weapon !== "pierce") {
         spent.add(bullet);

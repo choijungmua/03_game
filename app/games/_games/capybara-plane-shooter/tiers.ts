@@ -39,7 +39,7 @@ export const PLANE_SHOOTER_TIERS: readonly PlaneShooterTier[] = [
   {
     label: "훈련생",
     minStage: 1,
-    description: "간식을 먹고 무기를 바꿔 보세요",
+    description: "간식을 먹고 무기 레벨을 올려 보세요",
     bgClass: "bg-destructive",
     fgClass: "text-neutral-950",
   },

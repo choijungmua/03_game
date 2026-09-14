@@ -51,8 +51,10 @@ import {
   isBossStage,
   ITEMS,
   KILL_SCORE,
+  BULLET_RADIUS,
   MAX_FRAME_MS,
   MAX_HP,
+  MAX_WEAPON_LEVEL,
   STAGE_CLEAR_SCORE,
   step,
   type WeaponKind,
@@ -116,6 +118,7 @@ interface Hud {
   stage: number;
   score: number;
   weapon: WeaponKind;
+  weaponLevel: number;
   bossLeftSec: number | null;
   /** 보스가 지금 쓰는 패턴 이름 (보스가 없으면 null) */
   bossPattern: string | null;
@@ -156,6 +159,7 @@ function readHud(state: GameState): Hud {
     stage: state.stage,
     score: state.score,
     weapon: state.weapon,
+    weaponLevel: state.weaponLevel,
     bossLeftSec: bossLeftMs === null ? null : Math.ceil(bossLeftMs / 1000),
     bossPattern: state.enemies.some((enemy) => enemy.kind === "boss")
       ? BOSS_PATTERN_LABELS[getBossPattern(state)]
@@ -165,7 +169,10 @@ function readHud(state: GameState): Hud {
 }
 
 /** step 직전 상태 중 효과음·연출 판단에 필요한 것만 떠 둔다 (배열은 새로 생긴·사라진 것을 가리려고 참조를 복사) */
-type FrameSnapshot = Pick<GameState, "hp" | "stage" | "bank" | "fireInMs" | "bossPatternIndex" | "bossPatternMs" | "items"> & {
+type FrameSnapshot = Pick<
+  GameState,
+  "hp" | "stage" | "bank" | "fireInMs" | "weaponLevel" | "bossPatternIndex" | "bossPatternMs" | "items"
+> & {
   hasBoss: boolean;
   shots: Set<GameState["shots"][number]>;
 };
@@ -176,6 +183,7 @@ function takeFrameSnapshot(state: GameState): FrameSnapshot {
     stage: state.stage,
     bank: state.bank,
     fireInMs: state.fireInMs,
+    weaponLevel: state.weaponLevel,
     bossPatternIndex: state.bossPatternIndex,
     bossPatternMs: state.bossPatternMs,
     items: [...state.items],
@@ -215,6 +223,10 @@ function playStepSounds(
   }
   if (damaged && state.hp > 0) {
     playGameSound(state.hp === 1 ? PLANE_SHOOTER_SOUNDS.lowHp : PLANE_SHOOTER_SOUNDS.damage);
+    if (state.weaponLevel < prev.weaponLevel) playGameSound(PLANE_SHOOTER_SOUNDS.levelDown);
+  }
+  if (state.weaponLevel === MAX_WEAPON_LEVEL && prev.weaponLevel < MAX_WEAPON_LEVEL) {
+    playGameSound(PLANE_SHOOTER_SOUNDS.weaponMax);
   }
 
   for (const shot of state.shots) {
@@ -276,18 +288,23 @@ function applyStepEffects(prev: FrameSnapshot, state: GameState, effects: Effect
     if (motion) shake(effects, EFFECTS.shake.enemyDown.power, EFFECTS.shake.enemyDown.ms);
   }
 
+  // 비행기 위에 띄우는 글자는 화면 밖으로 잘리지 않게 안쪽으로 당긴다
+  const labelX = Math.min(state.width - 70, Math.max(70, state.planeX));
+  const labelY = getPlaneY(state) - 44;
+
   if (damaged && state.hp > 0) {
     effects.damageFlashMs = EFFECTS.damageFlashMs;
     effects.hitStopMs = EFFECTS.hitStopMs;
     if (motion) shake(effects, EFFECTS.shake.damage.power, EFFECTS.shake.damage.ms);
+    if (state.weaponLevel < prev.weaponLevel) popup(effects, labelX, labelY, "Lv -1", "danger");
   }
 
-  // 사라진 간식 중 화면 아래로 떨어진 게 아니면 먹은 것. 이름은 비행기 위에, 화면 밖으로 잘리지 않게 띄운다
-  const labelX = Math.min(state.width - 70, Math.max(70, state.planeX));
+  // 사라진 간식 중 화면 아래로 떨어진 게 아니면 먹은 것
   for (const item of prev.items) {
     if (state.items.includes(item) || item.y - item.r >= state.height) continue;
     const heal = item.kind === "heal";
-    popup(effects, labelX, getPlaneY(state) - 44, heal ? "체력 +1" : `${ITEMS[item.kind].label}!`, heal ? "success" : "warning");
+    const levelText = state.weaponLevel === MAX_WEAPON_LEVEL ? "MAX!" : `Lv${state.weaponLevel}`;
+    popup(effects, labelX, labelY, heal ? "체력 +1" : `${ITEMS[item.kind].label} ${levelText}`, heal ? "success" : "warning");
     if (motion) {
       const { count, speed } = EFFECTS.burst.pickup;
       burst(effects, item.x, item.y, count, [heal ? "success" : "warning"], speed);
@@ -382,7 +399,9 @@ function draw(
 
   for (const bullet of state.bullets) {
     const { sprite, width, height } = BULLET_SPRITES[bullet.weapon];
-    drawSprite(ctx, sprites[sprite], bullet.x, bullet.y, width, height);
+    // 고레벨 관통탄은 굵어진 판정만큼 그림도 키운다
+    const scale = bullet.r / BULLET_RADIUS[bullet.weapon];
+    drawSprite(ctx, sprites[sprite], bullet.x, bullet.y, width * scale, height * scale);
   }
 
   for (const shot of state.shots) {
@@ -775,7 +794,7 @@ export function CapybaraPlaneShooter() {
             {/* 좌우 여백: 좁은 폰에서 제목이 오른쪽 위 공유 버튼 밑으로 들어가지 않게 */}
             <h1 className="px-12 text-title-1 font-bold text-text-strong">{TITLE}</h1>
             <p className="text-caption-1 text-balance text-text-caption">
-              카피바라 조종사가 풀잎탄을 자동으로 쏴요. 화면을 좌우로 드래그하거나 방향키로 움직여 하피독수리·말벌·재규어를 격추하세요. 떨어진 간식을 먹으면 무기가 바뀌고, 5스테이지마다 나오는 카이만 보스는 쓰러지지 않으니 끝까지 버티세요. 체력은 {MAX_HP}칸이에요.
+              카피바라 조종사가 풀잎탄을 자동으로 쏴요. 화면을 좌우로 드래그하거나 방향키로 움직여 하피독수리·말벌·재규어를 격추하세요. 떨어진 간식을 먹으면 무기가 바뀌고 무기 레벨이 {MAX_WEAPON_LEVEL}레벨까지 올라 탄이 점점 많아져요. 맞으면 레벨이 하나 내려가요. 5스테이지마다 나오는 카이만 보스는 쓰러지지 않으니 끝까지 버티세요. 체력은 {MAX_HP}칸이에요.
             </p>
           </header>
 
@@ -851,6 +870,26 @@ export function CapybaraPlaneShooter() {
                   </p>
                 )}
               </div>
+            </div>
+          )}
+          {hud && (
+            // 오른쪽 가장자리 세로 게이지: 간식을 먹을 때마다 아래부터 한 칸씩 찬다
+            <div
+              role="img"
+              aria-label={`무기 레벨 ${hud.weaponLevel}/${MAX_WEAPON_LEVEL}`}
+              className="pointer-events-none absolute top-1/2 right-2 flex -translate-y-1/2 flex-col items-center gap-1"
+            >
+              <span className="text-caption-2 font-black tabular-nums">
+                {hud.weaponLevel === MAX_WEAPON_LEVEL ? "MAX" : `Lv${hud.weaponLevel}`}
+              </span>
+              <span className="flex flex-col-reverse gap-0.5 rounded-full bg-black/30 p-1">
+                {Array.from({ length: MAX_WEAPON_LEVEL }, (_, index) => (
+                  <span
+                    key={index}
+                    className={cn("h-3 w-2.5 rounded-sm", index < hud.weaponLevel ? "bg-warning" : "bg-foreground/20")}
+                  />
+                ))}
+              </span>
             </div>
           )}
         </div>
