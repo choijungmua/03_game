@@ -11,12 +11,12 @@ import type { CapybaraRoomProps } from "./type";
 
 const STONE_NAME: Record<Stone, string> = { black: "갈색 카피바라", white: "흰 카피바라" };
 
-function renderRoom(view: RoomView<GomokuState>, sendEmote = vi.fn()) {
+function renderRoom(view: RoomView<GomokuState>, sendEmote = vi.fn(), error = "") {
   const onPlay = vi.fn();
   const room: CapybaraRoomProps<GomokuState>["room"] = {
     slug: "capybara-gomoku",
     view,
-    error: "",
+    error,
     pending: false,
     reconnecting: false,
     gone: false,
@@ -106,6 +106,11 @@ describe("CapybaraRoom 판", () => {
     expect(cell).toBeEnabled();
     fireEvent.click(cell);
     expect(onPlay).toHaveBeenCalledWith(0);
+  });
+
+  it("에러 줄은 판 윗줄 위에 떠도 누른 것을 가로채지 않는다", () => {
+    renderRoom(viewAs("white"), vi.fn(), "이미 돌이 있는 자리예요");
+    expect(screen.getByRole("alert")).toHaveClass("pointer-events-none");
   });
 
   it("관전자는 판을 누를 수 없다", () => {

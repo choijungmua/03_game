@@ -236,6 +236,16 @@ describe("useRoom", () => {
     expect(result.current.error).toBe("");
   });
 
+  it("클립보드가 없는 브라우저(HTTPS 아닌 주소 등)에서 초대 링크 복사를 눌러도 예외 대신 복사 실패를 알린다", async () => {
+    const { server } = fakeServer();
+    const { hook } = await joinAsWhite(server);
+    // jsdom에는 navigator.clipboard가 없다 — 그런 브라우저와 같은 조건
+    expect(navigator.clipboard).toBeUndefined();
+
+    expect(() => act(() => hook.result.current.copyInvite())).not.toThrow();
+    await until(() => hook.result.current.error.startsWith("복사하지 못했어요"));
+  });
+
   it("두 명이 이미 들어간 방이면 관전으로 볼 수 있다", async () => {
     const { server } = fakeServer();
     server.create();

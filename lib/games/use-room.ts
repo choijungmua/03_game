@@ -214,7 +214,8 @@ export function useRoom<S extends RoomState, A extends string>(slug: string) {
   function copyInvite() {
     if (!view) return;
     const link = `${window.location.origin}${window.location.pathname}?code=${view.code}`;
-    navigator.clipboard.writeText(link).then(
+    // clipboard가 아예 없는 환경(HTTPS 아닌 주소·일부 인앱 브라우저)의 동기 예외도 거부로 받아 복사 실패 안내를 띄운다
+    Promise.resolve().then(() => navigator.clipboard.writeText(link)).then(
       () => setCopied(true),
       () => setError("복사하지 못했어요. 코드를 직접 알려주세요"),
     );
