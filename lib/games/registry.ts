@@ -59,6 +59,14 @@ export const GAMES: GameEntry[] = [
     playDifficulty: "보통",
     component: dynamic(() => import("@/app/games/_games/capybara-alkkagi")),
   },
+  {
+    slug: "capybara-log-dodge",
+    title: "카피바라 통나무 피하기",
+    description: "비탈에서 굴러오는 통나무를 좌우로 피하며 오래 버티는 카피바라 게임. 매일 바뀌는 오늘의 코스와 친구 도전장 링크",
+    tier: "A",
+    playDifficulty: "보통",
+    component: dynamic(() => import("@/app/games/_games/capybara-log-dodge")),
+  },
   // 새 게임은 여기에 한 줄씩 추가 (CLAUDE.md "새 게임 추가 절차" 참고)
 ];
 
