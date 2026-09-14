@@ -1279,7 +1279,11 @@ export function Lobby({ games }: { games: DoorGame[] }) {
       const attacking = now < me.attackUntil;
       me.idleMs = moved || wantsMove || me.sitting || isStunned || attacking ? 0 : nextIdle(me.idleMs, dt);
       // 발을 내딛는 프레임마다 톡, 긁는 박자마다 슥슥, 하품을 시작할 때 하아암
-      if (me.pose !== soundPose && me.pose !== "stand") playSound("step", settingsRef.current);
+      if (me.pose !== soundPose && me.pose !== "stand") {
+        // 발 밑 타일에 따라 풀밭 사각, 나무 데크 통, 진흙 철퍽
+        const ground = tileAt(Math.floor(me.x / TILE), Math.floor(me.y / TILE));
+        playSound(ground === "deck" ? "stepDeck" : ground === "mud" ? "stepMud" : "step", settingsRef.current);
+      }
       soundPose = me.pose;
       const idleFrame = idleSprite(me.idleMs);
       if (idleFrame !== soundIdle) {

@@ -250,9 +250,13 @@ export function useRoomList(slug: string) {
     queryKey: ["room-list", slug],
     queryFn: async () => {
       const response = await fetchApi(`/api/games/${slug}/rooms`, { cache: "no-store" });
-      const data: Partial<{ rooms: RoomSummary[] }> = await response.json().catch(() => ({}));
+      const data: Partial<{ rooms: Partial<RoomSummary>[] }> = await response.json().catch(() => ({}));
       if (!response.ok || !Array.isArray(data.rooms)) throw new ApiError(SERVER_ERROR_MESSAGE, response.status || null);
-      return data.rooms;
+      // 서버가 프론트보다 옛 버전이면 status가 없다(그땐 기다리는 방만 내려줬다). 모르는 상태로 ROOM_STATUS[status] 조회가
+      // 깨져 목록 화면이 통째로 죽지 않게 여기서 확정 타입으로 좁힌다. 꽉 찬 방을 대기로 잘못 봐도 참가 시 409 → 관전으로 넘어간다
+      return data.rooms.flatMap(({ code, status }): RoomSummary[] =>
+        typeof code === "string" ? [{ code, status: status === "playing" ? "playing" : "waiting" }] : [],
+      );
     },
     retry: false,
     networkMode: "always",

@@ -28,7 +28,18 @@ export function saveLobbySettings(settings: LobbySettings) {
   } catch {}
 }
 
-export type LobbySound = "chat" | "swing" | "hit" | "step" | "sit" | "yawn" | "scratch" | "chomp" | "caught";
+export type LobbySound =
+  | "chat"
+  | "swing"
+  | "hit"
+  | "step"
+  | "stepDeck"
+  | "stepMud"
+  | "sit"
+  | "yawn"
+  | "scratch"
+  | "chomp"
+  | "caught";
 
 /** 효과음 한 겹. 여러 겹을 at(ms)만큼 늦춰 겹쳐서 한 소리를 만든다. from→to는 음 높이(tone) 또는 거르는 주파수(noise), Hz */
 export type SoundLayer = { at?: number; ms: number; level: number; attack?: number; from: number; to: number } & (
