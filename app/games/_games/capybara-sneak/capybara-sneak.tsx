@@ -95,6 +95,10 @@ export function CapybaraSneak() {
   const warningMsRef = useRef(0);
   // 멈출 때 계산한 "남은 시간". null이 아니면 다음 effect 실행이 새 주기 대신 이 시간부터 이어간다
   const remainingRef = useRef<number | null>(null);
+  // 다음 게이지 감소 틱이 언제인지(ms epoch). 안 누르고 있을 때만 의미가 있다
+  const decayAtRef = useRef(0);
+  // 멈출 때(안 누르고 있었다면) 계산한 감소까지 남은 시간. null이면 다음 감소 effect가 처음부터(DECAY_GRACE_MS) 기다린다
+  const decayRemainingRef = useRef<number | null>(null);
 
   function changeStatus(next: GameStatus) {
     statusRef.current = next;
@@ -210,10 +214,19 @@ export function CapybaraSneak() {
     if (pressing || status !== "playing" || paused) return;
 
     let interval: ReturnType<typeof setInterval> | undefined;
-    const grace = setTimeout(() => {
+    function tick() {
       decay();
-      interval = setInterval(decay, DECAY_INTERVAL_MS);
-    }, DECAY_GRACE_MS);
+      decayAtRef.current = Date.now() + DECAY_INTERVAL_MS;
+    }
+
+    // 멈추기 전 안 누르고 있었다면 남은 시간만큼만 기다린다 — 멈췄다 이어하기를 반복해도 감소를 미룰 수 없다
+    const first = decayRemainingRef.current ?? DECAY_GRACE_MS;
+    decayRemainingRef.current = null;
+    decayAtRef.current = Date.now() + first;
+    const grace = setTimeout(() => {
+      tick();
+      interval = setInterval(tick, DECAY_INTERVAL_MS);
+    }, first);
 
     return () => {
       clearTimeout(grace);
@@ -273,12 +286,17 @@ export function CapybaraSneak() {
     phaseEndsAtRef.current = 0;
     warningMsRef.current = 0;
     remainingRef.current = null;
+    decayAtRef.current = 0;
+    decayRemainingRef.current = null;
   }
 
   // 주인 상태는 그대로 두고 누르기만 해제한다 — 멈춘 순간의 상태·남은 시간 그대로 이어가야
   // 멈춰서 시선을 피하거나("looking"→"away") 경고를 늘리는(매번 새 경고) 꼼수가 생기지 않는다
   function pauseGame() {
     remainingRef.current = Math.max(0, phaseEndsAtRef.current - Date.now());
+    // 안 누르고 있어서 게이지가 줄던 중이었다면 그 남은 시간도 이어간다 — 아니면 멈췄다 이어하기를
+    // 반복해서 감소 시작을 계속 미루는(=게이지가 절대 안 줄어드는) 꼼수가 생긴다
+    if (!pressing) decayRemainingRef.current = Math.max(0, decayAtRef.current - Date.now());
     setPressing(false);
     setPaused(true);
   }

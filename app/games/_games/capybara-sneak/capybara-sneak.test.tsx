@@ -485,6 +485,27 @@ describe("CapybaraSneak", () => {
       expect(gaugeValue()).toBe(eaten);
     });
 
+    it("안 누르고 게이지가 줄던 중에 멈췄다 이어하면, 남은 시간만 지나도 줄어든다", async () => {
+      render(<CapybaraSneak />);
+      await hold(EAT_DELAY_MS + EAT_INTERVAL_MS * 2);
+      const eaten = gaugeValue();
+      expect(eaten).toBeGreaterThan(0);
+
+      // DECAY_GRACE_MS(500)의 일부만 흘려보낸 채로 멈춘다 — 아직 감소 전이어야 한다
+      const before = 400;
+      expect(before).toBeLessThan(DECAY_GRACE_MS);
+      await advance(before);
+      expect(gaugeValue()).toBe(eaten);
+
+      fireEvent.click(pauseButton());
+      await advance(5_000);
+      fireEvent.click(screen.getByRole("button", { name: "이어하기" }));
+
+      // 멈추기 전 지난 시간(400) + 이어서 지난 시간을 더해 원래 그레이스(500)에 도달하면 줄어야 한다
+      await advance(DECAY_GRACE_MS - before);
+      expect(gaugeValue()).toBeLessThan(eaten);
+    });
+
     it("멈춘 상태에서 처음부터를 누르면 창이 닫히고 시작 전으로 돌아간다", async () => {
       render(<CapybaraSneak />);
       press();
