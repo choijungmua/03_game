@@ -23,7 +23,8 @@ import {
   useRoomRecord,
 } from "@/components/games/capybara-room";
 import { GameControls, LEAVE_CONFIRM_MESSAGE } from "@/components/games/game-controls";
-import { Button } from "@/components/inputs/button";
+import { Button, buttonVariants } from "@/components/inputs/button";
+import { LobbyLink } from "@/components/navigation/lobby-link";
 import { Dialog } from "@/components/overlay/dialog";
 import { cn } from "@/lib";
 import { GAME_SOUNDS, GAME_TITLES } from "@/lib/games/constants";
@@ -717,6 +718,8 @@ export function CapybaraAlkkagi() {
           >
             처음으로
           </Button>
+          {/* 창이 화면을 덮어 왼쪽 위 뒤로 버튼을 누를 수 없으니 창 안에서도 나갈 수 있게 한다 */}
+          <LobbyLink className={cn(buttonVariants({ variant: "ghost" }), "h-12 w-full")}>로비로</LobbyLink>
 
           <div className="mt-6">
             <AdSlot placement="capybara-alkkagi-result" />

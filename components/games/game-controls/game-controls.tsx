@@ -1,14 +1,14 @@
 "use client";
 
 import { ArrowLeft, Pause, Volume2, VolumeX } from "lucide-react";
-import Link from "next/link";
 import { useEffect, useEffectEvent, useState } from "react";
 
 import { Button, buttonVariants } from "@/components/inputs/button";
+import { LobbyLink } from "@/components/navigation/lobby-link";
 import { Dialog } from "@/components/overlay/dialog";
 import { cn } from "@/lib";
 import { GAME_SOUNDS } from "@/lib/games/constants";
-import { playGameSound, saveLobbySettings, useLobbySettings } from "@/lib/lobby/settings";
+import { playGameSound, saveLobbySettings, toggledSound, useLobbySettings, withVolume } from "@/lib/lobby/settings";
 
 import { ROUND_BUTTON } from "./constants";
 import type { GameControlsProps } from "./type";
@@ -27,7 +27,8 @@ export function GameControls({ pause, onCancelRound, leaveConfirm, className }: 
   const volume = settings.muted ? 0 : Math.round(settings.volume * 100);
 
   function toggleSound() {
-    saveLobbySettings({ ...settings, muted: !settings.muted });
+    // 음량이 0으로 저장돼 있어도(로비 슬라이더를 0으로 내림) 켜면 들리는 음량으로 켜진다
+    saveLobbySettings(toggledSound(settings));
     // 켰을 때만 들린다 — 방금 켠 소리가 제대로 나는지 바로 확인할 수 있게
     playGameSound(GAME_SOUNDS.tap);
   }
@@ -81,9 +82,9 @@ export function GameControls({ pause, onCancelRound, leaveConfirm, className }: 
           {backIcon}
         </button>
       ) : (
-        <Link href="/" aria-label="로비로 돌아가기" className={backClass}>
+        <LobbyLink aria-label="로비로 돌아가기" className={backClass}>
           {backIcon}
-        </Link>
+        </LobbyLink>
       )}
 
       {/* 뒤로 버튼 바로 아래. 위쪽 양옆은 게임마다 HUD(체력·점수·게이지)가 붙어 있어서 옆에 두면 좁은 화면에서 겹친다 */}
@@ -127,11 +128,8 @@ export function GameControls({ pause, onCancelRound, leaveConfirm, className }: 
                   max={100}
                   step={5}
                   value={volume}
-                  // 음소거 중에 음량을 올리면 소리도 같이 켠다 (로비 음량 슬라이더와 같게)
-                  onChange={(event) => {
-                    const next = Number(event.currentTarget.value);
-                    saveLobbySettings({ ...settings, volume: next / 100, muted: next === 0 });
-                  }}
+                  // 음소거 중에 음량을 올리면 소리도 같이 켜고, 0으로 내리면 끄되 직전 음량은 남긴다 (로비 음량 슬라이더와 같게)
+                  onChange={(event) => saveLobbySettings(withVolume(settings, Number(event.currentTarget.value) / 100))}
                   className="h-11 w-full cursor-pointer accent-primary"
                 />
               </label>
@@ -142,9 +140,9 @@ export function GameControls({ pause, onCancelRound, leaveConfirm, className }: 
                 <Button type="button" variant="outline" onClick={restartWithSound} className="h-12 w-full">
                   처음부터
                 </Button>
-                <Link href="/" className={cn(buttonVariants({ variant: "ghost" }), "h-12 w-full")}>
+                <LobbyLink className={cn(buttonVariants({ variant: "ghost" }), "h-12 w-full")}>
                   로비로
-                </Link>
+                </LobbyLink>
               </div>
             </Dialog.Content>
           </Dialog>
@@ -160,9 +158,9 @@ export function GameControls({ pause, onCancelRound, leaveConfirm, className }: 
               <Button type="button" onClick={() => setConfirmOpen(false)} className="h-12 w-full text-title-3 font-bold">
                 계속 두기
               </Button>
-              <Link href="/" className={cn(buttonVariants({ variant: "outline" }), "h-12 w-full")}>
+              <LobbyLink className={cn(buttonVariants({ variant: "outline" }), "h-12 w-full")}>
                 나가기
-              </Link>
+              </LobbyLink>
             </div>
           </Dialog.Content>
         </Dialog>

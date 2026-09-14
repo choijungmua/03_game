@@ -11,6 +11,7 @@ import { GAME_SOUNDS, GAME_TITLES } from "@/lib/games/constants";
 import { submitGameRecord } from "@/lib/games/game-events";
 import { useFrameText } from "@/lib/games/use-frame-text";
 import { useInView } from "@/lib/games/use-in-view";
+import { useLockPageScroll } from "@/lib/games/use-lock-page-scroll";
 import { playGameSound } from "@/lib/lobby/settings";
 
 import { STOP_SOUND } from "./constants";
@@ -50,6 +51,9 @@ function RunningTimer({ startAt }: { startAt: number }) {
 export function ReactionTime() {
   const records = useReactionRecords();
   const [phase, setPhase] = useState<Phase>("idle");
+  // 게임 아래 소개 섹션 때문에 페이지가 길다 — 누르는 순간 손가락이 조금 끌리거나 휠·키를 써도 화면이 밀리지 않게 막는다
+  const locked = phase === "countdown" || phase === "running";
+  useLockPageScroll(locked);
   const [countdownIndex, setCountdownIndex] = useState(0);
   const [startAt, setStartAt] = useState(0);
   const [result, setResult] = useState<RoundResult | null>(null);
@@ -189,7 +193,9 @@ export function ReactionTime() {
       onPointerDown={handlePress}
       onClick={handleClick}
       className={cn(
-        "relative flex min-h-dvh w-full cursor-pointer touch-manipulation select-none flex-col items-center justify-center overflow-x-hidden px-5 py-10 transition-colors [-webkit-tap-highlight-color:transparent]",
+        "relative flex min-h-dvh w-full cursor-pointer select-none flex-col items-center justify-center overflow-x-hidden px-5 py-10 transition-colors [-webkit-tap-highlight-color:transparent]",
+        // 플레이 중에는 끌기·두 손가락 확대·당겨서 새로고침까지 브라우저 제스처를 모두 끈다 (시작·결과 화면은 스크롤해야 한다)
+        locked ? "touch-none" : "touch-manipulation",
         phase === "result" ? "duration-700" : "duration-200",
         screenClass,
       )}
