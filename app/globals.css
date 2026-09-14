@@ -203,6 +203,8 @@
     }
   html {
     @apply font-sans;
+    /* 당겨서 새로고침(Android)·고무줄 튕김(iOS)으로 게임 판이 끌려가거나 새로고침되지 않게 */
+    overscroll-behavior-y: none;
     }
 }
 

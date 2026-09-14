@@ -30,7 +30,6 @@ import {
 import { Input } from "@/components/inputs/input";
 import {
   CORRECTION_SNAP_PX,
-  DEFAULT_LOBBY_SETTINGS,
   EAT_BITE_MS,
   EAT_MS,
   HEART_LINGER_MS,
@@ -73,7 +72,8 @@ import {
   type Satiety,
 } from "@/lib/lobby/feeding";
 import { pushSnapshot, sampleSnapshots, type Snapshot } from "@/lib/lobby/interpolation";
-import { type LobbySettings, loadLobbySettings, playSound, saveLobbySettings } from "@/lib/lobby/settings";
+import { type LobbySettings, playSound, saveLobbySettings, useLobbySettings } from "@/lib/lobby/settings";
+import { markLobbyExit } from "@/components/navigation/lobby-link";
 
 import { CAPYBARA_EMOTES, emoteChat, emoteImage, parseEmoteChat } from "@/lib/games/emotes";
 
@@ -1076,9 +1076,12 @@ export function Lobby({ games }: { games: DoorGame[] }) {
   const sitButtonRef = useRef<HTMLButtonElement>(null);
   const fishButtonRef = useRef<HTMLButtonElement>(null);
   const lastChatAt = useRef(-Infinity);
-  /** 화면(설정 창·소리 버튼)은 state, 게임 루프는 ref로 같은 설정을 읽는다 */
-  const [settings, setSettings] = useState<LobbySettings>(DEFAULT_LOBBY_SETTINGS);
-  const settingsRef = useRef<LobbySettings>(DEFAULT_LOBBY_SETTINGS);
+  /** 화면(소리 버튼)은 저장값을 구독하고(다른 탭·게임 화면에서 바꿔도 따라간다), 게임 루프는 ref로 같은 설정을 읽는다 */
+  const settings = useLobbySettings();
+  const settingsRef = useRef<LobbySettings>(settings);
+  useEffect(() => {
+    settingsRef.current = settings;
+  }, [settings]);
   /** 스크린리더용: 캔버스 말풍선은 읽히지 않아서 방금 들은 채팅을 글로도 둔다 */
   const [heardChat, setHeardChat] = useState("");
   const [world] = useState(() => createWorld(LOBBY_SEED, games));
@@ -1100,7 +1103,11 @@ export function Lobby({ games }: { games: DoorGame[] }) {
   /** 로비 이미지를 받은 비율(%). 100이 되기 전엔 로딩창을 덮고 게임 루프를 돌리지 않는다 */
   const [loadProgress, setLoadProgress] = useState(0);
   // 게임 루프 effect가 router 변경으로 다시 실행되면 캐릭터·멀티 상태가 초기화되므로 이벤트로 감싼다
-  const goToGame = useEffectEvent((slug: string) => router.push(`/games/${slug}`));
+  const goToGame = useEffectEvent((slug: string) => {
+    // 게임 화면의 로비 링크가 새 기록을 쌓지 않고 뒤로 가게 표시해 둔다 (components/navigation/lobby-link)
+    markLobbyExit(`/games/${slug}`);
+    router.push(`/games/${slug}`);
+  });
   const prefetchGame = useEffectEvent((slug: string) => router.prefetch(`/games/${slug}`));
 
   useEffect(() => {
@@ -1112,11 +1119,8 @@ export function Lobby({ games }: { games: DoorGame[] }) {
     outfitRef.current = loadOutfit();
     // 캔버스는 쓰는 굵기의 폰트를 스스로 내려받지 않아서, 안 받아 둔 굵기는 대체 폰트로 그려진다
     for (const weight of [500, 600, 700]) document.fonts.load(`${weight} 13px ${CANVAS_FONT}`, "가A").catch(() => {});
-    // 저장된 설정은 서버 렌더와 어긋나지 않게 화면에 붙은 뒤 읽는다
-    settingsRef.current = loadLobbySettings();
     setFishInventory(loadFishInventory());
     setSatiety(loadSatiety());
-    setSettings(settingsRef.current);
 
     const sprites = new Map<SpriteKey, HTMLImageElement>();
     for (const facing of FACINGS) {
@@ -2251,8 +2255,9 @@ export function Lobby({ games }: { games: DoorGame[] }) {
 
   const updateSettings = (next: LobbySettings) => {
     settingsRef.current = next;
-    setSettings(next);
     saveLobbySettings(next);
+    // 켤 때 짧게 한 번 울린다 — 방금 켠 소리를 확인하고, iOS는 누른 순간 소리를 내야 오디오가 풀린다
+    if (!next.muted && next.volume > 0 && (settings.muted || settings.volume <= 0)) playSound("chat", next);
   };
 
   return (
@@ -2445,6 +2450,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
             <Link
               key={href}
               href={href}
+              onClick={() => markLobbyExit(href)}
               className={cn(
                 "flex min-h-6 items-center rounded-sm transition-colors focus-visible:outline-2 focus-visible:outline-primary",
                 // 문의는 있는 듯 없는 듯 옅게

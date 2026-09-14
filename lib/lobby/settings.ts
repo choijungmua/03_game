@@ -43,6 +43,20 @@ export function saveLobbySettings(settings: LobbySettings) {
   window.dispatchEvent(new Event(LOBBY_SETTINGS_CHANGE_EVENT));
 }
 
+/**
+ * 효과음 켜고 끄기 (로비 헤드폰·M 키·게임 화면 효과음 버튼 공통).
+ * 음량이 0으로 저장돼 있으면 켜도 들리지 않아 다시 켤 방법이 없으므로, 켤 때는 기본 음량으로 되돌린다
+ */
+export function toggledSound(settings: LobbySettings): LobbySettings {
+  if (!settings.muted && settings.volume > 0) return { ...settings, muted: true };
+  return { ...settings, muted: false, volume: settings.volume > 0 ? settings.volume : DEFAULT_LOBBY_SETTINGS.volume };
+}
+
+/** 음량 슬라이더 (로비·멈춤 창 공통). 0이면 끄되 직전 음량은 남겨서 켜기 버튼으로 그 음량에 돌아온다 */
+export function withVolume(settings: LobbySettings, volume: number): LobbySettings {
+  return volume <= 0 ? { ...settings, muted: true } : { ...settings, muted: false, volume };
+}
+
 function subscribeSettings(onChange: () => void) {
   window.addEventListener("storage", onChange);
   window.addEventListener(LOBBY_SETTINGS_CHANGE_EVENT, onChange);
@@ -106,7 +120,8 @@ function playLayers(layers: readonly SoundLayer[], settings: LobbySettings) {
 function synthesize(layers: readonly SoundLayer[], settings: LobbySettings) {
   audio ??= new AudioContext();
   // 브라우저는 한 번 누르거나 키를 치기 전까지 소리를 막는다. 막혀 있으면 조용히 넘어간다
-  if (audio.state === "suspended") audio.resume().catch(() => {});
+  // iOS는 통화·앱 전환 뒤 "interrupted"로 두기도 해서, running이 아니면 다시 깨운다
+  if (audio.state !== "running") audio.resume().catch(() => {});
   if (!noise) {
     noise = audio.createBuffer(1, audio.sampleRate, audio.sampleRate);
     const data = noise.getChannelData(0);

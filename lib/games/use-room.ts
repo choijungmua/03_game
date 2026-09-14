@@ -134,7 +134,8 @@ export function useRoom<S extends RoomState, A extends string>(slug: string) {
       failures.current = 0;
       receive(result);
       setCode(result.view.code);
-      window.history.replaceState(null, "", `?code=${result.view.code}`);
+      // 응답이 오기 전에 로비 등으로 나갔으면 그 페이지 주소(/?code=…)를 바꾸지 않는다 — 옵션 onSuccess는 화면이 사라진 뒤에도 불린다
+      if (window.location.pathname === `/games/${slug}`) window.history.replaceState(null, "", `?code=${result.view.code}`);
     },
   });
   const run = action.mutate;
