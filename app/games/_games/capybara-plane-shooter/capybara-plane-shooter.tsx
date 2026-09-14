@@ -5,6 +5,7 @@ import Image from "next/image";
 import { useEffect, useEffectEvent, useRef, useState } from "react";
 
 import { AdSlot } from "@/components/ads/ad-slot";
+import { GameControls } from "@/components/games/game-controls";
 import { ShareButton } from "@/components/games/share-button";
 import { cn } from "@/lib";
 import { submitGameRecord } from "@/lib/games/supabase";
@@ -246,6 +247,7 @@ export function CapybaraPlaneShooter() {
   const [countdownIndex, setCountdownIndex] = useState(0);
   const [result, setResult] = useState<RoundResult | null>(null);
   const [hud, setHud] = useState<Hud | null>(null);
+  const [paused, setPaused] = useState(false);
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const keysRef = useRef({ left: false, right: false });
@@ -253,7 +255,19 @@ export function CapybaraPlaneShooter() {
   const stateRef = useRef<GameState | null>(null);
   /** 게임 좌표 1px이 화면에서 몇 CSS px인지. 드래그 거리를 게임 좌표로 바꿀 때 쓴다 */
   const scaleRef = useRef(1);
+  /** rAF 루프는 렌더링과 상관없이 돌아서 멈춤 여부를 ref로 읽는다 */
+  const pausedRef = useRef(false);
   const { ref: recordsRef, inView: recordsVisible } = useInView<HTMLElement>(phase === "result");
+
+  // 멈출 때 입력을 비운다 — 방향키를 누른 채 멈추면 keyup을 놓쳐 이어할 때 한쪽으로 흘러간다
+  function changePaused(next: boolean) {
+    pausedRef.current = next;
+    setPaused(next);
+    if (next) {
+      keysRef.current = { left: false, right: false };
+      dragRef.current = null;
+    }
+  }
 
   // 시작 화면에서 미리 불러와 카운트다운이 끝날 때쯤 준비되게 한다
   useEffect(() => {
@@ -277,6 +291,7 @@ export function CapybaraPlaneShooter() {
   }, [phase]);
 
   const finishRound = useEffectEvent((score: number, stage: number) => {
+    changePaused(false);
     const now = Date.now();
     const record = { id: String(now), score, stage, at: now };
     const rank = getRank(records, record);
@@ -323,6 +338,13 @@ export function CapybaraPlaneShooter() {
       function tick(now: number) {
         const state = stateRef.current;
         if (!state || !ctx) return;
+        if (pausedRef.current) {
+          // step은 건너뛰고 기준 시각만 옮긴다 → 이어할 때 시간이 튀지 않음. 멈춘 동안 resize로 캔버스가 지워져도 다시 그림
+          lastAt = now;
+          draw(ctx, state, sprites, palette, Math.max(0, now - startAt), reducedMotion);
+          frameId = requestAnimationFrame(tick);
+          return;
+        }
         const { left, right } = keysRef.current;
         const input: GameInput = {
           direction: left === right ? 0 : left ? -1 : 1,
@@ -360,6 +382,7 @@ export function CapybaraPlaneShooter() {
   }, [phase]);
 
   function startCountdown() {
+    changePaused(false);
     keysRef.current = { left: false, right: false };
     setHud(null);
     setCountdownIndex(0);
@@ -369,7 +392,7 @@ export function CapybaraPlaneShooter() {
   // 드래그는 손가락이 움직인 거리만큼 비행기를 옮긴다 (손가락이 비행기를 가리지 않게)
   function handlePointerDown(event: React.PointerEvent<HTMLDivElement>) {
     const state = stateRef.current;
-    if (phase !== "playing" || !state) return;
+    if (phase !== "playing" || !state || pausedRef.current) return;
     event.currentTarget.setPointerCapture(event.pointerId);
     dragRef.current = { pointerX: event.clientX, planeX: state.planeX, targetX: state.planeX };
   }
@@ -392,7 +415,7 @@ export function CapybaraPlaneShooter() {
   const handleKey = useEffectEvent((event: KeyboardEvent) => {
     const pressed = event.type === "keydown";
     if (LEFT_KEYS.has(event.key) || RIGHT_KEYS.has(event.key)) {
-      if (phase !== "playing") return;
+      if (phase !== "playing" || pausedRef.current) return;
       event.preventDefault();
       if (LEFT_KEYS.has(event.key)) keysRef.current.left = pressed;
       else keysRef.current.right = pressed;
@@ -443,6 +466,7 @@ export function CapybaraPlaneShooter() {
     <div
       data-testid="capybara-plane-shooter-screen"
       data-phase={phase}
+      data-paused={paused}
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
@@ -529,7 +553,7 @@ export function CapybaraPlaneShooter() {
         >
           <canvas ref={canvasRef} aria-hidden="true" className="absolute inset-0 size-full" />
           {hud && (
-            <div className="pointer-events-none absolute inset-x-0 top-0 flex items-start justify-between gap-3 px-4 pt-[max(1rem,env(safe-area-inset-top))]">
+            <div className="pointer-events-none absolute inset-x-0 top-0 flex items-start justify-between gap-3 px-16 pt-[max(1rem,env(safe-area-inset-top))]">
               <div className="flex flex-col gap-1">
                 <p className="flex gap-0.5" aria-label={`체력 ${hud.hp}/${MAX_HP}`}>
                   {Array.from({ length: MAX_HP }, (_, index) => (
@@ -624,6 +648,20 @@ export function CapybaraPlaneShooter() {
           </section>
         </div>
       )}
+
+      <GameControls
+        className={phase === "playing" ? "dark text-foreground" : undefined}
+        pause={
+          phase === "playing"
+            ? {
+                paused,
+                onPause: () => changePaused(true),
+                onResume: () => changePaused(false),
+                onRestart: startCountdown,
+              }
+            : undefined
+        }
+      />
     </div>
   );
 }
