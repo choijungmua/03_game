@@ -14,18 +14,8 @@ ROOT = Path(__file__).resolve().parent.parent
 ITEMS = {
     "hat": ("hat", ["straw", "leaf", "beanie"]),
     "glasses": ("glasses", ["wood", "sunglasses", "heart"]),
-    "top": ("top", ["knit-vest", "aloha", "hoodie"]),
-    "bottom": ("bottom", ["denim", "check", "grass-skirt"]),
-    "onepiece": ("onepiece", ["raincoat", "overalls", "yukata"]),
-    "shoes": ("shoes", ["rain-boots", "sneakers", "geta"]),
-    "gloves": ("gloves", ["mitten", "rubber", "boxing"]),
     "hat-2": ("hat", ["crown", "yuzu-towel", "watermelon"]),
     "glasses-2": ("glasses", ["star", "rainbow", "goggles"]),
-    "top-2": ("top", ["marching", "hero", "cloud"]),
-    "bottom-2": ("bottom", ["duck-swim", "tutu", "pumpkin"]),
-    "onepiece-2": ("onepiece", ["dino", "shark", "strawberry"]),
-    "shoes-2": ("shoes", ["rocket", "flippers", "bunny"]),
-    "gloves-2": ("gloves", ["crab", "cat-paw", "champion"]),
 }
 
 

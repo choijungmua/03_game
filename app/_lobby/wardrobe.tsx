@@ -5,11 +5,9 @@ import { useEffect, useRef, useState } from "react";
 
 import { cn } from "@/lib";
 import {
-  BODY_LAYERS,
-  HEAD_CLIP,
+  DRAW_ORDER,
   loadOutfit,
   type Outfit,
-  OVER_HEAD_LAYERS,
   saveOutfit,
   SLOT_INFO,
   WARDROBE_SLOTS,
@@ -55,8 +53,8 @@ export function Wardrobe({ onChange }: { onChange: (outfit: Outfit) => void }) {
     onChange(next);
   };
 
-  const layers = (slots: readonly WardrobeSlot[]) =>
-    slots.map((drawSlot) => {
+  const layers = () =>
+    DRAW_ORDER.map((drawSlot) => {
       const id = outfit[drawSlot];
       if (!id) return null;
       return SLOT_INFO[drawSlot].anchors.map((anchor, index) => (
@@ -72,7 +70,7 @@ export function Wardrobe({ onChange }: { onChange: (outfit: Outfit) => void }) {
             left: `${anchor.x}%`,
             top: `${anchor.bottom}%`,
             width: `${anchor.width}%`,
-            transform: `translate(-50%, -100%)${anchor.mirror ? " scaleX(-1)" : ""}`,
+            transform: "translate(-50%, -100%)",
           }}
         />
       ));
@@ -124,9 +122,7 @@ export function Wardrobe({ onChange }: { onChange: (outfit: Outfit) => void }) {
         {/* 키 큰 모자가 머리 위로 삐져나오는 만큼 위를 비워 둔다 */}
         <div className="relative mx-auto mt-10 aspect-square w-full max-w-56">
           <NextImage src={CAPYBARA_SRC} alt="" fill unoptimized sizes="224px" />
-          {layers(BODY_LAYERS)}
-          <NextImage src={CAPYBARA_SRC} alt="" fill unoptimized sizes="224px" style={{ clipPath: HEAD_CLIP }} />
-          {layers(OVER_HEAD_LAYERS)}
+          {layers()}
         </div>
         <p className="sr-only" aria-live="polite">
           {WARDROBE_SLOTS.flatMap((s) => SLOT_INFO[s].items.filter((item) => item.id === outfit[s]).map((item) => item.label)).join(", ") ||
@@ -185,7 +181,6 @@ export function Wardrobe({ onChange }: { onChange: (outfit: Outfit) => void }) {
             </button>
           ))}
         </div>
-        {slot === "onepiece" && <p className="text-caption-3 text-text-caption">한벌옷을 입으면 상의·하의는 벗어요</p>}
       </section>
     </div>
   );

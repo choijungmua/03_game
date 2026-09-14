@@ -42,11 +42,9 @@ import {
   type PresenceResponse,
 } from "@/lib/lobby/presence";
 import {
-  BODY_LAYERS,
-  HEAD_ELLIPSE,
+  DRAW_ORDER,
   loadOutfit,
   type Outfit,
-  OVER_HEAD_LAYERS,
   SLOT_INFO,
   type WardrobeAnchor,
   type WardrobeSlot,
@@ -54,7 +52,6 @@ import {
   wardrobeSrc,
   VIEW_OF,
   WORLD_ANCHORS,
-  WORLD_HEAD_ELLIPSE,
 } from "@/lib/lobby/wardrobe";
 import {
   type Building,
@@ -477,7 +474,6 @@ interface OutfitDrawer {
  */
 function drawOutfit(
   ctx: CanvasRenderingContext2D,
-  base: HTMLImageElement,
   outfit: Outfit,
   view: Facing | "sit-down",
   left: number,
@@ -499,8 +495,7 @@ function drawOutfit(
     const width = fullWidth * (anchor.squeeze ?? 1);
     const centerX = left + (size * (flip ? 100 - anchor.x : anchor.x)) / 100;
     const itemTop = top + (size * anchor.bottom) / 100 - height;
-    // 짝(신발·장갑) 반전과 왼쪽 보기 반전이 겹치면 원래 방향
-    if (anchor.mirror === flip) {
+    if (!flip) {
       ctx.drawImage(item, centerX - width / 2, itemTop, width, height);
       return;
     }
@@ -510,29 +505,7 @@ function drawOutfit(
     ctx.drawImage(item, -width / 2, itemTop, width, height);
     ctx.restore();
   };
-  const layer = (slots: readonly WardrobeSlot[]) => {
-    for (const slot of slots) for (const anchor of anchorsOf(slot)) put(slot, anchor);
-  };
-  layer(BODY_LAYERS);
-  if (BODY_LAYERS.some((slot) => outfit[slot])) {
-    // 머리를 한 번 더 그려 옷이 턱 밑으로 들어가 보이게 한다 (옷장 미리보기와 같은 방식)
-    const head = sitting ? HEAD_ELLIPSE : WORLD_HEAD_ELLIPSE[wardrobeView];
-    ctx.save();
-    ctx.beginPath();
-    ctx.ellipse(
-      left + (size * (flip ? 100 - head.x : head.x)) / 100,
-      top + (size * head.y) / 100,
-      (size * head.rx) / 100,
-      (size * head.ry) / 100,
-      0,
-      0,
-      Math.PI * 2,
-    );
-    ctx.clip();
-    ctx.drawImage(base, left, top, size, size);
-    ctx.restore();
-  }
-  layer(OVER_HEAD_LAYERS);
+  for (const slot of DRAW_ORDER) for (const anchor of anchorsOf(slot)) put(slot, anchor);
 }
 
 function drawCapybara(
@@ -555,7 +528,7 @@ function drawCapybara(
       return;
     }
     ctx.drawImage(image, left, top, size, size);
-    drawOutfit(ctx, image, outfit, view, left, top, size, wardrobe.image);
+    drawOutfit(ctx, outfit, view, left, top, size, wardrobe.image);
   };
   if (!look.sitting) {
     ctx.fillStyle = "rgba(30,40,10,0.25)";
@@ -821,7 +794,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
         const bake = canvas.getContext("2d");
         if (!bake) return null;
         bake.drawImage(base, 0, 0, px, px);
-        drawOutfit(bake, base, outfit, view, 0, 0, px, outfitImage);
+        drawOutfit(bake, outfit, view, 0, 0, px, outfitImage);
         // ponytail: 넘치면 통째로 비운다 (청크 캐시와 같은 방식). 사람이 많아 자주 비워지면 LRU로
         if (dressedCache.size > 300) dressedCache.clear();
         dressedCache.set(key, canvas);
