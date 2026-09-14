@@ -8,7 +8,7 @@ import { type FormEvent, useEffect, useEffectEvent, useRef, useState } from "rea
 
 import { pretendard } from "@/config";
 import { cn } from "@/lib";
-import { Armchair, Bath, Fish, HandFist } from "lucide-react";
+import { Armchair, Bath, Fish, HandFist, NotebookPen } from "lucide-react";
 import { API_URL } from "@/lib/api-url";
 
 import { Loading } from "@/components/feedback/loading";
@@ -49,6 +49,7 @@ import {
   MINIMAP_COLORS,
   MINIMAP_REFRESH_MS,
   MINIMAP_TILES,
+  NAME_CONFIRM_MS,
   ONSEN_BOTTOM,
   REMOTE_GONE_MS,
   REMOTE_RENDER_DELAY_MS,
@@ -75,16 +76,29 @@ import {
   type Satiety,
 } from "@/lib/lobby/feeding";
 import { pushSnapshot, sampleSnapshots, type Snapshot } from "@/lib/lobby/interpolation";
+import { loadLobbyProfile, type LobbyProfile, saveLobbyProfile } from "@/lib/lobby/profile";
 import { type LobbySettings, playSound, saveLobbySettings, useLobbySettings } from "@/lib/lobby/settings";
 import { markLobbyExit } from "@/components/navigation/lobby-link";
 
 import { CAPYBARA_EMOTES, emoteChat, emoteImage, parseEmoteChat } from "@/lib/games/emotes";
 
-import { BUBBLE_DEPTH, BUBBLE_LINE, BUBBLE_TEXT_WIDTH, EMOTE_SIZE, FISH_BUTTON_SRC, FRAME_SRC, SITE_LINKS } from "./constants";
+import {
+  BUBBLE_DEPTH,
+  BUBBLE_LINE,
+  BUBBLE_TEXT_WIDTH,
+  EMOTE_SIZE,
+  FISH_BUTTON_SRC,
+  FRAME_SRC,
+  SITE_LINKS,
+  SLEEP_AFTER_MS,
+  SLEEP_FRAME_MS,
+} from "./constants";
 import { EmotePicker } from "./emote-picker";
 import { FishBag } from "./fish-bag";
+import { GuestbookPanel } from "./guestbook-panel";
 import { KeyboardGuide } from "./keyboard-guide";
 import { SoundToggle } from "./lobby-settings";
+import { ProfileName } from "./profile-name";
 import {
   ATTACK_COOLDOWN_MS,
   ATTACK_MS,
@@ -149,6 +163,7 @@ type SpriteKey =
   | `sit-${Direction}`
   | `punch-${Direction}`
   | "stun"
+  | `sleep-${1 | 2}`
   | `eat-${1 | 2}`
   | ScratchFrame
   | `${Exclude<IdleFrame, ScratchFrame>}-${Direction}`;
@@ -160,6 +175,8 @@ type Texture = GroundId;
 interface CapybaraLook {
   pose: Pose;
   sitting: boolean;
+  /** 통나무에 SLEEP_AFTER_MS 넘게 앉아 있어 잠들었는지 */
+  sleeping: boolean;
   stunned: boolean;
   /** 때리기 진행도 0→1. 안 때리면 -1 */
   attack: number;
@@ -184,6 +201,11 @@ interface Remote {
   movedAt: number;
   facing: Facing;
   sitting: boolean;
+  /**
+   * 앉는 걸 처음 본 시각. 서버는 앉은 시각을 안 보내서 내가 본 때부터 센다
+   * ponytail: 내가 오기 전부터 앉아 있던 사람은 늦게 잠든 것으로 보인다. 모두에게 똑같이 보여야 하면 서버가 sitMs를 보낼 것
+   */
+  sitSince: number;
   walkDist: number;
   idleMs: number;
   stunUntil: number;
@@ -242,6 +264,8 @@ const DOOR_RADIUS = TILE * 0.9;
 const ENTER_CHARGE_MS = 900;
 /** 통나무 의자 앞 이 거리 안에서 앉을 수 있다 */
 const SEAT_REACH = TILE * 1.4;
+/** 방명록 게시판 앞 이 거리 안에서 Space로 방명록을 연다 */
+const GUESTBOOK_REACH = TILE * 1.5;
 /** 로비 WebSocket 주소 (http→ws, https→wss) */
 const LOBBY_WS_URL = `${API_URL.replace(/^http/, "ws")}/api/lobby/ws`;
 /**
@@ -280,6 +304,7 @@ const TEXTURE_OF: Record<Tile, Texture> = {
   log: "meadow",
   lantern: "meadow",
   reeds: "meadow",
+  guestbook: "meadow",
   mud: "mud",
   water: "water",
   deck: "deck",
@@ -769,11 +794,15 @@ function drawCapybara(
   const lunge = look.attack < 0 ? 0 : (look.attack < 0.35 ? look.attack / 0.35 : 1 - (look.attack - 0.35) / 0.65) * 8;
   const walkKey: SpriteKey = `${look.pose}-${facing}`;
   const idleKey = look.idle ? idleKeys(look.idle, direction).find((candidate) => ready(sprites.get(candidate))) : undefined;
+  // 잠든 그림: 새근새근(1) ↔ 콧방울(2)
+  const sleepKey: SpriteKey = animate && Math.floor(now / SLEEP_FRAME_MS) % 2 === 1 ? "sleep-2" : "sleep-1";
   const key: SpriteKey =
     look.attack >= 0
       ? `punch-${direction}`
       : look.sitting
-        ? `sit-${direction}`
+        ? look.sleeping && ready(sprites.get(sleepKey))
+          ? sleepKey
+          : `sit-${direction}`
         : idleKey
           ? idleKey
           : ready(sprites.get(walkKey))
@@ -784,8 +813,9 @@ function drawCapybara(
   const size = look.sitting ? SIT_SIZE : STAND_SIZE;
   const foot = look.sitting ? SIT_FOOT : STAND_FOOT;
   // 긁기는 뒷모습, 하품·졸기는 그 스프라이트의 방향(이미지가 없어 정면으로 대신했으면 정면). 앉은 정면만 옷을 전부 입힌다
+  // 잠든 그림은 앉은 정면과 같은 자세·정렬이라 같은 옷 자리를 쓴다
   const view =
-    look.sitting && direction === "down"
+    look.sitting && (direction === "down" || key.startsWith("sleep"))
       ? "sit-down"
       : key.startsWith("scratch")
         ? "up"
@@ -794,6 +824,16 @@ function drawCapybara(
           : key === walkKey
             ? facing // 서기·걷기는 대각선 스프라이트가 있어서 대각선 자리
             : direction;
+  if (key.startsWith("sleep")) {
+    // 자는 동안 숨 쉬듯 몸이 발바닥 기준으로 천천히 부풀었다 가라앉고, 머리 옆으로 z가 떠오른다
+    ctx.save();
+    ctx.translate(x, y);
+    if (animate) ctx.scale(1, 1 + Math.sin(now / 700) * 0.02);
+    drawDressed(image, view, -size / 2, -size * foot, size);
+    ctx.restore();
+    drawZzz(ctx, x + size * 0.3, y - size * 0.62, now, animate);
+    return;
+  }
   if (key.startsWith("doze") && animate) {
     // 조는 동안 몸이 천천히 앞뒤로 흔들린다
     ctx.save();
@@ -824,6 +864,23 @@ function drawCapybara(
     return;
   }
   drawDressed(image, view, x + fx * lunge - size / 2, y + fy * lunge - size * foot, size);
+}
+
+/** 잠든 카피바라 머리 옆으로 z 세 개가 차례로 떠오르며 커지고 사라진다 */
+function drawZzz(ctx: CanvasRenderingContext2D, x: number, y: number, now: number, animate: boolean) {
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.lineWidth = 3;
+  ctx.strokeStyle = "rgba(40,28,16,0.7)";
+  ctx.fillStyle = "#fff";
+  for (let i = 0; i < 3; i++) {
+    const phase = animate ? (now / 2400 + i / 3) % 1 : (i + 1) / 4;
+    ctx.globalAlpha = Math.sin(phase * Math.PI);
+    ctx.font = `700 ${Math.round(9 + phase * 7)}px ${CANVAS_FONT}`;
+    ctx.strokeText("z", x + phase * 10, y - phase * 20);
+    ctx.fillText("z", x + phase * 10, y - phase * 20);
+  }
+  ctx.globalAlpha = 1;
 }
 
 /** 맞은 자리에 터지는 "퍽" 효과. progress 0 → 1 */
@@ -1172,6 +1229,10 @@ export function Lobby({ games }: { games: DoorGame[] }) {
   const minimapRef = useRef<HTMLCanvasElement>(null);
   /** 입은 옷. 게임 루프가 매 프레임 읽어서 그리고 서버에 보낸다 */
   const outfitRef = useRef<Outfit>({});
+  /** 기기별 프로필 id·내가 정한 이름표. 게임 루프가 서버에 보내고, 이름 바꾸기 창이 고친다 */
+  const profileRef = useRef<LobbyProfile>({ id: "", name: "" });
+  /** 이름 바꾸기 버튼에 보일 지금 이름표 (서버가 받아들인 값) */
+  const [myName, setMyName] = useState("");
   /** 보낼 채팅. 게임 루프가 가져가 말풍선을 띄우고 다음 동기화에 실어 보낸다 */
   const chatRequest = useRef<string | null>(null);
   const chatInputRef = useRef<HTMLInputElement>(null);
@@ -1180,6 +1241,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
   const sitButtonRef = useRef<HTMLButtonElement>(null);
   const fishButtonRef = useRef<HTMLButtonElement>(null);
   const bathButtonRef = useRef<HTMLButtonElement>(null);
+  const guestbookButtonRef = useRef<HTMLButtonElement>(null);
   const lastChatAt = useRef(-Infinity);
   /** 화면(소리 버튼)은 저장값을 구독하고(다른 탭·게임 화면에서 바꿔도 따라간다), 게임 루프는 ref로 같은 설정을 읽는다 */
   const settings = useLobbySettings();
@@ -1194,6 +1256,9 @@ export function Lobby({ games }: { games: DoorGame[] }) {
   const [sitting, setSitting] = useState(false);
   const [seatNearby, setSeatNearby] = useState(false);
   const [waterNearby, setWaterNearby] = useState(false);
+  /** 방명록 게시판 앞에 서 있음 / 방명록 창이 열려 있음 (게시판 앞에서 Space로 연다) */
+  const [guestbookNearby, setGuestbookNearby] = useState(false);
+  const [guestbookOpen, setGuestbookOpen] = useState(false);
   const [fishing, setFishing] = useState(false);
   /** 온천: 둘레에 서 있으면 near(목욕 버튼), 물 안이면 in(나오기 버튼) */
   const [bath, setBath] = useState<"near" | "in" | null>(null);
@@ -1224,6 +1289,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
 
     const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     outfitRef.current = loadOutfit();
+    profileRef.current = loadLobbyProfile();
     // 캔버스는 쓰는 굵기의 폰트를 스스로 내려받지 않아서, 안 받아 둔 굵기는 대체 폰트로 그려진다
     for (const weight of [500, 600, 700]) document.fonts.load(`${weight} 13px ${CANVAS_FONT}`, "가A").catch(() => {});
     setFishInventory(loadFishInventory());
@@ -1238,6 +1304,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
       sprites.set(`punch-${direction}`, loadImage(`${CHARACTER_BASE}/capybara-punch-${direction}.webp`));
     }
     sprites.set("stun", loadImage(`${CHARACTER_BASE}/capybara-stun.webp`));
+    for (const n of [1, 2] as const) sprites.set(`sleep-${n}`, loadImage(`${CHARACTER_BASE}/capybara-sleep-${n}.webp`));
     for (const n of [1, 2] as const) sprites.set(`eat-${n}`, loadImage(`${CHARACTER_BASE}/capybara-eating-${n}.webp`));
     for (const n of [1, 2, 3] as const) {
       sprites.set(`scratch-${n}`, loadImage(`${CHARACTER_BASE}/capybara-scratch-${n}.webp`));
@@ -1360,6 +1427,8 @@ export function Lobby({ games }: { games: DoorGame[] }) {
       pose: "stand" as Pose,
       sitting: false,
       seatIndex: -1,
+      /** 앉은 시각. SLEEP_AFTER_MS가 지나면 잠든다 */
+      sitSince: 0,
       walkDist: 0,
       /** 앉기·일어나기 폴짝 애니메이션 시작점 (그림만 옮기고 실제 위치는 바로 바뀐다) */
       hop: { fromX: 0, fromY: 0, start: -Infinity },
@@ -1394,9 +1463,14 @@ export function Lobby({ games }: { games: DoorGame[] }) {
 
     const nearestDoor = () => world.doors.find((door) => Math.hypot(door.x - me.x, door.y - me.y) < DOOR_RADIUS) ?? null;
     const nearestSeat = () => world.seats.findIndex((seat) => Math.hypot(seat.seatX - me.x, seat.standY - me.y) < SEAT_REACH);
-    const seatTaken = (index: number) => {
+    const nearGuestbook = () => Math.hypot(world.guestbook.x - me.x, world.guestbook.y - me.y) < GUESTBOOK_REACH;
+    /** 통나무 두 자리 중 비어 있는 나와 가까운 자리의 x. 둘 다 찼으면 null */
+    const freeSpot = (index: number) => {
       const seat = world.seats[index];
-      return [...remotes.values()].some((remote) => remote.sitting && Math.hypot(remote.x - seat.seatX, remote.y - seat.seatY) < 16);
+      const free = seat.spots.filter(
+        (spotX) => ![...remotes.values()].some((remote) => remote.sitting && Math.hypot(remote.x - spotX, remote.y - seat.seatY) < 16),
+      );
+      return free.sort((a, b) => Math.abs(a - me.x) - Math.abs(b - me.x))[0] ?? null;
     };
     const startHop = () => {
       me.hop = { fromX: me.x, fromY: me.y, start: performance.now() };
@@ -1404,8 +1478,8 @@ export function Lobby({ games }: { games: DoorGame[] }) {
     const standUp = () => {
       const seat = world.seats[me.seatIndex];
       if (seat) {
+        // 앉았던 자리 바로 앞으로 내려선다
         startHop();
-        me.x = seat.seatX;
         me.y = seat.standY;
       }
       me.sitting = false;
@@ -1450,6 +1524,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
     let shownSeat = false;
     let shownBath: typeof bath = null;
     let shownWater = false;
+    let shownGuestbook = false;
     let shownFishing = false;
     let shownStunned = false;
     // 내 캐릭터 동작 프레임이 바뀌는 순간에만 효과음을 내려고 지난 프레임을 기억한다
@@ -1565,8 +1640,8 @@ export function Lobby({ games }: { games: DoorGame[] }) {
     resize();
 
     const onKeyDown = (event: KeyboardEvent) => {
-      // 채팅 입력 중엔 WASD·F·Space가 글자로 들어가야 한다
-      if (event.target instanceof HTMLInputElement) return;
+      // 채팅·방명록 입력 중엔 WASD·F·Space가 글자로 들어가야 한다
+      if (event.target instanceof HTMLElement && event.target.closest("input, textarea, [contenteditable]")) return;
       // \ 키 조작법 창은 KeyboardGuide가 연다. 여는 순간 처음 안내 글은 치운다
       if (isShortcutKey(event, "Backslash")) {
         setNotice("");
@@ -1590,7 +1665,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
         event.preventDefault();
         if (!event.repeat) {
           spaceRequest.current = true;
-          flashButton(sitButtonRef.current ?? bathButtonRef.current ?? fishButtonRef.current);
+          flashButton(sitButtonRef.current ?? bathButtonRef.current ?? fishButtonRef.current ?? guestbookButtonRef.current);
         }
       } else if (event.code === "Enter") {
         const door = nearestDoor();
@@ -1655,6 +1730,9 @@ export function Lobby({ games }: { games: DoorGame[] }) {
     /** 마지막으로 보낸 위치·방향·앉기·옷. 같으면 HEARTBEAT_MS가 지날 때까지 다시 보내지 않는다 */
     let lastSentKey = "";
     let lastSentAt = -Infinity;
+    /** 마지막으로 보낸 내 이름과 그 이름을 처음 보낸 시각. 서버가 거절했는지 NAME_CONFIRM_MS 뒤에 확인한다 */
+    let lastSentName = "";
+    let nameSentAt = -Infinity;
 
     const send = () => {
       if (!socket || socket.readyState !== WebSocket.OPEN || socket.bufferedAmount > MAX_BUFFERED_BYTES) return;
@@ -1671,7 +1749,8 @@ export function Lobby({ games }: { games: DoorGame[] }) {
         lastChatAt.current = now;
       }
       const outfit = outfitRef.current;
-      const key = `${me.x},${me.y},${me.facing},${me.sitting},${JSON.stringify(outfit)}`;
+      const profile = profileRef.current;
+      const key = `${me.x},${me.y},${me.facing},${me.sitting},${JSON.stringify(outfit)},${profile.name}`;
       if (!attackQueued && chatQueued === null && key === lastSentKey && now - lastSentAt < HEARTBEAT_MS) return;
       const request: PresenceRequest = {
         token,
@@ -1682,17 +1761,25 @@ export function Lobby({ games }: { games: DoorGame[] }) {
         attack: attackQueued,
         outfit,
         ...(chatQueued !== null && { chat: chatQueued }),
+        // 서버가 받아들인 채팅·이모티콘·낚시를 이 프로필 id로 이력에 남긴다
+        ...(profile.id && { profileId: profile.id }),
+        ...(profile.name && { name: profile.name }),
       };
       attackQueued = false;
       chatQueued = null;
       lastSentKey = key;
       lastSentAt = now;
+      if (profile.name !== lastSentName) {
+        lastSentName = profile.name;
+        nameSentAt = now;
+      }
       socket.send(JSON.stringify(request));
     };
 
     const receive = (data: Partial<LobbyMessage>) => {
       if (!data.you || !Array.isArray(data.players)) return;
       const received = performance.now();
+      if (me.name !== data.you.name) setMyName(data.you.name);
       me.name = data.you.name;
 
       if (data.you.stunMs > 0) {
@@ -1743,6 +1830,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
           pushSnapshot(remote.snapshots, player.x, player.y, received, LOBBY_TICK_MS);
           remote.seenAt = received;
           remote.facing = player.facing;
+          if (player.sitting && !remote.sitting) remote.sitSince = received;
           remote.sitting = player.sitting;
           remote.outfit = player.outfit ?? {};
           remote.stunUntil = stunUntil;
@@ -1762,6 +1850,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
             movedAt: -Infinity,
             facing: player.facing,
             sitting: player.sitting,
+            sitSince: received,
             walkDist: 0,
             idleMs: 0,
             stunUntil,
@@ -1886,6 +1975,8 @@ export function Lobby({ games }: { games: DoorGame[] }) {
           leaveBath();
         } else if (nearestSeat() < 0 && nearSpring()) {
           enterBath();
+        } else if (nearGuestbook()) {
+          setGuestbookOpen(true);
         } else if (nearestSeat() < 0 && water) {
           // 한 번 던지면 멈출 때까지 입질마다 알아서 당기고 다시 던진다 (아래 게임 루프)
           castLine(water, now);
@@ -1893,17 +1984,22 @@ export function Lobby({ games }: { games: DoorGame[] }) {
           setAutoFishing(true);
         } else {
           const index = nearestSeat();
-          if (index >= 0 && !seatTaken(index)) {
-            const seat = world.seats[index];
+          const spotX = index >= 0 ? freeSpot(index) : null;
+          if (spotX !== null) {
             startHop();
-            me.x = seat.seatX;
-            me.y = seat.seatY;
+            me.x = spotX;
+            me.y = world.seats[index].seatY;
             me.facing = "down";
             me.sitting = true;
             me.seatIndex = index;
+            me.sitSince = now;
             playSound("sit", settingsRef.current);
           } else {
-            showNotice(index >= 0 ? "누가 이미 앉아 있어요" : "통나무 의자 앞에서 앉고, 온천 앞에서 목욕하고, 물가에서 낚시할 수 있어요");
+            showNotice(
+              index >= 0
+                ? "통나무 두 자리가 다 찼어요"
+                : "통나무 의자 앞에서 앉고, 온천 앞에서 목욕하고, 물가에서 낚시하고, 게시판 앞에서 방명록을 쓸 수 있어요",
+            );
           }
         }
       }
@@ -1921,6 +2017,14 @@ export function Lobby({ games }: { games: DoorGame[] }) {
           send();
           playSound("swing", settingsRef.current);
         }
+      }
+      // 바꾼 이름을 보냈는데 한참 지나도 이름표가 그대로면 접속 중인 다른 사람이 쓰는 이름이라 서버가 거절한 것이다.
+      // 거절된 이름은 지워서 계속 다시 보내지 않는다 (서버는 틱에 바뀐 게 없으면 메시지를 안 보내서 응답 대신 시간으로 판단)
+      const wantedName = profileRef.current.name;
+      if (wantedName && me.name && me.name !== wantedName && nameSentAt > 0 && now - nameSentAt > NAME_CONFIRM_MS) {
+        profileRef.current = { ...profileRef.current, name: "" };
+        saveLobbyProfile(profileRef.current);
+        showNotice(`“${wantedName}” 이름은 다른 친구가 쓰고 있어요`, 2500);
       }
       if (chatRequest.current !== null) {
         me.chat = chatRequest.current;
@@ -2051,6 +2155,8 @@ export function Lobby({ games }: { games: DoorGame[] }) {
       const waterHere =
         !fishingActive && !me.sitting && !seatHere && bathHere === null && nearestWater(tileAt, me.x, me.y, FISH_REACH) !== null;
       if (waterHere !== shownWater) setWaterNearby((shownWater = waterHere));
+      const guestbookHere = !me.sitting && !fishingActive && nearGuestbook();
+      if (guestbookHere !== shownGuestbook) setGuestbookNearby((shownGuestbook = guestbookHere));
       if (fishingActive !== shownFishing) setFishing((shownFishing = fishingActive));
       if (isStunned !== shownStunned) setStunned((shownStunned = isStunned));
 
@@ -2191,6 +2297,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
         const look: CapybaraLook = {
           pose: remote.walkDist > 0 ? walkPose(remote.walkDist) : "stand",
           sitting: remote.sitting,
+          sleeping: remote.sitting && now - remote.sitSince >= SLEEP_AFTER_MS,
           stunned: now < remote.stunUntil,
           attack: attackProgress(remote.attackUntil, now),
           stride: remote.walkDist,
@@ -2215,6 +2322,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
       const myLook: CapybaraLook = {
         pose: me.pose,
         sitting: me.sitting,
+        sleeping: me.sitting && now - me.sitSince >= SLEEP_AFTER_MS,
         stunned: isStunned,
         attack: attacking ? attackProgress(me.attackUntil, now) : -1,
         stride: me.walkDist,
@@ -2398,7 +2506,10 @@ export function Lobby({ games }: { games: DoorGame[] }) {
     };
   }, [world]);
 
-  const status = stunned ? "기절! 2초 동안 못 움직여요" : notice || (activeDoor ? `${activeDoor.title} 들어가는 중… (Enter로 바로)` : "");
+  const status = stunned
+    ? "기절! 2초 동안 못 움직여요"
+    : notice ||
+      (activeDoor ? `${activeDoor.title} 들어가는 중… (Enter로 바로)` : guestbookNearby && !guestbookOpen ? "Space로 방명록 보기" : "");
 
   const sendChat = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -2431,6 +2542,12 @@ export function Lobby({ games }: { games: DoorGame[] }) {
     saveLobbySettings(next);
     // 켤 때 짧게 한 번 울린다 — 방금 켠 소리를 확인하고, iOS는 누른 순간 소리를 내야 오디오가 풀린다
     if (!next.muted && next.volume > 0 && (settings.muted || settings.volume <= 0)) playSound("chat", next);
+  };
+
+  /** 이름 바꾸기: 저장해 두면 게임 루프가 다음 동기화에 서버로 보낸다. 이름표는 서버가 받아들인 뒤 바뀐다 */
+  const rename = (name: string) => {
+    profileRef.current = { ...profileRef.current, name };
+    saveLobbyProfile(profileRef.current);
   };
 
   return (
@@ -2468,7 +2585,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
         </p>
       </form>
 
-      {/* 오른쪽 위 세로 줄: 카피바라 옷장 → 낚시 가방 → 효과음. 설정 버튼은 나중에 이 줄에 다시 넣는다 */}
+      {/* 오른쪽 위 세로 줄: 카피바라 옷장 → 낚시 가방 → 효과음 → 이름 바꾸기. 설정 버튼은 나중에 이 줄에 다시 넣는다 */}
       {/* 효과음 버튼의 헤드폰이 원 밖으로 삐져나오는 만큼 위(옷장)·오른쪽(화면 끝)을 띄운다. 두 버튼은 앉기·때리기와 같은 크기(모바일 size-14, md 이상 size-18) */}
       <div className="absolute right-5 top-[max(0.75rem,env(safe-area-inset-top))] flex flex-col items-center gap-6">
         <Wardrobe
@@ -2484,6 +2601,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
           }}
         />
         <SoundToggle settings={settings} onChange={updateSettings} />
+        <ProfileName name={myName} onRename={rename} />
       </div>
 
       {/* 왼쪽 아래 미니맵: 보기 전용이라 터치는 아래 로비 캔버스(조이스틱)로 지나간다 */}
@@ -2505,6 +2623,8 @@ export function Lobby({ games }: { games: DoorGame[] }) {
       </div>
 
       <KeyboardGuide />
+
+      <GuestbookPanel open={guestbookOpen} onClose={() => setGuestbookOpen(false)} />
 
       {/* 터치 조이스틱: 누른 자리에 나타난다. 위치는 게임 루프가 DOM에 직접 쓴다 */}
       <div ref={joystickRef} hidden aria-hidden="true" className="pointer-events-none fixed left-0 top-0 size-32">
@@ -2563,22 +2683,42 @@ export function Lobby({ games }: { games: DoorGame[] }) {
               aria-keyshortcuts="Space"
               className="group flex flex-col items-center gap-0.5 rounded-full focus-visible:outline-2 focus-visible:outline-primary"
             >
-              {/* 누르면 그림과 아이콘이 같이 줄어들게 감싼 쪽에 scale을 준다. 빈 나무 테 안에 욕조 아이콘을 늘 띄운다 */}
+              {/* 나무 테(방명록·옷장과 같은 그림) 안 펠트 판 위에 욕조 아이콘. 누르면 그림과 아이콘이 같이 줄어든다 */}
               <span className="relative block size-14 transition-transform md:size-18 duration-100 motion-safe:group-active:scale-90">
-                <span aria-hidden className="absolute inset-[14%] flex items-center justify-center rounded-full bg-overlay text-white">
-                  <Bath className="size-7" />
+                <span
+                  aria-hidden
+                  className={cn(
+                    "absolute inset-[16%] flex items-center justify-center rounded-full bg-capybara-light text-capybara-dark",
+                    bath === "in" && "brightness-90",
+                  )}
+                >
+                  <Bath className="size-6 md:size-7" />
                 </span>
-                <NextImage
-                  src={FRAME_SRC}
-                  alt=""
-                  width={256}
-                  height={256}
-                  unoptimized
-                  draggable={false}
-                  className={cn("relative size-full drop-shadow-md", bath === "in" && "brightness-90")}
-                />
+                <NextImage src={FRAME_SRC} alt="" fill unoptimized sizes="72px" draggable={false} className="drop-shadow-md" />
               </span>
               <span className="rounded-full bg-card/85 px-2 py-0.5 text-caption-3 font-semibold text-text-strong">{bath === "in" ? "나오기" : "목욕"}</span>
+            </button>
+          )}
+          {guestbookNearby && (
+            <button
+              ref={guestbookButtonRef}
+              type="button"
+              onClick={() => {
+                spaceRequest.current = true;
+              }}
+              aria-expanded={guestbookOpen}
+              aria-label="방명록 보기"
+              aria-keyshortcuts="Space"
+              className="group flex flex-col items-center gap-0.5 rounded-full focus-visible:outline-2 focus-visible:outline-primary"
+            >
+              {/* 나무 테(옷장·효과음과 같은 그림) 안 펠트 판 위에 공책 아이콘 */}
+              <span className="relative block size-14 transition-transform md:size-18 duration-100 motion-safe:group-active:scale-90">
+                <span aria-hidden className="absolute inset-[16%] flex items-center justify-center rounded-full bg-capybara-light text-capybara-dark">
+                  <NotebookPen className="size-6 md:size-7" />
+                </span>
+                <NextImage src={FRAME_SRC} alt="" fill unoptimized sizes="72px" draggable={false} className="drop-shadow-md" />
+              </span>
+              <span className="rounded-full bg-card/85 px-2 py-0.5 text-caption-3 font-semibold text-text-strong">방명록</span>
             </button>
           )}
           {(waterNearby || fishing || autoFishing) && (

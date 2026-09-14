@@ -11,6 +11,12 @@ export const LOBBY_SETTINGS_STORAGE_KEY = "ggpli:lobby-settings";
 export const LOBBY_SETTINGS_CHANGE_EVENT = "ggpli:lobby-settings-change";
 /** 로비 낚시로 낚은 것별 횟수 (lib/lobby/fishing.ts). 이 기기에만 저장한다 */
 export const FISH_INVENTORY_STORAGE_KEY = "ggpli:lobby-fish-inventory";
+/** 로비 프로필(기기별 id·사용자가 정한 이름표, lib/lobby/profile.ts). 이 기기에만 저장한다 */
+export const LOBBY_PROFILE_STORAGE_KEY = "ggpli:lobby-profile";
+/** 이름표 최대 글자 수(보이는 글자 단위). 백엔드 src/lobby/constants.ts NAME_MAX와 같아야 한다 */
+export const NAME_MAX = 12;
+/** 이름을 바꿔 보낸 뒤 이 시간이 지나도 서버 이름표가 그대로면 다른 사람이 쓰는 이름이라 거절된 것으로 본다 */
+export const NAME_CONFIRM_MS = 1500;
 
 /**
  * 다른 유저는 이만큼 과거 위치를 그린다. WebSocket 틱(33ms, presence.ts LOBBY_TICK_MS) 두 번치라 한 틱이 늦게 와도 멈칫하지 않는다
@@ -43,6 +49,8 @@ export const MINIMAP_COLORS: Record<Tile, readonly [number, number, number]> = {
   log: [110, 63, 34],
   lantern: [140, 191, 63],
   reeds: [90, 130, 50],
+  // 방명록 게시판은 미니맵에서도 찾기 쉽게 밝은 나무색
+  guestbook: [255, 222, 140],
 };
 /** 유저마다 들고 있는 과거 위치 개수 */
 export const MAX_SNAPSHOTS = 8;

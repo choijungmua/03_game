@@ -50,6 +50,7 @@ export const TILES = [
   "log", // 통나무 의자
   "lantern",
   "reeds",
+  "guestbook", // 방명록 게시판
 ] as const;
 export type Tile = (typeof TILES)[number];
 const WALKABLE: ReadonlySet<Tile> = new Set<Tile>(["meadow", "grass", "mud", "deck"]);
@@ -101,12 +102,14 @@ export interface Seat {
   /** 앉았을 때 엉덩이 위치(px) */
   seatX: number;
   seatY: number;
+  /** 통나무 하나에 두 마리가 앉는 왼쪽·오른쪽 자리의 엉덩이 x(px) */
+  spots: readonly [number, number];
   /** 일어나면 서는 위치(px) — 통나무 바로 앞 */
   standY: number;
 }
 
 export interface Prop {
-  kind: "lantern" | "reeds";
+  kind: "lantern" | "reeds" | "guestbook-board";
   tx: number;
   ty: number;
 }
@@ -118,6 +121,8 @@ export interface World {
   seats: Seat[];
   props: Prop[];
   spring: { x: number; y: number };
+  /** 방명록 게시판 바로 앞 월드 좌표(px). 여기 가까이서 Space를 누르면 방명록이 열린다 */
+  guestbook: { x: number; y: number };
   /** 마을 안쪽 경계(타일): x ∈ [-halfWidth, halfWidth-1], y ∈ [top, bottom] */
   village: { halfWidth: number; top: number; bottom: number };
   spawn: { x: number; y: number };
@@ -230,7 +235,13 @@ export function createWorld(seed: string, games: readonly DoorGame[]): World {
   for (const [leftTx, ty] of seatSpots) {
     place(leftTx, ty, "log");
     place(leftTx + 1, ty, "log");
-    seats.push({ seatX: (leftTx + 1) * TILE, seatY: (ty + 0.62) * TILE, standY: (ty + 1.6) * TILE });
+    const seatX = (leftTx + 1) * TILE;
+    seats.push({
+      seatX,
+      seatY: (ty + 0.62) * TILE,
+      spots: [seatX - TILE * 0.55, seatX + TILE * 0.55],
+      standY: (ty + 1.6) * TILE,
+    });
   }
   const lanterns: [number, number][] = [
     [-W + 1, TOP + 1],
@@ -257,6 +268,11 @@ export function createWorld(seed: string, games: readonly DoorGame[]): World {
     place(tx, ty, "reeds");
     props.push({ kind: "reeds", tx, ty });
   }
+  // 방명록 게시판: 스폰에서 가운데 오두막으로 올라가는 데크 갈래길 왼쪽 길가
+  const [guestbookTx, guestbookTy] = [-2, 5];
+  place(guestbookTx, guestbookTy, "guestbook");
+  props.push({ kind: "guestbook-board", tx: guestbookTx, ty: guestbookTy });
+  const guestbook = { x: (guestbookTx + 0.5) * TILE, y: (guestbookTy + 1.5) * TILE };
 
   function tileAt(tx: number, ty: number): Tile {
     const cx = tx + 0.5;
@@ -304,6 +320,7 @@ export function createWorld(seed: string, games: readonly DoorGame[]): World {
     seats,
     props,
     spring: { x: 0, y: SPRING_TY * TILE },
+    guestbook,
     village: { halfWidth: W, top: TOP + 1, bottom: BOTTOM - 1 },
     spawn: { x: 0, y: (DECK_ROWS[0] + 0.5) * TILE },
     tileAt,

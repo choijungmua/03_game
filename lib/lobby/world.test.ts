@@ -54,8 +54,11 @@ describe("카피바라 습지 마을", () => {
     expect(tileUnder(world, world.spring.x, world.spring.y)).toBe("spring");
     expect(world.seats).toHaveLength(4);
     for (const seat of world.seats) {
-      expect(tileUnder(world, seat.seatX, seat.seatY)).toBe("log");
-      expect(isBlockingTile(tileUnder(world, seat.seatX, seat.standY))).toBe(false);
+      // 두 자리 모두 통나무 위이고, 일어나면 그 자리 바로 앞에 선다
+      for (const spotX of seat.spots) {
+        expect(tileUnder(world, spotX, seat.seatY)).toBe("log");
+        expect(isBlockingTile(tileUnder(world, spotX, seat.standY))).toBe(false);
+      }
     }
   });
 
@@ -77,6 +80,16 @@ describe("카피바라 습지 마을", () => {
       const y = spring.y + Math.sin(angle) * BATH_RY * TILE;
       expect(tileUnder(world, x, y)).toBe("spring");
     }
+  });
+
+  it("방명록 게시판은 막히고, 게시판 앞(Space로 여는 자리)은 스폰 데크라 걸을 수 있다", () => {
+    const world = createWorld(LOBBY_SEED, GAMES);
+    const { x, y } = world.guestbook;
+    expect(tileUnder(world, x, y - TILE)).toBe("guestbook");
+    expect(isBlockingTile("guestbook")).toBe(true);
+    expect(tileUnder(world, x, y)).toBe("deck");
+    expect(Math.abs(y - world.spawn.y)).toBeLessThan(TILE);
+    expect(world.props).toContainEqual({ kind: "guestbook-board", tx: Math.floor(x / TILE), ty: Math.floor(y / TILE) - 1 });
   });
 
   it("마을은 갈대 울타리로 막혀 있고 동·서·남 입구로만 나간다", () => {
