@@ -81,3 +81,22 @@ describe("CapybaraRoom 판", () => {
     expect(screen.getByRole("button", { name: "1행 1열 빈 자리" })).toBeDisabled();
   });
 });
+
+describe("CapybaraRoom 뒤로 버튼", () => {
+  it("대국 중에는 나가기 전에 확인 창을 띄운다", () => {
+    renderRoom(viewAs("white"));
+    fireEvent.click(screen.getByRole("button", { name: "로비로 돌아가기" }));
+    expect(screen.getByText("나가면 상대가 기다리게 돼요")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "나가기" })).toHaveAttribute("href", "/");
+  });
+
+  it("관전자는 확인 없이 바로 로비로 간다", () => {
+    renderRoom(viewAs(null));
+    expect(screen.getByRole("link", { name: "로비로 돌아가기" })).toHaveAttribute("href", "/");
+  });
+
+  it("상대를 기다리는 중에는 확인 없이 바로 로비로 간다", () => {
+    renderRoom({ ...viewAs("black"), joined: { black: true, white: false } });
+    expect(screen.getByRole("link", { name: "로비로 돌아가기" })).toHaveAttribute("href", "/");
+  });
+});
