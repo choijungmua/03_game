@@ -108,8 +108,8 @@ export function Wardrobe({ onChange }: { onChange: (outfit: Outfit) => void }) {
         aria-label="카피바라 옷 입히기"
         aria-expanded={open}
         aria-keyshortcuts="P"
-        // 크기는 오른쪽 아래 앉기·때리기 버튼(size-18)과 같게
-        className="group relative size-18 overflow-hidden rounded-full bg-card/90 shadow-md backdrop-blur focus-visible:outline-2 focus-visible:outline-primary"
+        // 크기는 오른쪽 아래 앉기·때리기 버튼(모바일 size-14, md 이상 size-18)과 같게
+        className="group relative size-14 md:size-18 overflow-hidden rounded-full bg-card/90 shadow-md backdrop-blur focus-visible:outline-2 focus-visible:outline-primary"
       >
         {/* 전신 이미지를 얼굴 쪽으로 확대해 얼굴만 보이게 한다 */}
         <NextImage src={CAPYBARA_SRC} alt="" width={144} height={144} unoptimized className="size-full origin-[50%_30%] scale-[1.9]" />
