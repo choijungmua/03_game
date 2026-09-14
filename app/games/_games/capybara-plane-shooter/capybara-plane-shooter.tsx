@@ -553,31 +553,33 @@ export function CapybaraPlaneShooter() {
         >
           <canvas ref={canvasRef} aria-hidden="true" className="absolute inset-0 size-full" />
           {hud && (
-            <div className="pointer-events-none absolute inset-x-0 top-0 flex items-start justify-between gap-3 px-16 pt-[max(1rem,env(safe-area-inset-top))]">
-              <div className="flex flex-col gap-1">
-                <p className="flex gap-0.5" aria-label={`체력 ${hud.hp}/${MAX_HP}`}>
-                  {Array.from({ length: MAX_HP }, (_, index) => (
-                    <Heart
-                      key={index}
-                      aria-hidden="true"
-                      className={cn("size-5 text-destructive", index < hud.hp ? "fill-current" : "opacity-40")}
-                    />
-                  ))}
-                </p>
-                <p className="text-caption-2 font-semibold">{ITEMS[hud.weapon].label}</p>
+            <div className="pointer-events-none absolute inset-x-0 top-0 flex flex-col items-center gap-1 pt-[max(1rem,env(safe-area-inset-top))]">
+              <div className="flex min-h-11 w-full items-start justify-between gap-3 px-16">
+                <div className="flex flex-col gap-1">
+                  <p className="flex gap-0.5" aria-label={`체력 ${hud.hp}/${MAX_HP}`}>
+                    {Array.from({ length: MAX_HP }, (_, index) => (
+                      <Heart
+                        key={index}
+                        aria-hidden="true"
+                        className={cn("size-5 text-destructive", index < hud.hp ? "fill-current" : "opacity-40")}
+                      />
+                    ))}
+                  </p>
+                  <p className="text-caption-2 font-semibold whitespace-nowrap">{ITEMS[hud.weapon].label}</p>
+                </div>
+                <p className="text-title-3 font-bold tabular-nums">{formatScore(hud.score)}</p>
               </div>
-              <div className="flex flex-col items-center gap-1">
-                <p className="rounded-full bg-black/30 px-3 py-1 text-caption-1 font-bold tabular-nums">
+              <div className="flex flex-col items-center gap-1 px-4">
+                <p className="whitespace-nowrap rounded-full bg-black/30 px-3 py-1 text-caption-1 font-bold tabular-nums">
                   스테이지 {hud.stage} ·{" "}
                   {hud.bossLeftSec !== null ? `보스 버티기 ${hud.bossLeftSec}초` : `남은 적 ${hud.killsLeft}`}
                 </p>
                 {hud.bossPattern && (
-                  <p className="rounded-full bg-destructive/85 px-2.5 py-0.5 text-caption-2 font-bold text-white">
+                  <p className="whitespace-nowrap rounded-full bg-destructive/85 px-2.5 py-0.5 text-caption-2 font-bold text-white">
                     {hud.bossPattern}
                   </p>
                 )}
               </div>
-              <p className="text-title-3 font-bold tabular-nums">{formatScore(hud.score)}</p>
             </div>
           )}
         </div>
