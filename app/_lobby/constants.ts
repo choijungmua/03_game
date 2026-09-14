@@ -2,7 +2,9 @@
 export const BUBBLE_TEXT_WIDTH = 160;
 /** 말풍선 줄 높이(px) */
 export const BUBBLE_LINE = 16;
-/** 말풍선 안 카피바라 이모티콘 그림 크기(px) */
+/** 말풍선 아래로 비치는 두께(px). 몸통 밑에 어두운 판을 한 겹 더 깔아 도톰해 보이게 한다 */
+export const BUBBLE_DEPTH = 2;
+/** 머리 위에 띄우는 카피바라 이모티콘 그림 크기(px) */
 export const EMOTE_SIZE = 60;
 /** 채팅 알약의 이모티콘 버튼에 보이는 이모티콘 번호 (선글라스 카피바라) */
 export const EMOTE_PICKER_ICON = 3;
