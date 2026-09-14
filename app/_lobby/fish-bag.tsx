@@ -8,7 +8,7 @@ import { cn } from "@/lib";
 import { FISH_CATCHES } from "@/lib/lobby/constants";
 import type { FishInventory } from "@/lib/lobby/fishing";
 
-import { FRAME_SRC } from "./constants";
+import { BAG_SRC } from "./constants";
 import { flashButton, isShortcutKey } from "./shortcut";
 
 /** 오른쪽 위 가방 버튼. 누르면 그 자리에서 커지며 지금까지 낚은 것들이 보인다 (옷장과 같은 방식) */
@@ -60,10 +60,16 @@ export function FishBag({ inventory }: { inventory: FishInventory }) {
         aria-expanded={open}
         aria-keyshortcuts="I"
         // 크기는 옷장·앉기·때리기 버튼(모바일 size-14, md 이상 size-18)과 같게
-        className="group relative flex size-14 items-center justify-center rounded-full bg-card/90 text-text-strong shadow-md backdrop-blur hover:text-primary focus-visible:outline-2 focus-visible:outline-primary data-flash:text-primary md:size-18"
+        className="group relative block size-14 rounded-full focus-visible:outline-2 focus-visible:outline-primary md:size-18"
       >
-        <Backpack className="size-6 md:size-7" aria-hidden />
-        <NextImage src={FRAME_SRC} alt="" fill unoptimized sizes="72px" draggable={false} />
+        <NextImage src={BAG_SRC} alt="" width={256} height={256} unoptimized draggable={false} className="size-full drop-shadow-md" />
+        {/* 마우스를 올리거나 키보드 포커스면 나무 테 안쪽 판 위에 가방 아이콘 (옷장·앉기·때리기와 같은 방식) */}
+        <span
+          aria-hidden
+          className="absolute inset-[16%] flex items-center justify-center rounded-full bg-overlay text-white opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-visible:opacity-100 group-data-flash:opacity-100 motion-reduce:transition-none"
+        >
+          <Backpack className="size-6 md:size-7" />
+        </span>
         {total > 0 && (
           <span
             aria-hidden
