@@ -246,6 +246,18 @@ describe("useRoom", () => {
     await until(() => hook.result.current.error.startsWith("복사하지 못했어요"));
   });
 
+  it("방 만들기 응답이 오기 전에 게임 페이지를 떠났으면(로비로 뒤로 가기) 그 페이지 주소에 ?code를 붙이지 않는다", async () => {
+    fakeServer();
+    const { result } = renderRoom();
+    // 방 만들기를 누르고 응답이 오기 전에 로비(/)로 나간 상태
+    window.history.replaceState(null, "", "/");
+    act(() => result.current.create());
+    await until(() => result.current.view !== null);
+
+    expect(window.location.pathname).toBe("/");
+    expect(window.location.search).toBe("");
+  });
+
   it("두 명이 이미 들어간 방이면 관전으로 볼 수 있다", async () => {
     const { server } = fakeServer();
     server.create();

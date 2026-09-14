@@ -30,9 +30,11 @@ export function loadFishInventory(): FishInventory {
 }
 
 /** 한 번 더 낚은 것으로 저장하고 새 가방을 돌려준다 */
-export function recordCatch(name: FishCatch): FishInventory {
+export function recordCatch(name: FishCatch, delta = 1): FishInventory {
   const next = loadFishInventory();
-  next[name] = (next[name] ?? 0) + 1;
+  const count = (next[name] ?? 0) + delta;
+  if (count > 0) next[name] = count;
+  else delete next[name];
   try {
     localStorage.setItem(FISH_INVENTORY_STORAGE_KEY, JSON.stringify(next));
   } catch {}

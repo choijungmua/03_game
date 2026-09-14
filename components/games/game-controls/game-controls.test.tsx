@@ -160,6 +160,29 @@ describe("GameControls", () => {
     expect(sound).toHaveAttribute("aria-pressed", "false");
   });
 
+  it("음량 0으로 저장돼 있어도(로비 슬라이더를 0으로 내림) 효과음 버튼으로 켜면 들리는 음량으로 켜진다", () => {
+    window.localStorage.setItem("ggpli:lobby-settings", JSON.stringify({ muted: false, volume: 0, showHelp: true }));
+    render(<GameControls />);
+
+    const sound = screen.getByRole("button", { name: "효과음" });
+    expect(sound).toHaveAttribute("aria-pressed", "false");
+
+    fireEvent.click(sound);
+    expect(sound).toHaveAttribute("aria-pressed", "true");
+    expect(JSON.parse(window.localStorage.getItem("ggpli:lobby-settings") ?? "{}")).toMatchObject({ muted: false, volume: 0.6 });
+  });
+
+  it("멈춤 창 슬라이더를 0으로 내리면 끄되 음량은 남겨, 효과음 버튼으로 다시 켜면 그 음량이다", () => {
+    window.localStorage.setItem("ggpli:lobby-settings", JSON.stringify({ muted: false, volume: 0.4, showHelp: true }));
+    render(<GameControls pause={pauseProps(true)} />);
+
+    fireEvent.change(screen.getByRole("slider", { name: /효과음 크기/ }), { target: { value: "0" } });
+    expect(JSON.parse(window.localStorage.getItem("ggpli:lobby-settings") ?? "{}")).toMatchObject({ muted: true, volume: 0.4 });
+
+    fireEvent.click(screen.getByRole("button", { name: "효과음", hidden: true }));
+    expect(JSON.parse(window.localStorage.getItem("ggpli:lobby-settings") ?? "{}")).toMatchObject({ muted: false, volume: 0.4 });
+  });
+
   it("멈춤 창의 효과음 크기를 바꾸면 저장되고, 음소거였으면 소리도 켜진다", () => {
     window.localStorage.setItem("ggpli:lobby-settings", JSON.stringify({ muted: true, volume: 0.6, showHelp: true }));
     render(<GameControls pause={pauseProps(true)} />);

@@ -55,6 +55,27 @@ describe("ReactionTime", () => {
     vi.unstubAllGlobals();
   });
 
+  describe("플레이 중 스크롤", () => {
+    it("카운트다운·측정 중에는 페이지 스크롤과 브라우저 터치 제스처를 막고, 결과 화면에서 풀린다 — 누르다 화면이 밀리지 않게", async () => {
+      render(<ReactionTime />);
+      expect(getArea()).toHaveClass("touch-manipulation");
+
+      tap();
+      expect(document.documentElement.style.overflow).toBe("hidden");
+      expect(getArea()).toHaveClass("touch-none");
+
+      await advance(COUNTDOWN_STEP_MS * COUNTDOWN_VALUES.length);
+      expect(getArea()).toHaveAttribute("data-phase", "running");
+      expect(document.documentElement.style.overflow).toBe("hidden");
+
+      await advance(200);
+      tap();
+      expect(getArea()).toHaveAttribute("data-phase", "result");
+      expect(document.documentElement.style.overflow).toBe("");
+      expect(getArea()).toHaveClass("touch-manipulation");
+    });
+  });
+
   describe("시작 화면", () => {
     it("가운데에 시작 안내를 보여준다", () => {
       render(<ReactionTime />);
