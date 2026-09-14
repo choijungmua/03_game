@@ -53,9 +53,28 @@ export const SNAPSHOT_RESTART_MS = 500;
 export const FISH_BITE_MIN_MS = 1500;
 export const FISH_BITE_MAX_MS = 5000;
 /** 입질(찌가 쑥 들어감) 뒤 이 시간 안에 Space를 눌러야 낚인다 */
-export const FISH_BITE_WINDOW_MS = 900;
+export const FISH_BITE_WINDOW_MS = 1500;
 /** 발에서 이 거리(px, 1.5타일) 안에 물이 있으면 낚시할 수 있다 */
 export const FISH_REACH = 72;
+/** 낚싯대를 뒤로 젖혔다 휘둘러 찌가 날아가 물에 떨어지기까지 */
+export const FISH_CAST_MS = 600;
+/** 당긴 뒤 물고기가 물에서 버둥대다 머리 위로 끌려오기까지 (놓쳤으면 빈 찌가 돌아온다) */
+export const FISH_REEL_MS = 1400;
+/** 끌어올린 물고기를 머리 위에 들고 이름을 보여 주는 시간 */
+export const FISH_SHOW_MS = 1800;
+/** 자동 낚시: 입질 뒤 이만큼 있다가 당기고, 다 끝나면 이만큼 쉬었다 다시 던진다 */
+export const FISH_AUTO_REEL_MS = 400;
+export const FISH_AUTO_RECAST_MS = 700;
+/** 낚은 것 캔버스 그림: 몸 색, 길이(px) */
+export const FISH_LOOKS: Record<(typeof FISH_CATCHES)[number], { color: string; size: number }> = {
+  송사리: { color: "#b9c7cf", size: 20 },
+  붕어: { color: "#c9a36a", size: 28 },
+  메기: { color: "#6f6a55", size: 36 },
+  피라냐: { color: "#e0645c", size: 28 },
+  아로와나: { color: "#cfe0d4", size: 40 },
+  "황금 잉어": { color: "#f5c542", size: 34 },
+  "낡은 장화": { color: "#7a5230", size: 28 },
+};
 /** 낚이는 것들 (남미 습지 테마). 똑같은 확률로 하나 */
 export const FISH_CATCHES = ["송사리", "붕어", "메기", "피라냐", "아로와나", "황금 잉어", "낡은 장화"] as const;
 
@@ -114,8 +133,8 @@ export const SOUNDS: Record<LobbySound, readonly SoundLayer[]> = {
   // 휙 → 퐁당: 낚싯줄을 던지고 찌가 물에 떨어진다
   fishCast: [
     { kind: "noise", filter: "bandpass", q: 1, from: 1800, to: 600, ms: 180, level: 0.12 },
-    { at: 260, kind: "tone", wave: "sine", from: 900, to: 300, ms: 90, level: 0.14 },
-    { at: 260, kind: "noise", filter: "lowpass", q: 1, from: 1200, to: 300, ms: 120, level: 0.18 },
+    { at: 560, kind: "tone", wave: "sine", from: 900, to: 300, ms: 90, level: 0.14 },
+    { at: 560, kind: "noise", filter: "lowpass", q: 1, from: 1200, to: 300, ms: 120, level: 0.18 },
   ],
   // 톡톡: 찌가 쑥 들어가는 입질
   fishBite: [

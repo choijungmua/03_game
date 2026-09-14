@@ -33,16 +33,32 @@ import {
   DEFAULT_LOBBY_SETTINGS,
   FISH_BITE_MAX_MS,
   FISH_BITE_MIN_MS,
+  FISH_AUTO_RECAST_MS,
+  FISH_AUTO_REEL_MS,
   FISH_BITE_WINDOW_MS,
+  FISH_CAST_MS,
   FISH_CATCHES,
+  FISH_LOOKS,
   FISH_REACH,
+  FISH_REEL_MS,
+  FISH_SHOW_MS,
   MINIMAP_COLORS,
   MINIMAP_REFRESH_MS,
   MINIMAP_TILES,
   REMOTE_GONE_MS,
   REMOTE_RENDER_DELAY_MS,
 } from "@/lib/lobby/constants";
-import { type FishInventory, loadFishInventory, recordCatch } from "@/lib/lobby/fishing";
+import {
+  applyFishEvent,
+  type FishCatch,
+  type FishEvent,
+  type FishingLine,
+  type FishInventory,
+  fishChat,
+  loadFishInventory,
+  parseFishChat,
+  recordCatch,
+} from "@/lib/lobby/fishing";
 import { pushSnapshot, sampleSnapshots, type Snapshot } from "@/lib/lobby/interpolation";
 import { type LobbySettings, loadLobbySettings, playSound, saveLobbySettings } from "@/lib/lobby/settings";
 
@@ -51,6 +67,7 @@ import { CAPYBARA_EMOTES, emoteChat, emoteImage, parseEmoteChat } from "@/lib/ga
 import { BUBBLE_LINE, BUBBLE_TEXT_WIDTH, EMOTE_SIZE, FRAME_SRC, SITE_LINKS } from "./constants";
 import { EmotePicker } from "./emote-picker";
 import { FishBag } from "./fish-bag";
+import { KeyboardGuide } from "./keyboard-guide";
 import { SoundToggle } from "./lobby-settings";
 import {
   ATTACK_COOLDOWN_MS,
@@ -149,6 +166,8 @@ interface Remote {
   outfit: Outfit;
   chat: string;
   chatUntil: number;
+  /** 낚시 중이면 채팅으로 받은 동작(던지기·입질·당기기)으로 채운 줄 */
+  fishing: FishingLine | null;
 }
 
 interface Chunk {
@@ -731,6 +750,217 @@ function idleSprite(idleMs: number): IdleFrame | null {
 /** 대기 동작 한 바퀴가 끝나면 처음부터 다시 */
 const nextIdle = (idleMs: number, dt: number) => (idleMs + dt) % IDLE_CYCLE_MS;
 
+const clamp01 = (t: number) => Math.min(1, Math.max(0, t));
+const easeOut = (t: number) => 1 - (1 - t) * (1 - t);
+const lerp = (from: number, to: number, t: number) => from + (to - from) * t;
+/** 당긴 뒤 끌어올리기(낚았으면 머리 위에 들고 보여 주기까지)가 끝났는지 */
+const fishingDone = (line: FishingLine, now: number) => now > line.reelAt + FISH_REEL_MS + (line.catch ? FISH_SHOW_MS : 0);
+
+/** 물 위로 퍼지며 사라지는 물결 고리. progress가 0~1 밖이면 안 그린다 */
+function drawRipple(ctx: CanvasRenderingContext2D, x: number, y: number, progress: number) {
+  if (progress <= 0 || progress >= 1) return;
+  ctx.strokeStyle = `rgba(255,255,255,${0.75 * (1 - progress)})`;
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.ellipse(x, y + 3, 6 + progress * 20, 2.5 + progress * 8, 0, 0, Math.PI * 2);
+  ctx.stroke();
+}
+
+function drawBobber(ctx: CanvasRenderingContext2D, x: number, y: number) {
+  ctx.fillStyle = "#e5484d";
+  ctx.beginPath();
+  ctx.arc(x, y - 2, 4, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "#fff";
+  ctx.beginPath();
+  ctx.arc(x, y - 5, 2.2, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+/** 낚은 것 그림: 물고기는 꼬리·몸통·눈(입이 +x 쪽), 장화는 장화 모양. angle만큼 돌려 버둥대게 한다 */
+function drawCatch(ctx: CanvasRenderingContext2D, name: FishCatch, x: number, y: number, angle: number) {
+  const { color, size } = FISH_LOOKS[name];
+  const half = size / 2;
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(angle);
+  ctx.lineWidth = 2;
+  ctx.lineJoin = "round";
+  ctx.strokeStyle = "rgba(40,28,16,0.9)";
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  if (name === "낡은 장화") {
+    ctx.moveTo(-half * 0.7, -half * 0.9);
+    ctx.lineTo(half * 0.8, -half * 0.9);
+    ctx.lineTo(half * 0.8, half * 0.1);
+    ctx.lineTo(half * 0.2, half * 0.1);
+    ctx.lineTo(half * 0.2, half);
+    ctx.lineTo(-half * 0.7, half);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+  } else {
+    ctx.moveTo(-half * 0.7, 0);
+    ctx.lineTo(-half * 1.15, -half * 0.45);
+    ctx.lineTo(-half * 1.15, half * 0.45);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.ellipse(0, 0, half * 0.8, half * 0.42, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = "#fff";
+    ctx.beginPath();
+    ctx.arc(half * 0.45, -half * 0.1, Math.max(2, size * 0.08), 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#1f1a14";
+    ctx.beginPath();
+    ctx.arc(half * 0.5, -half * 0.1, Math.max(1, size * 0.04), 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
+/** 낚은 것 이름을 크게 담은 말풍선 */
+function drawCatchName(ctx: CanvasRenderingContext2D, name: FishCatch, x: number, bottom: number) {
+  const text = `${name}!`;
+  ctx.font = `700 15px ${CANVAS_FONT}`;
+  const top = fillBubble(ctx, x, bottom, Math.round(ctx.measureText(text).width + 24), 26, 13);
+  ctx.fillStyle = "#1f1a14";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(text, x, top + 13);
+}
+
+/** 물에 떠 있는 찌와 물결. 캐릭터보다 먼저(바닥 다음에) 그린다 */
+function drawFishingWater(ctx: CanvasRenderingContext2D, line: FishingLine, now: number, motion: boolean) {
+  const landAt = line.castAt + FISH_CAST_MS;
+  if (motion && now < landAt) return; // 아직 날아가는 중
+  if (motion) {
+    drawRipple(ctx, line.x, line.y, (now - landAt) / 500); // 퐁당
+    // 끌어올리는 순간 첨벙
+    for (const delay of [0, 160, 320]) drawRipple(ctx, line.x, line.y, (now - line.reelAt - delay) / 600);
+  }
+  if (now >= line.reelAt) return;
+  const biting = now >= line.biteAt;
+  if (biting && motion) for (const offset of [0, 350]) drawRipple(ctx, line.x, line.y, ((now - line.biteAt + offset) % 700) / 700);
+  const shake = biting && motion ? Math.sin(now / 25) * 1.5 : 0;
+  drawBobber(ctx, line.x + shake, line.y + bobOffset(line, now, motion));
+}
+
+/** 물 위 찌의 위아래 흔들림. 입질이면 쑥 가라앉는다 */
+const bobOffset = (line: FishingLine, now: number, motion: boolean) => (now >= line.biteAt ? 4 : motion ? Math.sin(now / 300) * 1.5 : 0);
+
+/**
+ * 낚싯대·줄과 공중의 찌·물고기. 캐릭터·이름표 다음에 그린다. x·y는 그려진 발 위치, labelY는 이름표 높이.
+ * 던지기: 뒤로 젖혔다 휘둘러 찌가 포물선으로 날아간다 → 입질: 대가 들썩이며 "!" → 당기기: 물고기가 버둥대다 빙글 돌며 머리 위로 끌려와 이름과 함께 들린다
+ */
+function drawFishingRod(
+  ctx: CanvasRenderingContext2D,
+  line: FishingLine,
+  x: number,
+  y: number,
+  facing: Facing,
+  now: number,
+  motion: boolean,
+  labelY: number,
+) {
+  const [vx, vy] = FACING_VECTORS[facing];
+  const reeling = now >= line.reelAt;
+  const biting = !reeling && now >= line.biteAt;
+  const cast = motion ? clamp01((now - line.castAt) / FISH_CAST_MS) : 1;
+  const reel = reeling ? (motion ? clamp01((now - line.reelAt) / FISH_REEL_MS) : 1) : 0;
+  // 휘두르기: -1 뒤로 젖힘 · 0 곧게 위 · 1 물 쪽으로 뻗음
+  let swing = 1;
+  if (reeling) swing = 1 - 1.7 * easeOut(clamp01(reel / 0.45)) + (motion && reel < 0.35 ? Math.sin(now / 30) * 0.12 : 0);
+  else if (cast < 0.35) swing = -0.8 * easeOut(cast / 0.35);
+  else if (cast < 1) swing = -0.8 + 1.8 * easeOut((cast - 0.35) / 0.65);
+  else if (biting && motion) swing = 1.1 + Math.sin(now / 35) * 0.12;
+  const handX = x + vx * 14;
+  const handY = y - 26 + vy * 6;
+  const tipX = handX + vx * 28 * swing;
+  const tipY = handY - 24 - (1 - Math.min(1, Math.abs(swing))) * 14 + vy * 10 * swing;
+
+  const holdY = labelY - 30;
+  let endX = line.x;
+  let endY = line.y + bobOffset(line, now, motion) - 4;
+  let sag = biting ? 0 : 12;
+  let lineVisible = true;
+  let drawItem: (() => void) | null = null;
+  if (!reeling && cast < 1) {
+    const u = cast < 0.35 ? 0 : (cast - 0.35) / 0.65;
+    const bx = lerp(tipX, line.x, u);
+    const by = lerp(tipY + 8, line.y, u) - Math.sin(u * Math.PI) * 50;
+    endX = bx;
+    endY = by - 4;
+    sag = 0;
+    drawItem = () => drawBobber(ctx, bx, by);
+  } else if (reeling && line.catch) {
+    const name = line.catch;
+    const half = FISH_LOOKS[name].size / 2;
+    let fx = x;
+    let fy = holdY;
+    let angle = -Math.PI / 2;
+    if (reel < 0.3) {
+      fx = line.x + Math.sin(now / 40) * 3;
+      fy = line.y - 4 - Math.abs(Math.sin(now / 90)) * 10;
+      angle += Math.sin(now / 50) * 0.8;
+    } else if (reel < 1) {
+      const u = easeOut((reel - 0.3) / 0.7);
+      fx = lerp(line.x, x, u);
+      fy = lerp(line.y, holdY, u) - Math.sin(u * Math.PI) * 60;
+      angle += u * Math.PI * 2;
+    } else if (motion) {
+      fx += Math.sin(now / 250) * 3;
+      angle += Math.sin(now / 300) * 0.25;
+    }
+    endX = fx + Math.cos(angle) * half * 0.8;
+    endY = fy + Math.sin(angle) * half * 0.8;
+    sag = 0;
+    drawItem = () => {
+      drawCatch(ctx, name, fx, fy, angle);
+      if (reel < 1) return;
+      const sparkle = (now - line.reelAt - FISH_REEL_MS) / 600;
+      if (motion && sparkle < 1) {
+        for (let i = 0; i < 4; i++) {
+          const around = (i * Math.PI) / 2 + sparkle;
+          drawStar(ctx, fx + Math.cos(around) * (half + 8 + sparkle * 10), fy + Math.sin(around) * (half + 8 + sparkle * 10), 5 * (1 - sparkle));
+        }
+      }
+      drawCatchName(ctx, name, x, fy - half - 6);
+    };
+  } else if (reeling) {
+    // 놓쳤으면 빈 찌가 낚싯대 끝으로 감겨 온다
+    const u = motion ? clamp01(reel / 0.6) : 1;
+    lineVisible = u < 1;
+    const bx = lerp(line.x, tipX, easeOut(u));
+    const by = lerp(line.y, tipY + 8, easeOut(u)) - Math.sin(u * Math.PI) * 30;
+    endX = bx;
+    endY = by - 4;
+    sag = 0;
+    if (lineVisible) drawItem = () => drawBobber(ctx, bx, by);
+  }
+
+  ctx.lineCap = "round";
+  ctx.strokeStyle = "#7a4a22";
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.moveTo(handX, handY);
+  ctx.lineTo(tipX, tipY);
+  ctx.stroke();
+  if (lineVisible) {
+    ctx.strokeStyle = "rgba(255,255,255,0.85)";
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(tipX, tipY);
+    ctx.quadraticCurveTo((tipX + endX) / 2, Math.max(tipY, endY) + sag, endX, endY);
+    ctx.stroke();
+  }
+  drawItem?.();
+  if (biting) drawBubble(ctx, "!", x, labelY - 10);
+}
+
 const OCTANTS: readonly Facing[] = ["left", "up-left", "up", "up-right", "right", "down-right", "down", "down-left", "left"];
 /** 이동 벡터 → 8방향 (45°씩) */
 function facingOf(dx: number, dy: number): Facing {
@@ -767,12 +997,13 @@ export function Lobby({ games }: { games: DoorGame[] }) {
   const [seatNearby, setSeatNearby] = useState(false);
   const [waterNearby, setWaterNearby] = useState(false);
   const [fishing, setFishing] = useState(false);
+  /** 자동 낚시: 입질이 오면 알아서 당기고 다시 던진다. 걷기·때리기·기절이면 꺼진다. 게임 루프는 ref로 읽는다 */
+  const [autoFishing, setAutoFishing] = useState(false);
+  const autoFishingRef = useRef(false);
   /** 낚시 가방. 게임 루프가 낚을 때마다 저장하고 새 값을 넣는다 */
   const [fishInventory, setFishInventory] = useState<FishInventory>({});
   const [stunned, setStunned] = useState(false);
   const [notice, setNotice] = useState("");
-  /** 하단 조작법 안내. 평소엔 숨기고 \ 키로 켜고 끈다 */
-  const [helpOpen, setHelpOpen] = useState(false);
   /** 로비 이미지를 받은 비율(%). 100이 되기 전엔 로딩창을 덮고 게임 루프를 돌리지 않는다 */
   const [loadProgress, setLoadProgress] = useState(0);
   // 게임 루프 effect가 router 변경으로 다시 실행되면 캐릭터·멀티 상태가 초기화되므로 이벤트로 감싼다
@@ -927,8 +1158,8 @@ export function Lobby({ games }: { games: DoorGame[] }) {
       facingSince: 0,
       chat: "",
       chatUntil: 0,
-      /** 낚시 중이면 찌 위치(물 타일 가운데, px)와 입질 시각. 내 화면에만 보인다 */
-      fishing: null as { x: number; y: number; biteAt: number; bit: boolean } | null,
+      /** 낚시 중이면 찌 위치(물 타일 가운데, px)와 던지기·입질·당기기 시각. 다른 사람에겐 채팅으로 알린다 */
+      fishing: null as FishingLine | null,
       /** 서버가 정해 준 이름표. 첫 동기화 전엔 비어 있다 */
       name: "",
     };
@@ -989,6 +1220,43 @@ export function Lobby({ games }: { games: DoorGame[] }) {
       noticeTimer = window.setTimeout(() => setNotice(""), ms);
     };
 
+    // --- 낚시 ---
+    let biteAnnounced = false;
+    let autoCastAt = 0;
+    /** 다음 동기화에 채팅으로 실어 보낼 낚시 동작 (fishChat). 못 보낸 게 있으면 새 동작이 덮어쓴다 */
+    let fishQueued: string | null = null;
+    let fishSeq = 0;
+    const queueFish = (event: FishEvent) => {
+      fishSeq += 1;
+      fishQueued = fishChat(fishSeq, event);
+    };
+    const castLine = (water: { x: number; y: number }, now: number) => {
+      const wait = FISH_BITE_MIN_MS + Math.random() * (FISH_BITE_MAX_MS - FISH_BITE_MIN_MS);
+      me.fishing = { x: water.x, y: water.y, castAt: now, biteAt: now + FISH_CAST_MS + wait, reelAt: Infinity, catch: null };
+      biteAnnounced = false;
+      me.facing = facingOf(water.x - me.x, water.y - me.y);
+      queueFish({ kind: "cast", x: water.x, y: water.y });
+      playSound("fishCast", settingsRef.current);
+    };
+    /** 당기기. caught면 무작위 하나를 낚아 가방에 넣고, 아니면 빈 찌를 감아 온다. 이미 당겼으면 무시 */
+    const reelLine = (now: number, caught: boolean) => {
+      const line = me.fishing;
+      if (!line || line.reelAt !== Infinity) return;
+      const name = caught ? FISH_CATCHES[Math.floor(Math.random() * FISH_CATCHES.length)] : null;
+      line.reelAt = now;
+      line.catch = name;
+      queueFish({ kind: "reel", catch: name });
+      if (!name) return;
+      showNotice(`${name} 낚았어요!`);
+      setFishInventory(recordCatch(name));
+      playSound("fishCatch", settingsRef.current);
+    };
+    const stopAuto = () => {
+      if (!autoFishingRef.current) return;
+      autoFishingRef.current = false;
+      setAutoFishing(false);
+    };
+
     const enter = (door: Door) => {
       if (leaving) return;
       leaving = true;
@@ -1029,8 +1297,8 @@ export function Lobby({ games }: { games: DoorGame[] }) {
     const onKeyDown = (event: KeyboardEvent) => {
       // 채팅 입력 중엔 WASD·F·Space가 글자로 들어가야 한다
       if (event.target instanceof HTMLInputElement) return;
+      // \ 키 조작법 창은 KeyboardGuide가 연다. 여는 순간 처음 안내 글은 치운다
       if (isShortcutKey(event, "Backslash")) {
-        setHelpOpen((open) => !open);
         setNotice("");
         return;
       }
@@ -1121,6 +1389,12 @@ export function Lobby({ games }: { games: DoorGame[] }) {
     const send = () => {
       if (!socket || socket.readyState !== WebSocket.OPEN || socket.bufferedAmount > MAX_BUFFERED_BYTES) return;
       const now = performance.now();
+      // 낚시 동작은 채팅 쿨타임이 지난 뒤에 채팅으로 보낸다 (쿨타임 안의 채팅은 서버가 버린다)
+      if (chatQueued === null && fishQueued !== null && now - lastChatAt.current >= CHAT_COOLDOWN_MS + 100) {
+        chatQueued = fishQueued;
+        fishQueued = null;
+        lastChatAt.current = now;
+      }
       const outfit = outfitRef.current;
       const key = `${me.x},${me.y},${me.facing},${me.sitting},${JSON.stringify(outfit)}`;
       if (!attackQueued && chatQueued === null && key === lastSentKey && now - lastSentAt < HEARTBEAT_MS) return;
@@ -1153,7 +1427,8 @@ export function Lobby({ games }: { games: DoorGame[] }) {
         }
         me.stunUntil = received + data.you.stunMs;
         if (me.sitting) standUp();
-        me.fishing = null;
+        reelLine(received, false);
+        stopAuto();
       } else if (
         data.corrected &&
         Math.hypot(data.you.x - me.x, data.you.y - me.y) > CORRECTION_SNAP_PX &&
@@ -1173,10 +1448,17 @@ export function Lobby({ games }: { games: DoorGame[] }) {
         const stunUntil = player.stunMs > 0 ? received + player.stunMs : 0;
         const chatUntil = player.chatMs > 0 ? received + player.chatMs : 0;
         const remote = remotes.get(player.id);
-        if (chatUntil > 0 && (!remote || remote.chat !== player.chat || remote.chatUntil < received)) {
+        const newChat = chatUntil > 0 && (!remote || remote.chat !== player.chat || remote.chatUntil < received);
+        const fish = newChat ? parseFishChat(player.chat) : null;
+        if (newChat && fish === null) {
           const emote = parseEmoteChat(player.chat);
           heard = `${player.name}: ${emote === null ? player.chat : `${CAPYBARA_EMOTES[emote]} (이모티콘)`}`;
         }
+        // 낚시 동작은 채팅을 보낸 시각에 일어난 것으로 친다 (늦게 들어와도 애니메이션이 제때 끝난다). 멀리 던졌다는 찌는 믿지 않는다
+        const nextFishing = (line: FishingLine | null) =>
+          fish === null || (fish.kind === "cast" && Math.hypot(fish.x - player.x, fish.y - player.y) > FISH_REACH * 2)
+            ? line
+            : applyFishEvent(line, fish, received - (CHAT_MS - player.chatMs));
         if (remote) {
           // 받은 위치를 쌓아 두고 틱 루프가 조금 과거를 보간해 그린다 (서버는 바뀐 게 없으면 안 보내므로 평소 간격은 한 틱)
           pushSnapshot(remote.snapshots, player.x, player.y, received, LOBBY_TICK_MS);
@@ -1187,6 +1469,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
           remote.stunUntil = stunUntil;
           remote.chat = player.chat;
           remote.chatUntil = chatUntil;
+          remote.fishing = nextFishing(remote.fishing);
           if (player.attackMs > 0) remote.attackUntil = received + player.attackMs;
         } else {
           remotes.set(player.id, {
@@ -1206,6 +1489,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
             chat: player.chat,
             chatUntil,
             outfit: player.outfit ?? {},
+            fishing: nextFishing(null),
           });
         }
       }
@@ -1312,25 +1596,16 @@ export function Lobby({ games }: { games: DoorGame[] }) {
         if (isStunned) {
           // 기절 중엔 무시
         } else if (me.fishing) {
-          // 당기기: 찌가 쑥 들어간 뒤(입질)에 당겨야 낚인다. 늦으면 아래에서 먼저 놓친다
-          const bit = now >= me.fishing.biteAt;
-          me.fishing = null;
-          if (bit) {
-            const catchName = FISH_CATCHES[Math.floor(Math.random() * FISH_CATCHES.length)];
-            me.chat = `🎣 ${catchName}!`;
-            me.chatUntil = now + CHAT_MS;
-            showNotice(`${catchName} 낚았어요!`);
-            setFishInventory(recordCatch(catchName));
-            playSound("fishCatch", settingsRef.current);
-          } else {
-            showNotice("너무 빨리 당겼어요. 찌가 쑥 들어가면 당겨요");
+          // 당기기: 찌가 쑥 들어간 뒤(입질)에 당겨야 낚인다. 늦으면 아래에서 먼저 놓친다. 끌어올리는 중엔 무시
+          if (me.fishing.reelAt === Infinity) {
+            const bit = now >= me.fishing.biteAt;
+            reelLine(now, bit);
+            if (!bit) showNotice("너무 빨리 당겼어요. 찌가 쑥 들어가면 당겨요");
           }
         } else if (me.sitting) {
           standUp();
         } else if (nearestSeat() < 0 && water) {
-          me.fishing = { x: water.x, y: water.y, biteAt: now + FISH_BITE_MIN_MS + Math.random() * (FISH_BITE_MAX_MS - FISH_BITE_MIN_MS), bit: false };
-          me.facing = facingOf(water.x - me.x, water.y - me.y);
-          playSound("fishCast", settingsRef.current);
+          castLine(water, now);
         } else {
           const index = nearestSeat();
           if (index >= 0 && !seatTaken(index)) {
@@ -1351,7 +1626,8 @@ export function Lobby({ games }: { games: DoorGame[] }) {
         attackRequest.current = false;
         if (!isStunned && now - me.lastAttackAt >= ATTACK_COOLDOWN_MS) {
           if (me.sitting) standUp();
-          me.fishing = null;
+          reelLine(now, false);
+          stopAuto();
           me.attackUntil = now + ATTACK_MS;
           me.lastAttackAt = now;
           attackQueued = true;
@@ -1369,13 +1645,32 @@ export function Lobby({ games }: { games: DoorGame[] }) {
         chatRequest.current = null;
       }
       if (wantsMove && me.sitting) standUp(); // 움직이면 일어난다
-      if (wantsMove) me.fishing = null; // 움직이면 낚싯대를 거둔다
-      if (me.fishing && !me.fishing.bit && now >= me.fishing.biteAt) {
-        me.fishing.bit = true;
-        playSound("fishBite", settingsRef.current);
-      } else if (me.fishing && now > me.fishing.biteAt + FISH_BITE_WINDOW_MS) {
+      if (wantsMove) {
+        // 움직이면 낚싯대를 거둔다 (빈 찌를 감아 오는 모습은 남긴다)
+        reelLine(now, false);
+        stopAuto();
+      }
+      const line = me.fishing;
+      if (line && line.reelAt === Infinity && now >= line.biteAt) {
+        if (!biteAnnounced) {
+          biteAnnounced = true;
+          queueFish({ kind: "bite" });
+          playSound("fishBite", settingsRef.current);
+        }
+        if (autoFishingRef.current && now >= line.biteAt + FISH_AUTO_REEL_MS) {
+          reelLine(now, true);
+        } else if (now > line.biteAt + FISH_BITE_WINDOW_MS) {
+          reelLine(now, false);
+          showNotice("물고기가 도망갔어요");
+        }
+      }
+      if (me.fishing && fishingDone(me.fishing, now)) {
         me.fishing = null;
-        showNotice("물고기가 도망갔어요");
+        autoCastAt = now + FISH_AUTO_RECAST_MS;
+      }
+      if (autoFishingRef.current && !me.fishing && !me.sitting && !isStunned && now >= autoCastAt) {
+        const water = nearestWater(tileAt, me.x, me.y, FISH_REACH);
+        if (water) castLine(water, now);
       }
 
       const startX = me.x;
@@ -1442,9 +1737,11 @@ export function Lobby({ games }: { games: DoorGame[] }) {
       if (me.sitting !== shownSitting) setSitting((shownSitting = me.sitting));
       const seatHere = !me.sitting && nearestSeat() >= 0;
       if (seatHere !== shownSeat) setSeatNearby((shownSeat = seatHere));
-      const waterHere = !me.fishing && !me.sitting && !seatHere && nearestWater(tileAt, me.x, me.y, FISH_REACH) !== null;
+      // 당기고 끌어올리는 중엔 이미 낚시가 끝난 것으로 보여 준다
+      const fishingActive = me.fishing !== null && me.fishing.reelAt === Infinity;
+      const waterHere = !fishingActive && !me.sitting && !seatHere && nearestWater(tileAt, me.x, me.y, FISH_REACH) !== null;
       if (waterHere !== shownWater) setWaterNearby((shownWater = waterHere));
-      if ((me.fishing !== null) !== shownFishing) setFishing((shownFishing = me.fishing !== null));
+      if (fishingActive !== shownFishing) setFishing((shownFishing = fishingActive));
       if (isStunned !== shownStunned) setStunned((shownStunned = isStunned));
 
       for (const remote of remotes.values()) {
@@ -1455,7 +1752,8 @@ export function Lobby({ games }: { games: DoorGame[] }) {
         if (step > 0.05) remote.movedAt = now;
         const moving = now - remote.movedAt < 200;
         remote.walkDist = moving ? remote.walkDist + step : 0;
-        const busy = moving || remote.sitting || now < remote.stunUntil || now < remote.attackUntil;
+        if (remote.fishing && fishingDone(remote.fishing, now)) remote.fishing = null;
+        const busy = moving || remote.sitting || remote.fishing !== null || now < remote.stunUntil || now < remote.attackUntil;
         remote.idleMs = busy ? 0 : nextIdle(remote.idleMs, dt);
       }
 
@@ -1529,23 +1827,10 @@ export function Lobby({ games }: { games: DoorGame[] }) {
           }
         }
       }
-      // 낚시 찌: 물 위에 떠 있어서 수련처럼 바닥 다음에 그린다. 입질이 오면 물결이 커지며 쑥 가라앉는다
-      const fishing = me.fishing;
-      const biting = fishing !== null && now >= fishing.biteAt;
-      const bobberY = fishing ? fishing.y + (biting ? 4 : reducedMotion ? 0 : Math.sin(now / 300) * 1.5) : 0;
-      if (fishing) {
-        ctx.fillStyle = "rgba(255,255,255,0.35)";
-        ctx.beginPath();
-        ctx.ellipse(fishing.x, fishing.y + 3, biting ? 11 : 7, biting ? 4.5 : 3, 0, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.fillStyle = "#e5484d";
-        ctx.beginPath();
-        ctx.arc(fishing.x, bobberY - 2, 4, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.fillStyle = "#fff";
-        ctx.beginPath();
-        ctx.arc(fishing.x, bobberY - 5, 2.2, 0, Math.PI * 2);
-        ctx.fill();
+      // 낚시 찌·물결: 물 위에 떠 있어서 수련처럼 바닥 다음에 그린다. 입질이 오면 물결이 퍼지며 쑥 가라앉는다
+      if (me.fishing) drawFishingWater(ctx, me.fishing, now, !reducedMotion);
+      for (const remote of remotes.values()) {
+        if (remote.fishing) drawFishingWater(ctx, remote.fishing, now, !reducedMotion);
       }
       world.buildings.forEach((building) => {
         const centerX = (building.tx + BUILDING_WIDTH / 2) * TILE;
@@ -1621,41 +1906,21 @@ export function Lobby({ games }: { games: DoorGame[] }) {
       drawables.sort((a, b) => a.y - b.y);
       for (const item of drawables) item.draw();
 
-      // 낚싯대(앞발 → 바라보는 쪽 위로)와 끝에서 찌까지 늘어진 줄
-      if (fishing) {
-        const [vx, vy] = FACING_VECTORS[me.facing];
-        const handX = drawnX + vx * 14;
-        const handY = drawnY - 26 + vy * 6;
-        const tipX = handX + vx * 26;
-        const tipY = handY - 28 + vy * 8;
-        ctx.lineCap = "round";
-        ctx.strokeStyle = "#7a4a22";
-        ctx.lineWidth = 3;
-        ctx.beginPath();
-        ctx.moveTo(handX, handY);
-        ctx.lineTo(tipX, tipY);
-        ctx.stroke();
-        ctx.strokeStyle = "rgba(255,255,255,0.8)";
-        ctx.lineWidth = 1;
-        ctx.beginPath();
-        ctx.moveTo(tipX, tipY);
-        ctx.quadraticCurveTo((tipX + fishing.x) / 2, Math.max(tipY, bobberY) + (biting ? 0 : 12), fishing.x, bobberY - 4);
-        ctx.stroke();
-      }
-
       for (const item of world.doors) {
         if (inView(item.x, item.y, TILE * 4)) drawLabel(ctx, item.title, item.x, item.y + TILE * 0.85, true);
       }
       for (const remote of remotes.values()) {
         const labelY = remote.y - (remote.sitting ? SIT_SIZE : STAND_SIZE) - 8;
         drawLabel(ctx, remote.name, remote.x, labelY);
-        if (now < remote.chatUntil) drawSpeech(remote.chat, remote.x, labelY - 10);
+        // 낚싯대·공중의 찌와 물고기는 이름표를 가리지 않게 머리 위로 끌어올려 이름표 다음에 그린다
+        if (remote.fishing) drawFishingRod(ctx, remote.fishing, remote.x, remote.y, remote.facing, now, !reducedMotion, labelY);
+        if (now < remote.chatUntil && parseFishChat(remote.chat) === null) drawSpeech(remote.chat, remote.x, labelY - 10);
       }
       const myLabelY = drawnY - (me.sitting ? SIT_SIZE : STAND_SIZE) - 8;
       if (me.name) drawLabel(ctx, me.name, drawnX, myLabelY);
       const mySpeechY = me.name ? myLabelY - 10 : myLabelY + 4;
-      if (biting) drawBubble(ctx, "!", drawnX, mySpeechY);
-      else if (now < me.chatUntil) drawSpeech(me.chat, drawnX, mySpeechY);
+      if (me.fishing) drawFishingRod(ctx, me.fishing, drawnX, drawnY, me.facing, now, !reducedMotion, mySpeechY + 10);
+      if (now < me.chatUntil) drawSpeech(me.chat, drawnX, mySpeechY);
       for (const [id, until] of hitEffects) {
         const target = remotes.get(id);
         const progress = 1 - (until - now) / 450;
@@ -1889,12 +2154,9 @@ export function Lobby({ games }: { games: DoorGame[] }) {
         >
           {status}
         </p>
-        {helpOpen && (
-          <p className="max-w-full text-balance rounded-lg bg-card/80 px-3 py-1.5 text-center text-caption-3 text-text-caption backdrop-blur">
-            방향키·WASD 걷기 · F 때리기 · 통나무 앞 Space 앉기 · 물가 Space 낚시 · Enter 채팅 · , 이모티콘 · P 프로필 · I 가방 · M 소리 · 오두막 문 앞에 가면 입장 · \ 닫기
-          </p>
-        )}
       </div>
+
+      <KeyboardGuide />
 
       {/* 터치 조이스틱: 누른 자리에 나타난다. 위치는 게임 루프가 DOM에 직접 쓴다 */}
       <div ref={joystickRef} hidden aria-hidden="true" className="pointer-events-none fixed left-0 top-0 size-32">
@@ -1959,6 +2221,19 @@ export function Lobby({ games }: { games: DoorGame[] }) {
                 <NextImage src={FRAME_SRC} alt="" fill unoptimized sizes="72px" draggable={false} />
               </span>
               <span className="rounded-full bg-card/85 px-2 py-0.5 text-caption-3 font-semibold text-text-strong">{fishing ? "당기기" : "낚시"}</span>
+            </button>
+          )}
+          {(waterNearby || fishing || autoFishing) && (
+            <button
+              type="button"
+              onClick={() => {
+                autoFishingRef.current = !autoFishingRef.current;
+                setAutoFishing(autoFishingRef.current);
+              }}
+              aria-pressed={autoFishing}
+              className="min-h-9 rounded-full bg-card/85 px-3 text-caption-3 font-semibold text-text-strong shadow-sm transition-colors focus-visible:outline-2 focus-visible:outline-primary aria-pressed:bg-primary aria-pressed:text-white"
+            >
+              자동 낚시 {autoFishing ? "켬" : "끔"}
             </button>
           )}
           <button
