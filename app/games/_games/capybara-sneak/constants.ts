@@ -21,6 +21,18 @@ export const SNEAK_SOUNDS = {
     { kind: "tone", wave: "sine", from: 1760, to: 1760, ms: 180, level: 0.08 },
     { kind: "tone", wave: "sine", from: 2640, to: 2640, ms: 120, level: 0.05 },
   ],
-  /** 콩: 접시 반대편으로 폴짝 */
-  hop: [{ kind: "tone", wave: "sine", from: 380, to: 620, ms: 60, level: 0.05 }],
+  /** 아삭: 수박을 베어 씹음. 잘게 부서지는 잡음 여러 번 + 턱 울림 + 과즙 꼬리 */
+  crunch: [
+    { kind: "tone", wave: "sine", from: 170, to: 85, ms: 70, level: 0.14, attack: 3 },
+    { kind: "noise", filter: "bandpass", q: 2.5, from: 3200, to: 2200, ms: 28, level: 0.34, attack: 2 },
+    { at: 22, kind: "noise", filter: "bandpass", q: 3, from: 2400, to: 1600, ms: 24, level: 0.26, attack: 2 },
+    { at: 44, kind: "noise", filter: "bandpass", q: 2.5, from: 2900, to: 1900, ms: 30, level: 0.3, attack: 2 },
+    { at: 72, kind: "noise", filter: "bandpass", q: 3, from: 2000, to: 1300, ms: 22, level: 0.18, attack: 2 },
+    { at: 80, kind: "noise", filter: "lowpass", q: 1, from: 1100, to: 400, ms: 110, level: 0.1, attack: 15 },
+  ],
+  /** 쩝: 접시 반대편으로 옮기며 입맛을 다심 */
+  smack: [
+    { kind: "noise", filter: "bandpass", q: 4, from: 1300, to: 2300, ms: 40, level: 0.14, attack: 3 },
+    { at: 45, kind: "noise", filter: "lowpass", q: 1, from: 800, to: 300, ms: 120, level: 0.08, attack: 20 },
+  ],
 } as const satisfies Record<string, readonly SoundLayer[]>;
