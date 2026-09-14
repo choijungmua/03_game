@@ -1,6 +1,7 @@
 // 로비 오픈월드 멀티: 각 플레이어가 자기 위치를 짧은 주기로 보내고, 응답으로 근처 플레이어를 받는다.
 // 맵은 하나라 모두 같은 공간에 있다. 때리기 판정도 서버가 한다 (앞쪽 가까운 한 명을 2초 기절)
 
+import { CAPYBARA_NAMES } from "./constants";
 import { type Outfit, sanitizeOutfit } from "./wardrobe";
 import { type Facing, FACING_VECTORS, FACINGS, TILE, WALK_SPEED } from "./world";
 
@@ -76,6 +77,12 @@ const MOVE_SLACK = TILE * 2;
 function allPlayers() {
   const store = globalThis as typeof globalThis & { lobbyPlayers?: Map<string, Player> };
   return (store.lobbyPlayers ??= new Map());
+}
+
+/** 플레이어 id(16진수)로 늘 같은 귀여운 이름을 고른다.
+ * ponytail: 이름 48개라 사람이 많으면 겹칠 수 있음 — 거슬리면 형용사 앞말("졸린 ")을 하나 더 조합 */
+export function capybaraName(id: string) {
+  return CAPYBARA_NAMES[(parseInt(id, 16) || 0) % CAPYBARA_NAMES.length];
 }
 
 /** 제어·보이지 않는 문자와 줄바꿈을 공백 하나로 바꾸고 CHAT_MAX 글자로 자른다 (이모지가 반쪽 나지 않게 글자 단위로) */

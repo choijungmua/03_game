@@ -27,6 +27,7 @@ import {
   CHAT_COOLDOWN_MS,
   CHAT_MAX,
   CHAT_MS,
+  capybaraName,
   cleanChat,
   type PresenceResponse,
 } from "@/lib/lobby/presence";
@@ -1042,7 +1043,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
             const chatUntil = player.chatMs > 0 ? received + player.chatMs : 0;
             const remote = remotes.get(player.id);
             if (chatUntil > 0 && (!remote || remote.chat !== player.chat || remote.chatUntil < received)) {
-              heard = `카피바라 ${player.id.slice(0, 4)}: ${player.chat}`;
+              heard = `${capybaraName(player.id)}: ${player.chat}`;
             }
             if (remote) {
               // 다음 위치가 올 때까지(=지난 수신 간격) 걸쳐 옮긴다. 지수 감속으로 따라가면 받을 때마다 빨라졌다 느려져서 끊겨 보인다
@@ -1384,7 +1385,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
       }
       for (const remote of remotes.values()) {
         const labelY = remote.y - (remote.sitting ? SIT_SIZE : STAND_SIZE) - 8;
-        drawLabel(ctx, `카피바라 ${remote.id.slice(0, 4)}`, remote.x, labelY);
+        drawLabel(ctx, capybaraName(remote.id), remote.x, labelY);
         if (now < remote.chatUntil) drawBubble(ctx, remote.chat, remote.x, labelY - 10);
       }
       if (now < me.chatUntil) drawBubble(ctx, me.chat, drawnX, drawnY - (me.sitting ? SIT_SIZE : STAND_SIZE) - 4);
