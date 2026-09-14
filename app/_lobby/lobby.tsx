@@ -31,6 +31,9 @@ import { Input } from "@/components/inputs/input";
 import {
   CORRECTION_SNAP_PX,
   DEFAULT_LOBBY_SETTINGS,
+  EAT_BITE_MS,
+  EAT_MS,
+  HEART_LINGER_MS,
   FISH_BITE_MAX_MS,
   FISH_BITE_MIN_MS,
   FISH_AUTO_RECAST_MS,
@@ -60,6 +63,15 @@ import {
   parseFishChat,
   recordCatch,
 } from "@/lib/lobby/fishing";
+import {
+  feedCapybara,
+  feedChat,
+  loadSatiety,
+  type Meal,
+  mealDone,
+  parseFeedChat,
+  type Satiety,
+} from "@/lib/lobby/feeding";
 import { pushSnapshot, sampleSnapshots, type Snapshot } from "@/lib/lobby/interpolation";
 import { type LobbySettings, loadLobbySettings, playSound, saveLobbySettings } from "@/lib/lobby/settings";
 
@@ -128,6 +140,7 @@ type SpriteKey =
   | `sit-${Direction}`
   | `punch-${Direction}`
   | "stun"
+  | `eat-${1 | 2}`
   | ScratchFrame
   | `${Exclude<IdleFrame, ScratchFrame>}-${Direction}`;
 /** 가만히 서 있을 때 돌아가며 하는 동작의 프레임. 긁기는 뒷모습 한 벌, 하품·졸기는 바라보는 방향(상하좌우)마다 따로 있다 */
@@ -145,6 +158,8 @@ interface CapybaraLook {
   stride: number;
   /** 대기 동작(긁기·하품·졸기) 프레임. 쉬는 중이 아니면 null */
   idle: IdleFrame | null;
+  /** 먹기 시작하고 지난 시간(ms). 안 먹는 중이면 -1 */
+  eating: number;
 }
 
 interface Remote {
@@ -169,6 +184,8 @@ interface Remote {
   chatUntil: number;
   /** 낚시 중이면 채팅으로 받은 동작(던지기·입질·당기기)으로 채운 줄 */
   fishing: FishingLine | null;
+  /** 채팅으로 받은 먹이기. 하트까지 다 떠오르면 비운다 */
+  meal: Meal | null;
 }
 
 interface Chunk {
@@ -206,6 +223,8 @@ const SIT_SIZE = 64;
 /** 스프라이트 이미지 높이 중 발바닥 위치 비율 (서기·걷기·때리기·기절·긁기 1000/1024, 앉기 972/1024) */
 const STAND_FOOT = 1000 / 1024;
 const SIT_FOOT = 972 / 1024;
+/** 먹는 스프라이트에서 앞발(먹이를 드는 자리)의 발바닥 위 높이 비율 */
+const FOOD_Y = 0.42;
 /** 발 기준 충돌 상자 */
 const HIT = { halfWidth: 12, up: 8, down: 4 };
 const CHUNK = 16;
@@ -632,6 +651,13 @@ function drawCapybara(
     return;
   }
 
+  // 먹을 땐 정면을 보고 한 입마다 입을 벌려 베어 물고(1) 오물오물 씹는다(2)
+  const eatImage = sprites.get(look.eating % EAT_BITE_MS < EAT_BITE_MS * 0.3 ? "eat-1" : "eat-2");
+  if (look.eating >= 0 && !look.sitting && ready(eatImage)) {
+    drawDressed(eatImage, "down", x - STAND_SIZE / 2, y - STAND_SIZE * STAND_FOOT, STAND_SIZE);
+    return;
+  }
+
   // 앉기·때리기 스프라이트는 상하좌우 4장뿐이라 대각선은 가까운 옆모습을 쓴다
   const direction = toDirection(facing);
   const [fx, fy] = FACING_VECTORS[facing];
@@ -847,6 +873,45 @@ function drawCatch(ctx: CanvasRenderingContext2D, name: FishCatch, x: number, y:
   ctx.restore();
 }
 
+/** 먹는 중인 걸음(ms) → 캐릭터 look.eating 값. 다 먹었으면 -1 */
+const eatingMs = (meal: Meal | null, now: number) => (meal && now - meal.at < EAT_MS ? Math.max(0, now - meal.at) : -1);
+
+/** 먹는 동안 앞발에 든 먹이. 한 입 베어 물 때마다 작아진다 */
+function drawFood(ctx: CanvasRenderingContext2D, name: FishCatch, x: number, y: number, elapsed: number) {
+  const bites = Math.ceil(EAT_MS / EAT_BITE_MS);
+  const left = 1 - Math.floor(elapsed / EAT_BITE_MS) / bites;
+  ctx.save();
+  ctx.translate(x, y - STAND_SIZE * FOOD_Y);
+  ctx.scale(0.55 * left, 0.55 * left);
+  drawCatch(ctx, name, 0, 0, -0.35);
+  ctx.restore();
+}
+
+/** 한 입마다 머리 위로 하트가 하나씩 떠올라 사라진다. 움직임 줄이기면 하트 하나만 가만히 */
+function drawHearts(ctx: CanvasRenderingContext2D, x: number, bottom: number, elapsed: number, motion: boolean) {
+  const bites = Math.ceil(EAT_MS / EAT_BITE_MS);
+  const life = EAT_BITE_MS + HEART_LINGER_MS;
+  for (let i = 0; i < (motion ? bites : 1); i++) {
+    const t = motion ? (elapsed - i * EAT_BITE_MS) / life : elapsed / (EAT_MS + HEART_LINGER_MS);
+    if (t <= 0 || t >= 1) continue;
+    const size = 9;
+    ctx.save();
+    ctx.globalAlpha = t < 0.15 ? t / 0.15 : Math.min(1, (1 - t) / 0.4);
+    ctx.translate(x + (motion ? (i - 1) * 14 + Math.sin(t * Math.PI * 2 + i) * 4 : 0), bottom - size - (motion ? t * 36 : 0));
+    ctx.beginPath();
+    ctx.moveTo(0, size * 0.55);
+    ctx.bezierCurveTo(-size * 1.3, -size * 0.3, -size * 0.55, -size * 1.2, 0, -size * 0.45);
+    ctx.bezierCurveTo(size * 0.55, -size * 1.2, size * 1.3, -size * 0.3, 0, size * 0.55);
+    ctx.closePath();
+    ctx.fillStyle = "#ff6b8b";
+    ctx.fill();
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = "rgba(90,20,40,0.85)";
+    ctx.stroke();
+    ctx.restore();
+  }
+}
+
 /** 낚은 것 이름을 크게 담은 말풍선 */
 function drawCatchName(ctx: CanvasRenderingContext2D, name: FishCatch, x: number, bottom: number) {
   const text = `${name}!`;
@@ -1027,6 +1092,9 @@ export function Lobby({ games }: { games: DoorGame[] }) {
   const autoFishingRef = useRef(false);
   /** 낚시 가방. 게임 루프가 낚을 때마다 저장하고 새 값을 넣는다 */
   const [fishInventory, setFishInventory] = useState<FishInventory>({});
+  /** 카피바라 포만감. 가방에서 먹이를 누르면 feedRequest에 넣고, 게임 루프가 먹이며 새 값을 넣는다 */
+  const [satiety, setSatiety] = useState<Satiety>({ value: 0, at: 0 });
+  const feedRequest = useRef<FishCatch | null>(null);
   const [stunned, setStunned] = useState(false);
   const [notice, setNotice] = useState("");
   /** 로비 이미지를 받은 비율(%). 100이 되기 전엔 로딩창을 덮고 게임 루프를 돌리지 않는다 */
@@ -1047,6 +1115,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
     // 저장된 설정은 서버 렌더와 어긋나지 않게 화면에 붙은 뒤 읽는다
     settingsRef.current = loadLobbySettings();
     setFishInventory(loadFishInventory());
+    setSatiety(loadSatiety());
     setSettings(settingsRef.current);
 
     const sprites = new Map<SpriteKey, HTMLImageElement>();
@@ -1058,6 +1127,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
       sprites.set(`punch-${direction}`, loadImage(`${CHARACTER_BASE}/capybara-punch-${direction}.webp`));
     }
     sprites.set("stun", loadImage(`${CHARACTER_BASE}/capybara-stun.webp`));
+    for (const n of [1, 2] as const) sprites.set(`eat-${n}`, loadImage(`${CHARACTER_BASE}/capybara-eating-${n}.webp`));
     for (const n of [1, 2, 3] as const) {
       sprites.set(`scratch-${n}`, loadImage(`${CHARACTER_BASE}/capybara-scratch-${n}.webp`));
     }
@@ -1185,6 +1255,8 @@ export function Lobby({ games }: { games: DoorGame[] }) {
       chatUntil: 0,
       /** 낚시 중이면 찌 위치(물 타일 가운데, px)와 던지기·입질·당기기 시각. 다른 사람에겐 채팅으로 알린다 */
       fishing: null as FishingLine | null,
+      /** 가방에서 먹인 것과 먹기 시작한 시각. 하트까지 다 떠오르면 비운다 */
+      meal: null as Meal | null,
       /** 서버가 정해 준 이름표. 첫 동기화 전엔 비어 있다 */
       name: "",
     };
@@ -1280,6 +1352,33 @@ export function Lobby({ games }: { games: DoorGame[] }) {
       if (!autoFishingRef.current) return;
       autoFishingRef.current = false;
       setAutoFishing(false);
+    };
+
+    // --- 먹이 주기 ---
+    /** 다음 동기화에 채팅으로 실어 보낼 먹이기 (feedChat). 낚시 동작이 먼저 나간다 */
+    let feedQueued: string | null = null;
+    let feedSeq = 0;
+    /** 마지막으로 쩝 소리를 낸 한 입 번호 */
+    let soundBite = -1;
+    const feed = (name: FishCatch, now: number, isStunned: boolean) => {
+      if (isStunned) return showNotice("기절해서 못 먹어요");
+      if (eatingMs(me.meal, now) >= 0) return showNotice("아직 먹는 중이에요");
+      const result = feedCapybara(name, Date.now());
+      if (!result.ok) {
+        const reason = { full: "배불러서 더 못 먹어요", inedible: "그건 못 먹어요, 퉤!", none: "가방에 없어요" };
+        return showNotice(reason[result.reason]);
+      }
+      if (me.sitting) standUp();
+      reelLine(now, false);
+      stopAuto();
+      me.meal = { name, at: now };
+      me.facing = "down";
+      soundBite = -1;
+      feedSeq += 1;
+      feedQueued = feedChat(feedSeq, name);
+      setFishInventory(result.inventory);
+      setSatiety(result.satiety);
+      showNotice(`${name} 냠냠! 포만감 ${Math.round(result.satiety.value)}%`);
     };
 
     const enter = (door: Door) => {
@@ -1415,9 +1514,14 @@ export function Lobby({ games }: { games: DoorGame[] }) {
       if (!socket || socket.readyState !== WebSocket.OPEN || socket.bufferedAmount > MAX_BUFFERED_BYTES) return;
       const now = performance.now();
       // 낚시 동작은 채팅 쿨타임이 지난 뒤에 채팅으로 보낸다 (쿨타임 안의 채팅은 서버가 버린다)
-      if (chatQueued === null && fishQueued !== null && now - lastChatAt.current >= CHAT_COOLDOWN_MS + 100) {
-        chatQueued = fishQueued;
-        fishQueued = null;
+      if (chatQueued === null && (fishQueued ?? feedQueued) !== null && now - lastChatAt.current >= CHAT_COOLDOWN_MS + 100) {
+        if (fishQueued !== null) {
+          chatQueued = fishQueued;
+          fishQueued = null;
+        } else {
+          chatQueued = feedQueued;
+          feedQueued = null;
+        }
         lastChatAt.current = now;
       }
       const outfit = outfitRef.current;
@@ -1451,6 +1555,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
           playSound("hit", settingsRef.current);
         }
         me.stunUntil = received + data.you.stunMs;
+        me.meal = null;
         if (me.sitting) standUp();
         reelLine(received, false);
         stopAuto();
@@ -1475,7 +1580,10 @@ export function Lobby({ games }: { games: DoorGame[] }) {
         const remote = remotes.get(player.id);
         const newChat = chatUntil > 0 && (!remote || remote.chat !== player.chat || remote.chatUntil < received);
         const fish = newChat ? parseFishChat(player.chat) : null;
-        if (newChat && fish === null) {
+        const fed = newChat ? parseFeedChat(player.chat) : null;
+        // 먹이기도 채팅을 보낸 시각에 먹기 시작한 것으로 친다
+        const meal = fed === null ? null : { name: fed, at: received - (CHAT_MS - player.chatMs) };
+        if (newChat && fish === null && fed === null) {
           const emote = parseEmoteChat(player.chat);
           heard = `${player.name}: ${emote === null ? player.chat : `${CAPYBARA_EMOTES[emote]} (이모티콘)`}`;
         }
@@ -1495,6 +1603,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
           remote.chat = player.chat;
           remote.chatUntil = chatUntil;
           remote.fishing = nextFishing(remote.fishing);
+          if (meal) remote.meal = meal;
           if (player.attackMs > 0) remote.attackUntil = received + player.attackMs;
         } else {
           remotes.set(player.id, {
@@ -1515,6 +1624,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
             chatUntil,
             outfit: player.outfit ?? {},
             fishing: nextFishing(null),
+            meal,
           });
         }
       }
@@ -1655,6 +1765,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
           stopAuto();
           me.attackUntil = now + ATTACK_MS;
           me.lastAttackAt = now;
+          me.meal = null;
           attackQueued = true;
           // 다음 전송 주기를 기다리지 않고 바로 보낸다 — 맞는 사람·구경하는 사람에게 한 주기 늦게 보이지 않게
           send();
@@ -1669,11 +1780,25 @@ export function Lobby({ games }: { games: DoorGame[] }) {
         playSound("chat", settingsRef.current);
         chatRequest.current = null;
       }
+      if (feedRequest.current !== null) {
+        feed(feedRequest.current, now, isStunned);
+        feedRequest.current = null;
+      }
       if (wantsMove && me.sitting) standUp(); // 움직이면 일어난다
       if (wantsMove) {
-        // 움직이면 낚싯대를 거둔다 (빈 찌를 감아 오는 모습은 남긴다)
+        // 움직이면 낚싯대를 거두고 먹던 걸 멈춘다 (빈 찌를 감아 오는 모습은 남긴다)
         reelLine(now, false);
         stopAuto();
+        me.meal = null;
+      }
+      // 한 입 베어 물 때마다 아삭 쩝
+      if (me.meal) {
+        const bite = Math.floor((now - me.meal.at) / EAT_BITE_MS);
+        if (eatingMs(me.meal, now) >= 0 && bite !== soundBite) {
+          soundBite = bite;
+          playSound("chomp", settingsRef.current);
+        }
+        if (mealDone(me.meal, now)) me.meal = null;
       }
       const line = me.fishing;
       if (line && line.reelAt === Infinity && now >= line.biteAt) {
@@ -1731,7 +1856,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
       me.walkDist = moved ? me.walkDist + Math.hypot(me.x - startX, me.y - startY) : 0;
       me.pose = moved ? walkPose(me.walkDist) : "stand";
       const attacking = now < me.attackUntil;
-      me.idleMs = moved || wantsMove || me.sitting || me.fishing || isStunned || attacking ? 0 : nextIdle(me.idleMs, dt);
+      me.idleMs = moved || wantsMove || me.sitting || me.fishing || me.meal || isStunned || attacking ? 0 : nextIdle(me.idleMs, dt);
       // 발을 내딛는 프레임마다 톡, 긁는 박자마다 슥슥, 하품을 시작할 때 하아암
       if (me.pose !== soundPose && me.pose !== "stand") {
         // 발 밑 타일에 따라 풀밭 사각, 나무 데크 통, 진흙 철퍽
@@ -1778,7 +1903,9 @@ export function Lobby({ games }: { games: DoorGame[] }) {
         const moving = now - remote.movedAt < 200;
         remote.walkDist = moving ? remote.walkDist + step : 0;
         if (remote.fishing && fishingDone(remote.fishing, now)) remote.fishing = null;
-        const busy = moving || remote.sitting || remote.fishing !== null || now < remote.stunUntil || now < remote.attackUntil;
+        if (remote.meal && (moving || mealDone(remote.meal, now))) remote.meal = null;
+        const busy =
+          moving || remote.sitting || remote.fishing !== null || remote.meal !== null || now < remote.stunUntil || now < remote.attackUntil;
         remote.idleMs = busy ? 0 : nextIdle(remote.idleMs, dt);
       }
 
@@ -1903,12 +2030,16 @@ export function Lobby({ games }: { games: DoorGame[] }) {
           attack: attackProgress(remote.attackUntil, now),
           stride: remote.walkDist,
           idle: idleSprite(remote.idleMs),
+          eating: eatingMs(remote.meal, now),
         };
+        const { meal } = remote;
         // 통나무에 앉으면 통나무 그림보다 앞에 그린다
         drawables.push({
           y: remote.y + (remote.sitting ? TILE * 0.5 : 0),
-          draw: () =>
-            drawCapybara(ctx, sprites, remote.x, remote.y, remote.facing, look, remote.outfit, wardrobe, now, !reducedMotion),
+          draw: () => {
+            drawCapybara(ctx, sprites, remote.x, remote.y, remote.facing, look, remote.outfit, wardrobe, now, !reducedMotion);
+            if (meal && look.eating >= 0 && !look.sitting) drawFood(ctx, meal.name, remote.x, remote.y, look.eating);
+          },
         });
       }
       const myLook: CapybaraLook = {
@@ -1918,7 +2049,9 @@ export function Lobby({ games }: { games: DoorGame[] }) {
         attack: attacking ? attackProgress(me.attackUntil, now) : -1,
         stride: me.walkDist,
         idle: idleSprite(me.idleMs),
+        eating: eatingMs(me.meal, now),
       };
+      const myMeal = me.meal;
       // 통나무에 앉고 일어날 때 그림만 이전 자리에서 폴짝 뛰어 옮겨 간다
       const hop = reducedMotion ? 1 : Math.min(1, (now - me.hop.start) / HOP_MS);
       const hopEase = 1 - (1 - hop) * (1 - hop);
@@ -1926,7 +2059,10 @@ export function Lobby({ games }: { games: DoorGame[] }) {
       const drawnY = me.hop.fromY + (me.y - me.hop.fromY) * hopEase - Math.sin(hop * Math.PI) * 12;
       drawables.push({
         y: me.y + (me.sitting ? TILE * 0.5 : 0),
-        draw: () => drawCapybara(ctx, sprites, drawnX, drawnY, me.facing, myLook, outfitRef.current, wardrobe, now, !reducedMotion),
+        draw: () => {
+          drawCapybara(ctx, sprites, drawnX, drawnY, me.facing, myLook, outfitRef.current, wardrobe, now, !reducedMotion);
+          if (myMeal && myLook.eating >= 0 && !myLook.sitting) drawFood(ctx, myMeal.name, drawnX, drawnY, myLook.eating);
+        },
       });
       drawables.sort((a, b) => a.y - b.y);
       for (const item of drawables) item.draw();
@@ -1939,13 +2075,16 @@ export function Lobby({ games }: { games: DoorGame[] }) {
         drawLabel(ctx, remote.name, remote.x, labelY);
         // 낚싯대·공중의 찌와 물고기는 이름표를 가리지 않게 머리 위로 끌어올려 이름표 다음에 그린다
         if (remote.fishing) drawFishingRod(ctx, remote.fishing, remote.x, remote.y, remote.facing, now, !reducedMotion, labelY);
-        if (now < remote.chatUntil && parseFishChat(remote.chat) === null) drawSpeech(remote.chat, remote.x, labelY - 10);
+        if (remote.meal) drawHearts(ctx, remote.x, labelY - 8, now - remote.meal.at, !reducedMotion);
+        const actionChat = parseFishChat(remote.chat) !== null || parseFeedChat(remote.chat) !== null;
+        if (now < remote.chatUntil && !actionChat) drawSpeech(remote.chat, remote.x, labelY - 10);
       }
       const myLabelY = drawnY - (me.sitting ? SIT_SIZE : STAND_SIZE) - 8;
       if (me.name) drawLabel(ctx, me.name, drawnX, myLabelY);
       const mySpeechY = me.name ? myLabelY - 10 : myLabelY + 4;
       if (me.fishing) drawFishingRod(ctx, me.fishing, drawnX, drawnY, me.facing, now, !reducedMotion, mySpeechY + 10);
       if (now < me.chatUntil) drawSpeech(me.chat, drawnX, mySpeechY);
+      if (me.meal) drawHearts(ctx, drawnX, mySpeechY, now - me.meal.at, !reducedMotion);
       for (const [id, until] of hitEffects) {
         const target = remotes.get(id);
         const progress = 1 - (until - now) / 450;
@@ -2159,7 +2298,13 @@ export function Lobby({ games }: { games: DoorGame[] }) {
             outfitRef.current = outfit;
           }}
         />
-        <FishBag inventory={fishInventory} />
+        <FishBag
+          inventory={fishInventory}
+          satiety={satiety}
+          onFeed={(name) => {
+            feedRequest.current = name;
+          }}
+        />
         <SoundToggle settings={settings} onChange={updateSettings} />
       </div>
 
