@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib";
 import type { LobbySettings } from "@/lib/lobby/settings";
 
+import { FRAME_SRC } from "./constants";
 import { CAPYBARA_SRC } from "./wardrobe";
 
 interface SettingsProps {
@@ -46,6 +47,8 @@ export function SoundToggle({ settings, onChange }: SettingsProps) {
           <span className="absolute inset-0 flex items-center justify-center bg-overlay text-white opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-has-[:focus-visible]:opacity-100 motion-reduce:transition-none">
             {volume === 0 ? <VolumeX className="size-6" /> : <Volume2 className="size-6" />}
           </span>
+          {/* 앉기·때리기와 같은 나무 테두리. 스피커 아이콘이 떠도 테두리는 보이게 맨 위에 둔다 */}
+          <NextImage src={FRAME_SRC} alt="" fill unoptimized sizes="56px" draggable={false} />
         </span>
         {/* 인라인 translate로 자리를 잡으니, 벗는 연출은 translate 대신 scale·opacity로 한다 */}
         <NextImage

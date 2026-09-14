@@ -1571,7 +1571,8 @@ export function Lobby({ games }: { games: DoorGame[] }) {
         <SoundToggle settings={settings} onChange={updateSettings} />
       </div>
 
-      <div className="pointer-events-none absolute inset-x-0 bottom-0 flex flex-col items-center gap-2 px-4 pb-[max(1.25rem,env(safe-area-inset-bottom))]">
+      {/* 가운데 안내 글: 오른쪽 아래 버튼 줄(폭 ~5.5rem)을 가리지 않게 양옆을 비우고, 맨 아래 사이트 링크 줄 위에 둔다 */}
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 flex flex-col items-center gap-2 px-24 pb-[max(2.75rem,calc(env(safe-area-inset-bottom)+2rem))]">
         <p
           role="status"
           aria-live="polite"
@@ -1587,17 +1588,6 @@ export function Lobby({ games }: { games: DoorGame[] }) {
             <span className="hidden [@media(pointer:coarse)]:inline">화면을 누른 채 끌면 그쪽으로 걸어요 · 오두막 문 앞에 가면 입장</span>
           </p>
         )}
-        <nav aria-label="사이트 정보" className="pointer-events-auto flex gap-1 text-caption-3 text-text-caption">
-          {SITE_LINKS.map(({ href, label }) => (
-            <Link
-              key={href}
-              href={href}
-              className="flex min-h-6 items-center rounded-md bg-card/60 px-2 transition-colors hover:text-text-strong focus-visible:outline-2 focus-visible:outline-primary"
-            >
-              {label}
-            </Link>
-          ))}
-        </nav>
       </div>
 
       {/* 터치 조이스틱: 누른 자리에 나타난다. 위치는 게임 루프가 DOM에 직접 쓴다 */}
@@ -1608,52 +1598,66 @@ export function Lobby({ games }: { games: DoorGame[] }) {
         </div>
       </div>
 
-      <div className="absolute bottom-[max(5rem,calc(env(safe-area-inset-bottom)+4rem))] right-4 flex flex-col items-center gap-2">
-        {(seatNearby || sitting) && (
+      {/* 오른쪽 아래 세로 줄: 앉기 → 때리기 → 사이트 링크. 오른쪽 끝은 위 옷장·효과음 줄(right-5)과 맞추고, 링크는 맨 아래 줄에 둔다 */}
+      <div className="absolute bottom-[max(0.75rem,env(safe-area-inset-bottom))] right-5 flex flex-col items-end gap-3">
+        <div className="flex flex-col items-center gap-2">
+          {(seatNearby || sitting) && (
+            <button
+              type="button"
+              onClick={() => {
+                sitRequest.current = true;
+              }}
+              aria-pressed={sitting}
+              aria-label={sitting ? "일어나기" : "통나무에 앉기"}
+              className="group flex flex-col items-center gap-0.5 rounded-full focus-visible:outline-2 focus-visible:outline-primary"
+            >
+              <NextImage
+                src={`${UI_BASE}/sit.webp`}
+                alt=""
+                width={256}
+                height={256}
+                unoptimized
+                draggable={false}
+                className={cn(
+                  "size-18 drop-shadow-md transition-transform duration-100 motion-safe:group-active:scale-90",
+                  sitting && "brightness-90",
+                )}
+              />
+              <span className="rounded-full bg-card/85 px-2 py-0.5 text-caption-3 font-semibold text-text-strong">{sitting ? "일어나기" : "앉기"}</span>
+            </button>
+          )}
           <button
             type="button"
             onClick={() => {
-              sitRequest.current = true;
+              attackRequest.current = true;
             }}
-            aria-pressed={sitting}
-            aria-label={sitting ? "일어나기" : "통나무에 앉기"}
-            className="group flex flex-col items-center gap-0.5 rounded-full focus-visible:outline-2 focus-visible:outline-primary"
+            disabled={stunned}
+            aria-label="때리기 (F)"
+            className="group flex flex-col items-center gap-0.5 rounded-full focus-visible:outline-2 focus-visible:outline-primary disabled:opacity-50"
           >
             <NextImage
-              src={`${UI_BASE}/sit.webp`}
+              src={`${UI_BASE}/punch.webp`}
               alt=""
               width={256}
               height={256}
               unoptimized
               draggable={false}
-              className={cn(
-                "size-18 drop-shadow-md transition-transform duration-100 motion-safe:group-active:scale-90",
-                sitting && "brightness-90",
-              )}
+              className="size-18 drop-shadow-md transition-transform duration-100 motion-safe:group-active:scale-90"
             />
-            <span className="rounded-full bg-card/85 px-2 py-0.5 text-caption-3 font-semibold text-text-strong">{sitting ? "일어나기" : "앉기"}</span>
+            <span className="rounded-full bg-card/85 px-2 py-0.5 text-caption-3 font-semibold text-text-strong">때리기</span>
           </button>
-        )}
-        <button
-          type="button"
-          onClick={() => {
-            attackRequest.current = true;
-          }}
-          disabled={stunned}
-          aria-label="때리기 (F)"
-          className="group flex flex-col items-center gap-0.5 rounded-full focus-visible:outline-2 focus-visible:outline-primary disabled:opacity-50"
-        >
-          <NextImage
-            src={`${UI_BASE}/punch.webp`}
-            alt=""
-            width={256}
-            height={256}
-            unoptimized
-            draggable={false}
-            className="size-18 drop-shadow-md transition-transform duration-100 motion-safe:group-active:scale-90"
-          />
-          <span className="rounded-full bg-card/85 px-2 py-0.5 text-caption-3 font-semibold text-text-strong">때리기</span>
-        </button>
+        </div>
+        <nav aria-label="사이트 정보" className="flex gap-3 text-caption-3 text-white/85 drop-shadow-md">
+          {SITE_LINKS.map(({ href, label }) => (
+            <Link
+              key={href}
+              href={href}
+              className="flex min-h-6 items-center rounded-sm transition-colors hover:text-white focus-visible:outline-2 focus-visible:outline-primary"
+            >
+              {label}
+            </Link>
+          ))}
+        </nav>
       </div>
     </>
   );
