@@ -1,10 +1,25 @@
 import { fireEvent, render, screen } from "@testing-library/react";
+import { useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { GameControls } from "./game-controls";
 
 function pauseProps(paused: boolean) {
   return { paused, onPause: vi.fn(), onResume: vi.fn(), onRestart: vi.fn() };
+}
+
+function StatefulPauseGame() {
+  const [paused, setPaused] = useState(false);
+  return (
+    <GameControls
+      pause={{
+        paused,
+        onPause: () => setPaused(true),
+        onResume: () => setPaused(false),
+        onRestart: () => {},
+      }}
+    />
+  );
 }
 
 function setVisibility(value: DocumentVisibilityState) {
@@ -105,5 +120,27 @@ describe("GameControls", () => {
 
     expect(onPointerDown).not.toHaveBeenCalled();
     expect(onClick).not.toHaveBeenCalled();
+  });
+
+  it("멈춤 창에서 Esc로 닫으면 같은 키 이벤트로 다시 멈추지 않는다", () => {
+    render(<StatefulPauseGame />);
+
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+
+    fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  it("플레이 중 다른 열린 창(나가기 확인)을 Esc로 닫아도 게임이 멈추지 않는다", () => {
+    const pause = pauseProps(false);
+    render(<GameControls pause={pause} leaveConfirm="나가면 상대가 기다리게 돼요" />);
+
+    fireEvent.click(screen.getByRole("button", { name: "로비로 돌아가기" }));
+    const dialog = screen.getByRole("dialog");
+    fireEvent.keyDown(dialog, { key: "Escape" });
+
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(pause.onPause).not.toHaveBeenCalled();
   });
 });

@@ -20,8 +20,9 @@ export function GameControls({ pause, onCancelRound, leaveConfirm, className }: 
   const pausable = pause !== undefined;
 
   // 멈춘 상태의 Esc는 멈춤 창(Radix)이 닫기 = 이어하기로 처리한다
+  // defaultPrevented 체크: Radix가 이미 처리한 Esc(다른 열린 창 닫기)까지 여기서 중복으로 멈추지 않도록
   const handleKeyDown = useEffectEvent((event: KeyboardEvent) => {
-    if (event.key === "Escape" && pause && !pause.paused) pause.onPause();
+    if (event.key === "Escape" && !event.defaultPrevented && pause && !pause.paused) pause.onPause();
   });
 
   const handleVisibilityChange = useEffectEvent(() => {
@@ -64,8 +65,17 @@ export function GameControls({ pause, onCancelRound, leaveConfirm, className }: 
             <Pause aria-hidden="true" className="size-5" />
           </button>
 
-          <Dialog open={pause.paused} onOpenChange={(open) => !open && pause.onResume()}>
-            <Dialog.Content showCloseButton={false} className="text-center">
+          <Dialog
+            open={pause.paused}
+            onOpenChange={(open) => {
+              if (!open) pause.onResume();
+            }}
+          >
+            <Dialog.Content
+              showCloseButton={false}
+              className="text-center"
+              onCloseAutoFocus={(event) => event.preventDefault()}
+            >
               <Dialog.Title className="text-title-1 font-black">일시정지</Dialog.Title>
               <Dialog.Description>게임을 잠깐 멈췄어요.</Dialog.Description>
               <div className="flex flex-col gap-2">
