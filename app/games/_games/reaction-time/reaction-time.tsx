@@ -7,10 +7,12 @@ import { AdSlot } from "@/components/ads/ad-slot";
 import { GameControls } from "@/components/games/game-controls";
 import { ShareButton } from "@/components/games/share-button";
 import { cn } from "@/lib";
-import { GAME_TITLES } from "@/lib/games/constants";
+import { GAME_SOUNDS, GAME_TITLES } from "@/lib/games/constants";
 import { submitGameRecord } from "@/lib/games/game-events";
 import { useInView } from "@/lib/games/use-in-view";
+import { playGameSound } from "@/lib/lobby/settings";
 
+import { STOP_SOUND } from "./constants";
 import { ReactionLeaderboard } from "./leaderboard";
 import { getRank, insertRecord, saveRecords, useReactionRecords } from "./records";
 import { getTier } from "./tiers";
@@ -64,9 +66,11 @@ export function ReactionTime() {
     const timers = COUNTDOWN_VALUES.map((_, index) =>
       setTimeout(() => {
         if (index < COUNTDOWN_VALUES.length - 1) {
+          playGameSound(GAME_SOUNDS.countdown);
           setCountdownIndex(index + 1);
           return;
         }
+        playGameSound(GAME_SOUNDS.go);
         setStartAt(Date.now());
         setPhase("running");
       }, COUNTDOWN_STEP_MS * (index + 1)),
@@ -75,7 +79,15 @@ export function ReactionTime() {
     return () => timers.forEach(clearTimeout);
   }, [phase]);
 
+  // 순위표가 올라올 때 슈욱
+  useEffect(() => {
+    if (recordsVisible) playGameSound(GAME_SOUNDS.whoosh);
+  }, [recordsVisible]);
+
   function startCountdown() {
+    // 시작 슈욱에 첫 박(3)을 겹쳐 낸다
+    playGameSound(GAME_SOUNDS.start);
+    playGameSound(GAME_SOUNDS.countdown);
     setCountdownIndex(0);
     setPhase("countdown");
   }
@@ -87,6 +99,9 @@ export function ReactionTime() {
     saveRecords(insertRecord(records, record));
     void submitGameRecord("reaction-time", record.ms, record);
 
+    playGameSound(STOP_SOUND);
+    playGameSound(rank === 1 ? GAME_SOUNDS.record : GAME_SOUNDS.success);
+
     setResult({ ms: record.ms, recordId: record.id, rank });
     setPhase("result");
   }
@@ -96,6 +111,8 @@ export function ReactionTime() {
     suppressClickRef.current = false;
 
     if (phase === "countdown") {
+      playGameSound(GAME_SOUNDS.wrong);
+      playGameSound(GAME_SOUNDS.fail);
       setPhase("too-soon");
       suppressClickRef.current = true;
       return;
@@ -193,7 +210,14 @@ export function ReactionTime() {
       )}
 
       <GameControls
-        onCancelRound={phase === "countdown" || phase === "running" ? () => setPhase("idle") : undefined}
+        onCancelRound={
+          phase === "countdown" || phase === "running"
+            ? () => {
+                playGameSound(GAME_SOUNDS.pause);
+                setPhase("idle");
+              }
+            : undefined
+        }
       />
 
       {phase === "idle" && (

@@ -39,8 +39,17 @@ export type SoundLayer = { at?: number; ms: number; level: number; attack?: numb
 let audio: AudioContext | null = null;
 let noise: AudioBuffer | null = null;
 
-// ponytail: 효과음 파일 없이 오실레이터·잡음으로 짧게 합성한다(저작권 걱정 없음). 효과음 파일이 생기면 여기서 AudioBuffer 재생으로 바꾼다
 export function playSound(name: LobbySound, settings: LobbySettings) {
+  playLayers(SOUNDS[name], settings);
+}
+
+/** 게임 화면용: 로비에서 정한 소리 켜기·크기(이 기기 localStorage)를 매번 읽어 따른다. 게임별 소리는 각 게임 constants.ts에 SoundLayer[]로 둔다 */
+export function playGameSound(layers: readonly SoundLayer[]) {
+  playLayers(layers, loadLobbySettings());
+}
+
+// ponytail: 효과음 파일 없이 오실레이터·잡음으로 짧게 합성한다(저작권 걱정 없음). 효과음 파일이 생기면 여기서 AudioBuffer 재생으로 바꾼다
+function playLayers(layers: readonly SoundLayer[], settings: LobbySettings) {
   if (settings.muted || settings.volume <= 0) return;
   try {
     audio ??= new AudioContext();
@@ -56,7 +65,7 @@ export function playSound(name: LobbySound, settings: LobbySettings) {
   }
   // 같은 소리를 계속 내도 기계음처럼 안 들리게 높낮이를 조금씩 흔든다
   const pitch = 0.92 + Math.random() * 0.16;
-  for (const layer of SOUNDS[name]) {
+  for (const layer of layers) {
     const start = audio.currentTime + (layer.at ?? 0) / 1000;
     const end = start + layer.ms / 1000;
     const gain = audio.createGain();

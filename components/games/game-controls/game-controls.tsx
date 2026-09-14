@@ -7,6 +7,8 @@ import { useEffect, useEffectEvent, useState } from "react";
 import { Button, buttonVariants } from "@/components/inputs/button";
 import { Dialog } from "@/components/overlay/dialog";
 import { cn } from "@/lib";
+import { GAME_SOUNDS } from "@/lib/games/constants";
+import { playGameSound } from "@/lib/lobby/settings";
 
 import { ROUND_BUTTON } from "./constants";
 import type { GameControlsProps } from "./type";
@@ -21,10 +23,24 @@ export function GameControls({ pause, onCancelRound, leaveConfirm, className }: 
   if (!leaveConfirm && confirmOpen) setConfirmOpen(false);
   const pausable = pause !== undefined;
 
+  // 탭을 떠나 저절로 멈출 때는 들을 사람이 없으니 소리 없이 멈춘다
+  function pauseWithSound() {
+    playGameSound(GAME_SOUNDS.pause);
+    pause?.onPause();
+  }
+  function resumeWithSound() {
+    playGameSound(GAME_SOUNDS.resume);
+    pause?.onResume();
+  }
+  function restartWithSound() {
+    playGameSound(GAME_SOUNDS.start);
+    pause?.onRestart();
+  }
+
   // 멈춘 상태의 Esc는 멈춤 창(Radix)이 닫기 = 이어하기로 처리한다
   // defaultPrevented 체크: Radix가 이미 처리한 Esc(다른 열린 창 닫기)까지 여기서 중복으로 멈추지 않도록
   const handleKeyDown = useEffectEvent((event: KeyboardEvent) => {
-    if (event.key === "Escape" && !event.defaultPrevented && pause && !pause.paused) pause.onPause();
+    if (event.key === "Escape" && !event.defaultPrevented && pause && !pause.paused) pauseWithSound();
   });
 
   const handleVisibilityChange = useEffectEvent(() => {
@@ -63,14 +79,14 @@ export function GameControls({ pause, onCancelRound, leaveConfirm, className }: 
 
       {pause && (
         <>
-          <button type="button" aria-label="일시정지" onClick={pause.onPause} className={cn(ROUND_BUTTON, "right-4")}>
+          <button type="button" aria-label="일시정지" onClick={pauseWithSound} className={cn(ROUND_BUTTON, "right-4")}>
             <Pause aria-hidden="true" className="size-5" />
           </button>
 
           <Dialog
             open={pause.paused}
             onOpenChange={(open) => {
-              if (!open) pause.onResume();
+              if (!open) resumeWithSound();
             }}
           >
             <Dialog.Content
@@ -81,10 +97,10 @@ export function GameControls({ pause, onCancelRound, leaveConfirm, className }: 
               <Dialog.Title className="text-title-1 font-black">일시정지</Dialog.Title>
               <Dialog.Description>게임을 잠깐 멈췄어요.</Dialog.Description>
               <div className="flex flex-col gap-2">
-                <Button type="button" onClick={pause.onResume} className="h-12 w-full text-title-3 font-bold">
+                <Button type="button" onClick={resumeWithSound} className="h-12 w-full text-title-3 font-bold">
                   이어하기
                 </Button>
-                <Button type="button" variant="outline" onClick={pause.onRestart} className="h-12 w-full">
+                <Button type="button" variant="outline" onClick={restartWithSound} className="h-12 w-full">
                   처음부터
                 </Button>
                 <Link href="/" className={cn(buttonVariants({ variant: "ghost" }), "h-12 w-full")}>

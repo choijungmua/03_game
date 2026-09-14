@@ -9,10 +9,12 @@ import { GameControls } from "@/components/games/game-controls";
 import { Button } from "@/components/inputs/button";
 import { Dialog } from "@/components/overlay/dialog";
 import { cn } from "@/lib";
-import { GAME_TITLES } from "@/lib/games/constants";
+import { GAME_SOUNDS, GAME_TITLES } from "@/lib/games/constants";
 import { useLockPageScroll } from "@/lib/games/use-lock-page-scroll";
-import { type LobbySettings, type LobbySound, loadLobbySettings, playSound } from "@/lib/lobby/settings";
+import { SOUNDS } from "@/lib/lobby/constants";
+import { playGameSound } from "@/lib/lobby/settings";
 
+import { SNEAK_SOUNDS } from "./constants";
 import {
   addBite,
   AWAY_MS_RANGE,
@@ -113,24 +115,22 @@ export function CapybaraSneak() {
   // 멈출 때(안 누르고 있었다면) 계산한 감소까지 남은 시간. null이면 다음 감소 effect가 처음부터(DECAY_GRACE_MS) 기다린다
   const decayRemainingRef = useRef<number | null>(null);
 
-  // 효과음은 로비에서 정한 소리 켜기·크기를 그대로 따른다. 처음 소리 낼 때 한 번만 읽는다
-  const soundSettingsRef = useRef<LobbySettings | null>(null);
   // 한 입(80ms)마다 소리를 내면 너무 촘촘해서 세 입에 한 번 아삭 소리를 낸다
   const bitesRef = useRef(0);
-  function sound(name: LobbySound) {
-    soundSettingsRef.current ??= loadLobbySettings();
-    playSound(name, soundSettingsRef.current);
-  }
 
   function changeStatus(next: GameStatus) {
     statusRef.current = next;
     setStatus(next);
   }
 
-  const moveOwner = useEffectEvent((next: OwnerState) => {
+  // glance는 looking일 때만 의미가 있다(흘끗 보기면 가벼운 소리)
+  const moveOwner = useEffectEvent((next: OwnerState, glance = false) => {
     if (statusRef.current !== "playing") return;
     ownerRef.current = next;
     setOwnerState(next);
+    if (next === "turning") playGameSound(GAME_SOUNDS.warning);
+    else if (next === "looking") playGameSound(glance ? SNEAK_SOUNDS.glance : SNEAK_SOUNDS.look);
+    else playGameSound(SNEAK_SOUNDS.relief);
   });
 
   const bite = useEffectEvent(() => {
@@ -138,21 +138,29 @@ export function CapybaraSneak() {
 
     if (ownerRef.current === "looking") {
       changeStatus("fail");
-      sound("caught");
+      playGameSound(SOUNDS.caught);
       return;
     }
 
-    if (bitesRef.current++ % 3 === 0) sound("chomp");
+    if (bitesRef.current++ % 3 === 0) playGameSound(SOUNDS.chomp);
     const nextGauge = addBite(gaugeRef.current);
+    if (getFoodStage(gaugeRef.current) === "full" && getFoodStage(nextGauge) === "half") {
+      playGameSound(SNEAK_SOUNDS.half);
+    }
     gaugeRef.current = nextGauge;
     setGauge(nextGauge);
     setTrend("up");
-    if (nextGauge >= 100) changeStatus("success");
+    if (nextGauge >= 100) {
+      changeStatus("success");
+      playGameSound(GAME_SOUNDS.success);
+    }
   });
 
   const decay = useEffectEvent(() => {
     if (statusRef.current !== "playing" || gaugeRef.current === 0) return;
 
+    // 줄기 시작하는 첫 틱에만 소리를 낸다
+    if (trend !== "down") playGameSound(SNEAK_SOUNDS.shrink);
     const nextGauge = decayGauge(gaugeRef.current);
     gaugeRef.current = nextGauge;
     setGauge(nextGauge);
@@ -180,8 +188,8 @@ export function CapybaraSneak() {
     function scheduleLooking(delayMs: number) {
       timers.push(
         setTimeout(() => {
-          moveOwner("looking");
           const look = pickLook();
+          moveOwner("looking", look.glance);
           scheduleAwayAfter(look.ms);
         }, delayMs),
       );
@@ -235,13 +243,19 @@ export function CapybaraSneak() {
 
   useEffect(() => {
     if (!munching) return;
-    const id = setInterval(() => setSide((s) => (s === "right" ? "left" : "right")), SIDE_SWITCH_MS);
+    const id = setInterval(() => {
+      playGameSound(SNEAK_SOUNDS.hop);
+      setSide((s) => (s === "right" ? "left" : "right"));
+    }, SIDE_SWITCH_MS);
     return () => clearInterval(id);
   }, [munching]);
 
   useEffect(() => {
     if (status !== "fail") return;
-    const id = setTimeout(() => setCaughtShown(true), CAUGHT_REVEAL_MS);
+    const id = setTimeout(() => {
+      playGameSound(GAME_SOUNDS.fail);
+      setCaughtShown(true);
+    }, CAUGHT_REVEAL_MS);
     return () => clearTimeout(id);
   }, [status]);
 
@@ -274,7 +288,12 @@ export function CapybaraSneak() {
   function startPress() {
     if (paused) return;
     if (statusRef.current === "success" || statusRef.current === "fail") return;
-    if (statusRef.current === "ready") changeStatus("playing");
+    if (statusRef.current === "ready") {
+      changeStatus("playing");
+      playGameSound(GAME_SOUNDS.start);
+    }
+    // 누를 때마다 첫 입에 바로 아삭 소리가 나도록 센다
+    bitesRef.current = 0;
     setPressing(true);
   }
 
@@ -541,7 +560,13 @@ export function CapybaraSneak() {
             </Dialog.Description>
           </div>
 
-          <Button type="button" onClick={restart} className="h-12 w-full text-title-3 font-bold">
+          <Button
+            type="button"
+            onClick={() => {
+              playGameSound(GAME_SOUNDS.tap);
+              restart();
+            }}
+            className="h-12 w-full text-title-3 font-bold">
             다시 하기
           </Button>
 

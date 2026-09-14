@@ -7,10 +7,12 @@ import { AdSlot } from "@/components/ads/ad-slot";
 import { GameControls } from "@/components/games/game-controls";
 import { ShareButton } from "@/components/games/share-button";
 import { cn } from "@/lib";
-import { GAME_TITLES } from "@/lib/games/constants";
+import { GAME_SOUNDS, GAME_TITLES } from "@/lib/games/constants";
 import { submitGameRecord } from "@/lib/games/game-events";
 import { useInView } from "@/lib/games/use-in-view";
+import { playGameSound, type SoundLayer } from "@/lib/lobby/settings";
 
+import { CLICK_SPEED_SOUNDS, FAIL_TIER_INDEX, RESULT_SOUND_DELAY_MS } from "./constants";
 import { ClickSpeedLeaderboard } from "./leaderboard";
 import {
   calculateCps,
@@ -22,7 +24,7 @@ import {
   saveRecords,
   useClickSpeedRecords,
 } from "./records";
-import { getClickSpeedTier } from "./tiers";
+import { CLICK_SPEED_TIERS, getClickSpeedTier } from "./tiers";
 
 export const COUNTDOWN_VALUES = [3, 2, 1] as const;
 export const COUNTDOWN_STEP_MS = 800;
@@ -46,6 +48,15 @@ interface RoundResult {
 
 function stopPropagation(event: React.SyntheticEvent) {
   event.stopPropagation();
+}
+
+function playTap() {
+  playGameSound(GAME_SOUNDS.tap);
+}
+
+/** 앞 소리가 끝난 뒤 이어서 나도록 모든 층을 ms만큼 미룬다 */
+function delayLayers(layers: readonly SoundLayer[], ms: number): SoundLayer[] {
+  return layers.map((layer) => ({ ...layer, at: (layer.at ?? 0) + ms }));
 }
 
 /** 오른쪽 아래 남은 시간 */
@@ -89,7 +100,10 @@ function DurationPicker({
           key={seconds}
           type="button"
           aria-pressed={value === seconds}
-          onClick={() => onChange(seconds)}
+          onClick={() => {
+            playTap();
+            onChange(seconds);
+          }}
           className={cn(
             "min-h-11 min-w-14 cursor-pointer rounded-full px-4 text-caption-1 font-semibold tabular-nums transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
             value === seconds ? "bg-primary text-white" : "opacity-70 hover:opacity-100",
@@ -124,9 +138,11 @@ export function ClickSpeed() {
     const timers = COUNTDOWN_VALUES.map((_, index) =>
       setTimeout(() => {
         if (index < COUNTDOWN_VALUES.length - 1) {
+          playGameSound(GAME_SOUNDS.countdown);
           setCountdownIndex(index + 1);
           return;
         }
+        playGameSound(GAME_SOUNDS.go);
         setCount(0);
         setRipples([]);
         setPlayStartAt(Date.now());
@@ -142,6 +158,7 @@ export function ClickSpeed() {
     setPhase("result");
 
     if (count === 0) {
+      playGameSound([...CLICK_SPEED_SOUNDS.timeUp, ...delayLayers(GAME_SOUNDS.fail, RESULT_SOUND_DELAY_MS)]);
       setResult({ count: 0, cps: 0, seconds, recordId: null, rank: null });
       return;
     }
@@ -149,6 +166,15 @@ export function ClickSpeed() {
     const now = Date.now();
     const record = { id: String(now), count, cps: calculateCps(count, seconds), seconds, at: now };
     const rank = getRank(records, record);
+
+    // 시간 끝 → 등급에 따라 성공/실패 → 1위면 반짝반짝까지
+    const failed = CLICK_SPEED_TIERS.indexOf(getClickSpeedTier(record.cps)) >= FAIL_TIER_INDEX;
+    const resultSound = failed ? GAME_SOUNDS.fail : GAME_SOUNDS.success;
+    playGameSound([
+      ...CLICK_SPEED_SOUNDS.timeUp,
+      ...delayLayers(resultSound, RESULT_SOUND_DELAY_MS),
+      ...(rank === 1 && !failed ? delayLayers(GAME_SOUNDS.record, RESULT_SOUND_DELAY_MS + 700) : []),
+    ]);
     saveRecords(insertRecord(records, record));
     void submitGameRecord("click-speed", record.count, record);
 
@@ -158,22 +184,29 @@ export function ClickSpeed() {
   // 초록 화면이 된 순간부터 정한 시간이 지나면 끝난다
   useEffect(() => {
     if (phase !== "playing") return;
-    const timer = setTimeout(finishRound, seconds * 1000);
-    return () => clearTimeout(timer);
+    const timers = [setTimeout(finishRound, seconds * 1000)];
+    // 끝나기 3·2·1초 전마다 삐 — 시간이 거의 다 됐다는 신호
+    for (const left of COUNTDOWN_VALUES) {
+      if (left < seconds) timers.push(setTimeout(() => playGameSound(GAME_SOUNDS.countdown), (seconds - left) * 1000));
+    }
+    return () => timers.forEach(clearTimeout);
   }, [phase, seconds]);
 
   function startCountdown() {
+    playGameSound(GAME_SOUNDS.countdown);
     setCountdownIndex(0);
     setPhase("countdown");
   }
 
   function cancelRound() {
+    playGameSound(GAME_SOUNDS.pause);
     setCount(0);
     setRipples([]);
     setPhase("idle");
   }
 
   function registerTap(x: number, y: number) {
+    playGameSound(CLICK_SPEED_SOUNDS.click);
     const id = rippleIdRef.current++;
     setRipples((prev) => [...prev, { id, x, y }]);
     setCount((prev) => prev + 1);

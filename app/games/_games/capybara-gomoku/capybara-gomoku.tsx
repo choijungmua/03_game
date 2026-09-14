@@ -1,12 +1,16 @@
 "use client";
 
+import { useEffect, useRef } from "react";
+
 import { CapybaraRoom } from "@/components/games/capybara-room";
 import { GAME_TITLES } from "@/lib/games/constants";
-import { opponent, type Stone } from "@/lib/games/rooms";
+import { opponent, type RoomView, type Stone } from "@/lib/games/rooms";
 import { useRoom } from "@/lib/games/use-room";
+import { playGameSound } from "@/lib/lobby/settings";
 
 import { BOARD_SIZE, type GomokuState, TURN_TIME_MS } from "./logic";
 import type { GomokuAction } from "./rooms";
+import { pickSounds } from "./sounds";
 
 const STONE_NAME: Record<Stone, string> = { black: "갈색 카피바라", white: "흰 카피바라" };
 const STAR_POINTS = [3, 7, 11].flatMap((y) => [3, 7, 11].map((x) => y * BOARD_SIZE + x));
@@ -22,6 +26,14 @@ function describeEnd(state: GomokuState) {
 export function CapybaraGomoku() {
   const room = useRoom<GomokuState, GomokuAction>("capybara-gomoku");
   const state = room.view?.state;
+
+  // 방 화면(내 수 응답·폴링으로 온 상대 수)이 바뀔 때마다 바뀐 만큼 소리
+  const prevView = useRef<RoomView<GomokuState> | null>(null);
+  useEffect(() => {
+    const layers = pickSounds(prevView.current, room.view);
+    prevView.current = room.view;
+    if (layers.length > 0) playGameSound(layers);
+  }, [room.view]);
 
   return (
     <CapybaraRoom

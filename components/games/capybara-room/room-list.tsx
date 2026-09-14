@@ -1,13 +1,16 @@
 "use client";
 
 import Image from "next/image";
+import { useEffect, useRef } from "react";
 
 import { Badge } from "@/components/display/badge";
 import { cn } from "@/lib";
+import { GAME_SOUNDS } from "@/lib/games/constants";
 import type { RoomState } from "@/lib/games/rooms";
 import { type RoomHandle, useRoomList } from "@/lib/games/use-room";
+import { playGameSound } from "@/lib/lobby/settings";
 
-import { ROOM_STATUS } from "./constants";
+import { ROOM_SOUNDS, ROOM_STATUS } from "./constants";
 
 interface RoomListProps {
   room: Pick<RoomHandle<RoomState>, "slug" | "pending" | "join">;
@@ -17,6 +20,17 @@ interface RoomListProps {
 /** 온라인 대전 시작 화면 오른쪽 방 목록. 기다리는 방은 눌러서 들어가고, 게임 중인 방은 상태만 보인다 */
 export function RoomList({ room, className }: RoomListProps) {
   const { rooms, failed } = useRoomList(room.slug);
+
+  // 목록이 바뀐 순간에만 울린다: 방이 늘어남 퐁, 못 받게 됨 삐삐, 다시 받음 뚜루
+  const count = rooms.length;
+  const heard = useRef({ count, failed });
+  useEffect(() => {
+    const before = heard.current;
+    heard.current = { count, failed };
+    if (failed && !before.failed) playGameSound(GAME_SOUNDS.warning);
+    else if (!failed && before.failed) playGameSound(ROOM_SOUNDS.reconnected);
+    else if (count > before.count) playGameSound(ROOM_SOUNDS.roomAdded);
+  }, [count, failed]);
 
   return (
     <section
@@ -59,7 +73,10 @@ export function RoomList({ room, className }: RoomListProps) {
                 <button
                   type="button"
                   disabled={full || room.pending}
-                  onClick={() => room.join(code)}
+                  onClick={() => {
+                    playGameSound(GAME_SOUNDS.tap);
+                    room.join(code);
+                  }}
                   aria-label={`방 ${code}, ${label} ${seats}${full ? "" : ", 참가"}`}
                   className="flex w-full items-start gap-3 rounded-xl border border-border-default bg-card p-3 text-left transition-colors hover:enabled:bg-bg-neutral focus-visible:outline-2 focus-visible:outline-primary disabled:cursor-default"
                 >

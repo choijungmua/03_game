@@ -1,12 +1,16 @@
 "use client";
 
 import Image from "next/image";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { Button } from "@/components/inputs/button";
 import { cn } from "@/lib";
+import { GAME_SOUNDS } from "@/lib/games/constants";
 import { CAPYBARA_EMOTES, EMOTE_SHOW_MS, emoteImage, type RoomEmote } from "@/lib/games/emotes";
 import type { Stone } from "@/lib/games/rooms";
+import { playGameSound } from "@/lib/lobby/settings";
+
+import { ROOM_SOUNDS } from "./constants";
 
 const PAGE_SIZE = 8;
 const PAGE_COUNT = Math.ceil(CAPYBARA_EMOTES.length / PAGE_SIZE);
@@ -15,9 +19,15 @@ const PAGE_COUNT = Math.ceil(CAPYBARA_EMOTES.length / PAGE_SIZE);
 export function useEmoteShowing(emote: RoomEmote | null) {
   const [doneAt, setDoneAt] = useState<number | null>(null);
   const at = emote?.at;
+  // 처음부터 떠 있던 이모티콘은 조용히, 새로 온 이모티콘(내 것·상대 것)만 한 번 뽁
+  const popped = useRef(at);
 
   useEffect(() => {
     if (at === undefined) return;
+    if (popped.current !== at) {
+      popped.current = at;
+      playGameSound(ROOM_SOUNDS.emotePop);
+    }
     const id = setTimeout(() => setDoneAt(at), EMOTE_SHOW_MS);
     return () => clearTimeout(id);
   }, [at]);
@@ -75,6 +85,7 @@ export function EmotePicker({ onSend, disabled }: { onSend(id: number): void; di
                 type="button"
                 aria-label={text}
                 onClick={() => {
+                  playGameSound(ROOM_SOUNDS.emoteSend);
                   onSend(start + offset);
                   setOpen(false);
                 }}
@@ -99,7 +110,10 @@ export function EmotePicker({ onSend, disabled }: { onSend(id: number): void; di
             <span className="text-caption-1 text-text-caption tabular-nums">
               {page + 1} / {PAGE_COUNT}
             </span>
-            <Button type="button" variant="outline" onClick={() => setPage((page + 1) % PAGE_COUNT)} className="h-10">
+            <Button type="button" variant="outline" onClick={() => {
+                playGameSound(GAME_SOUNDS.tap);
+                setPage((page + 1) % PAGE_COUNT);
+              }} className="h-10">
               다음
             </Button>
           </div>
@@ -110,7 +124,10 @@ export function EmotePicker({ onSend, disabled }: { onSend(id: number): void; di
         variant="outline"
         aria-expanded={open && !disabled}
         disabled={disabled}
-        onClick={() => setOpen(!open)}
+        onClick={() => {
+          playGameSound(GAME_SOUNDS.tap);
+          setOpen(!open);
+        }}
         className={cn("h-11 flex-1 shrink-0", open && !disabled && "border-primary")}
       >
         놀리기
