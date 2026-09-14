@@ -20,12 +20,17 @@ export interface PublicPlayer extends PlayerState {
   stunMs: number;
   /** 남은 때리기 동작 시간(ms) */
   attackMs: number;
+  /** 머리 위 말풍선. 보여줄 시간이 끝났으면 빈 문자열 */
+  chat: string;
+  chatMs: number;
 }
 
 export interface PresenceRequest extends PlayerState {
   token: string;
   /** 이번 동기화 사이에 때리기를 눌렀는지 */
   attack: boolean;
+  /** 이번 동기화 사이에 보낸 채팅 (cleanChat을 거친 값) */
+  chat?: string;
 }
 
 export interface PresenceResponse {
@@ -44,6 +49,9 @@ interface Player extends PlayerState {
   stunnedUntil: number;
   attackUntil: number;
   attackReadyAt: number;
+  chat: string;
+  chatUntil: number;
+  chatReadyAt: number;
 }
 
 export const STALE_MS = 10_000;
@@ -54,6 +62,10 @@ export const ATTACK_MS = 320;
 export const ATTACK_COOLDOWN_MS = 600;
 /** 주먹이 닿는 거리(px) */
 export const ATTACK_REACH = 64;
+/** 말풍선이 떠 있는 시간 */
+export const CHAT_MS = 5000;
+export const CHAT_MAX = 60;
+export const CHAT_COOLDOWN_MS = 700;
 const MAX_VISIBLE = 60;
 const MAX_PLAYERS = 500;
 /** 네트워크 지연·프레임 튐을 봐주는 여유 */
@@ -66,17 +78,32 @@ function allPlayers() {
   return (store.lobbyPlayers ??= new Map());
 }
 
+/** 제어·보이지 않는 문자와 줄바꿈을 공백 하나로 바꾸고 CHAT_MAX 글자로 자른다 (이모지가 반쪽 나지 않게 글자 단위로) */
+export function cleanChat(text: string) {
+  return [...text.replace(/[\p{C}\s]+/gu, " ").trim()].slice(0, CHAT_MAX).join("").trim();
+}
+
 /** 요청 본문 검증. 바깥 입력이라 필드마다 타입을 확인한다 */
 export function parsePresence(body: Partial<PresenceRequest> | null): PresenceRequest | null {
   if (!body) return null;
-  const { token, x, y, facing, sitting, attack, outfit } = body;
+  const { token, x, y, facing, sitting, attack, outfit, chat } = body;
   if (typeof token !== "string" || token.length < 16 || token.length > 64) return null;
   if (typeof x !== "number" || typeof y !== "number" || !Number.isFinite(x) || !Number.isFinite(y)) return null;
   if (Math.abs(x) > 1e7 || Math.abs(y) > 1e7) return null;
   const direction = FACINGS.find((name) => name === facing);
   if (!direction || typeof sitting !== "boolean") return null;
   // 옷은 없거나 틀려도 요청을 거절하지 않고 아는 옷만 남긴다
-  return { token, x, y, facing: direction, sitting, attack: attack === true, outfit: sanitizeOutfit(outfit) };
+  const message = typeof chat === "string" ? cleanChat(chat) : "";
+  return {
+    token,
+    x,
+    y,
+    facing: direction,
+    sitting,
+    attack: attack === true,
+    outfit: sanitizeOutfit(outfit),
+    ...(message && { chat: message }),
+  };
 }
 
 const toPublic = (player: Player, now: number): PublicPlayer => ({
@@ -88,6 +115,8 @@ const toPublic = (player: Player, now: number): PublicPlayer => ({
   outfit: player.outfit,
   stunMs: Math.max(0, player.stunnedUntil - now),
   attackMs: Math.max(0, player.attackUntil - now),
+  chat: now < player.chatUntil ? player.chat : "",
+  chatMs: Math.max(0, player.chatUntil - now),
 });
 
 /** 바라보는 방향 앞쪽(±70°) 주먹 거리 안에서 가장 가까운, 아직 기절하지 않은 플레이어 */
@@ -130,6 +159,9 @@ export function updatePresence(request: PresenceRequest, now = Date.now()): Pres
       stunnedUntil: 0,
       attackUntil: 0,
       attackReadyAt: 0,
+      chat: "",
+      chatUntil: 0,
+      chatReadyAt: 0,
     };
     players.set(request.token, me);
   } else if (now < me.stunnedUntil) {
@@ -163,6 +195,14 @@ export function updatePresence(request: PresenceRequest, now = Date.now()): Pres
       target.sitting = false;
       hit = target.id;
     }
+  }
+
+  // 기절 중에도 말은 할 수 있다. 쿨타임 안에 온 채팅은 버린다 (도배 방지)
+  const chat = request.chat ? cleanChat(request.chat) : "";
+  if (chat && now >= me.chatReadyAt) {
+    me.chat = chat;
+    me.chatUntil = now + CHAT_MS;
+    me.chatReadyAt = now + CHAT_COOLDOWN_MS;
   }
 
   const self = me;

@@ -1,7 +1,7 @@
 // 로비 옷장: 카피바라 정면(idle-down) 위에 옷 이미지를 겹쳐 입힌다. 로비 맵에서도 입은 옷이 보이고, 다른 플레이어에게도 동기화된다.
 // 이미지: public/assets/images/characters/capybara/wardrobe/<slot>/<id>.webp (원본 시트 assets-src/characters/capybara/wardrobe/<slot>*.png)
 
-import type { Direction } from "./world";
+import type { Facing } from "./world";
 
 export const WARDROBE_SLOTS = ["hat", "glasses", "top", "bottom", "onepiece", "shoes", "gloves"] as const;
 export type WardrobeSlot = (typeof WARDROBE_SLOTS)[number];
@@ -127,15 +127,27 @@ export const OVER_HEAD_LAYERS: readonly WardrobeSlot[] = ["gloves", "glasses", "
 export const HEAD_ELLIPSE = { x: 50, y: 28, rx: 40, ry: 23 } as const;
 export const HEAD_CLIP = `ellipse(${HEAD_ELLIPSE.rx}% ${HEAD_ELLIPSE.ry}% at ${HEAD_ELLIPSE.x}% ${HEAD_ELLIPSE.y}%)`;
 
-/** 스프라이트가 보여 주는 몸 방향. 옆모습 자리는 오른쪽을 본 그림 기준이고 왼쪽은 좌우 반전해 쓴다 */
-export type WardrobeView = "front" | "back" | "side";
-export const VIEW_OF: Record<Direction, WardrobeView> = { down: "front", up: "back", left: "side", right: "side" };
+/**
+ * 스프라이트가 보여 주는 몸 방향. front3q·back3q는 앞·뒤 대각선(3/4 시점).
+ * 옆모습·대각선 자리는 오른쪽을 본 그림 기준이고, 왼쪽을 보는 방향은 좌우 반전해 쓴다
+ */
+export type WardrobeView = "front" | "back" | "side" | "front3q" | "back3q";
+export const VIEW_OF: Record<Facing, WardrobeView> = {
+  down: "front",
+  up: "back",
+  left: "side",
+  right: "side",
+  "down-left": "front3q",
+  "down-right": "front3q",
+  "up-left": "back3q",
+  "up-right": "back3q",
+};
 
 /**
  * 로비 맵의 서기·걷기·때리기·긁기·졸기 스프라이트(모두 같은 몸 상자 x21–78%, y9–97%)에 얹는 자리.
- * 옷 그림은 방향과 상관없이 앞모습 한 장을 쓴다 — 뒷모습은 그대로(뒤에서 봐도 옷 윤곽이 거의 같다), 옆모습은 squeeze로 좁힌다.
- * front는 옷장 자리(SLOT_INFO)를 서 있는 몸 상자로 옮긴 값. 뒤에서는 안경이 안 보여서 back에 없다.
- * 앉은 정면(idle-down)은 옷장 미리보기와 같은 그림이라 SLOT_INFO 자리를 그대로 쓴다
+ * 옷 그림은 방향과 상관없이 앞모습 한 장을 쓴다 — 뒷모습은 그대로(뒤에서 봐도 옷 윤곽이 거의 같다), 옆모습·대각선은 squeeze로 좁힌다.
+ * front는 옷장 자리(SLOT_INFO)를 서 있는 몸 상자로 옮긴 값. 뒤·뒤대각선에서는 안경이 안 보여서 없다.
+ * 대각선 자리는 서기·걷기 대각선 스프라이트(capybara-stand-down-right 등) 기준. 앉은 정면(idle-down)은 SLOT_INFO 자리를 그대로 쓴다
  */
 export const WORLD_ANCHORS: Record<WardrobeView, Partial<Record<WardrobeSlot, readonly WardrobeAnchor[]>>> = {
   front: {
@@ -176,12 +188,43 @@ export const WORLD_ANCHORS: Record<WardrobeView, Partial<Record<WardrobeSlot, re
     shoes: [{ x: 50, bottom: 101, width: 22, squeeze: 0.9 }],
     gloves: [{ x: 60, bottom: 64, width: 13 }],
   },
+  front3q: {
+    hat: [{ x: 52, bottom: 23, width: 36, squeeze: 0.95 }],
+    glasses: [{ x: 59, bottom: 40, width: 40, squeeze: 0.85 }],
+    top: [{ x: 50, bottom: 85, width: 62, squeeze: 0.9 }],
+    bottom: [{ x: 50, bottom: 88, width: 62, squeeze: 0.9 }],
+    onepiece: [{ x: 50, bottom: 90, width: 58, squeeze: 0.9 }],
+    shoes: [
+      { x: 38, bottom: 101, width: 16 },
+      { x: 63, bottom: 101, width: 16, mirror: true },
+    ],
+    gloves: [
+      { x: 44, bottom: 67, width: 12 },
+      { x: 68, bottom: 67, width: 12, mirror: true },
+    ],
+  },
+  back3q: {
+    hat: [{ x: 48, bottom: 23, width: 36, squeeze: 0.95 }],
+    top: [{ x: 46, bottom: 85, width: 62, squeeze: 0.9 }],
+    bottom: [{ x: 46, bottom: 88, width: 62, squeeze: 0.9 }],
+    onepiece: [{ x: 46, bottom: 90, width: 58, squeeze: 0.9 }],
+    shoes: [
+      { x: 34, bottom: 101, width: 16 },
+      { x: 54, bottom: 101, width: 16, mirror: true },
+    ],
+    gloves: [
+      { x: 21, bottom: 69, width: 11 },
+      { x: 70, bottom: 69, width: 11, mirror: true },
+    ],
+  },
 };
 /** 서 있는 몸 상자의 머리 타원 (이미지 기준 %, side는 오른쪽을 본 그림 기준) */
 export const WORLD_HEAD_ELLIPSE: Record<WardrobeView, { x: number; y: number; rx: number; ry: number }> = {
   front: { x: 50, y: 32, rx: 31, ry: 23 },
   back: { x: 50, y: 30, rx: 29, ry: 22 },
   side: { x: 55, y: 30, rx: 23, ry: 22 },
+  front3q: { x: 52, y: 31, rx: 27, ry: 22 },
+  back3q: { x: 48, y: 30, rx: 26, ry: 22 },
 };
 
 export const wardrobeSrc = (slot: WardrobeSlot, id: string) => `/assets/images/characters/capybara/wardrobe/${slot}/${id}.webp`;

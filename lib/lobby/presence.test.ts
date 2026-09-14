@@ -1,7 +1,18 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
 
-import { ATTACK_COOLDOWN_MS, parsePresence, STALE_MS, STUN_MS, updatePresence, VIEW_RADIUS } from "./presence";
+import {
+  ATTACK_COOLDOWN_MS,
+  CHAT_COOLDOWN_MS,
+  CHAT_MAX,
+  CHAT_MS,
+  cleanChat,
+  parsePresence,
+  STALE_MS,
+  STUN_MS,
+  updatePresence,
+  VIEW_RADIUS,
+} from "./presence";
 
 // 맵이 하나라 모든 플레이어가 한 공간에 있다. 테스트끼리 섞이지 않게 테스트마다 멀리 떨어진 곳을 쓴다
 let area = 0;
@@ -90,6 +101,28 @@ describe("로비 멀티", () => {
     if (dressed) updatePresence(dressed, 90_000);
     expect(updatePresence(player(base + 50), 90_000)?.players[0].outfit).toEqual({ hat: "crown" });
     expect(parsePresence({ ...player(0), outfit: undefined })?.outfit).toEqual({});
+  });
+
+  it("채팅은 근처 플레이어에게 잠깐 보이고, 연달아 보내면 쿨타임 안의 것은 버려진다", () => {
+    const base = spot();
+    const talker = player(base);
+    const listener = player(base + 50);
+    updatePresence(talker, 100_000);
+    updatePresence({ ...talker, chat: "안녕" }, 100_100);
+    expect(updatePresence(listener, 100_200)?.players[0]).toMatchObject({ chat: "안녕", chatMs: CHAT_MS - 100 });
+
+    updatePresence({ ...talker, chat: "도배" }, 100_200); // 쿨타임
+    expect(updatePresence(listener, 100_300)?.players[0].chat).toBe("안녕");
+    updatePresence({ ...talker, chat: "다시" }, 100_100 + CHAT_COOLDOWN_MS);
+    expect(updatePresence(listener, 100_900)?.players[0].chat).toBe("다시");
+
+    expect(updatePresence(listener, 100_100 + CHAT_COOLDOWN_MS + CHAT_MS)?.players[0]).toMatchObject({ chat: "", chatMs: 0 });
+  });
+
+  it("채팅은 줄바꿈·제어문자를 지우고 길이를 자르며, 빈 채팅은 없는 것으로 본다", () => {
+    expect(cleanChat(`  안\n녕${String.fromCharCode(0)}하세요  `)).toBe("안 녕 하세요");
+    expect([...cleanChat("가".repeat(CHAT_MAX + 10))]).toHaveLength(CHAT_MAX);
+    expect(parsePresence({ ...player(0), chat: " \n " })).not.toHaveProperty("chat");
   });
 
   it("대각선을 보고 때리면 그 대각선 앞쪽이 맞는다", () => {

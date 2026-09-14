@@ -3,7 +3,7 @@
 // 캔버스용 new Image()와 이름이 겹치지 않게 NextImage로 가져온다
 import NextImage from "next/image";
 import { useRouter } from "next/navigation";
-import { useEffect, useEffectEvent, useRef, useState } from "react";
+import { type FormEvent, useEffect, useEffectEvent, useRef, useState } from "react";
 
 import { cn } from "@/lib";
 
@@ -16,7 +16,17 @@ import {
   type SpriteAsset,
   type SpriteId,
 } from "@/lib/lobby/assets";
-import { ATTACK_COOLDOWN_MS, ATTACK_MS, type PresenceResponse } from "@/lib/lobby/presence";
+import { Button } from "@/components/inputs/button";
+import { Input } from "@/components/inputs/input";
+import {
+  ATTACK_COOLDOWN_MS,
+  ATTACK_MS,
+  CHAT_COOLDOWN_MS,
+  CHAT_MAX,
+  CHAT_MS,
+  cleanChat,
+  type PresenceResponse,
+} from "@/lib/lobby/presence";
 import {
   BODY_LAYERS,
   HEAD_ELLIPSE,
@@ -26,6 +36,7 @@ import {
   SLOT_INFO,
   type WardrobeAnchor,
   type WardrobeSlot,
+  WARDROBE_SLOTS,
   wardrobeSrc,
   VIEW_OF,
   WORLD_ANCHORS,
@@ -83,8 +94,15 @@ interface Remote {
   id: string;
   x: number;
   y: number;
-  targetX: number;
-  targetY: number;
+  /** 마지막으로 받은 위치까지 fromX,Y에서 segMs 동안 일정한 속도로 옮겨 간다 */
+  fromX: number;
+  fromY: number;
+  toX: number;
+  toY: number;
+  receivedAt: number;
+  segMs: number;
+  /** 마지막으로 실제로 움직인 시각. 다음 위치를 기다리는 짧은 멈춤에도 걷기 모습을 유지한다 */
+  movedAt: number;
   facing: Facing;
   sitting: boolean;
   walkDist: number;
@@ -92,6 +110,8 @@ interface Remote {
   stunUntil: number;
   attackUntil: number;
   outfit: Outfit;
+  chat: string;
+  chatUntil: number;
 }
 
 interface Chunk {
@@ -359,6 +379,39 @@ function drawLabel(ctx: CanvasRenderingContext2D, text: string, x: number, y: nu
   ctx.fillText(text, x, y);
 }
 
+const BUBBLE_TEXT_WIDTH = 180;
+const BUBBLE_LINE = 17;
+
+/** 꼬리 끝이 (x, bottom)에 오는 말풍선. 한글은 띄어쓰기 없이 길게 쓰기도 해서 글자 단위로 줄을 바꾼다 */
+function drawBubble(ctx: CanvasRenderingContext2D, text: string, x: number, bottom: number) {
+  ctx.font = "13px system-ui, sans-serif";
+  const lines: string[] = [];
+  let line = "";
+  for (const char of text) {
+    if (line && ctx.measureText(line + char).width > BUBBLE_TEXT_WIDTH) {
+      lines.push(line);
+      line = char.trimStart();
+    } else {
+      line += char;
+    }
+  }
+  if (line) lines.push(line);
+  const width = Math.max(...lines.map((item) => ctx.measureText(item).width)) + 16;
+  const height = lines.length * BUBBLE_LINE + 10;
+  const top = bottom - 6 - height;
+  ctx.beginPath();
+  ctx.roundRect(x - width / 2, top, width, height, 8);
+  ctx.moveTo(x - 5, top + height);
+  ctx.lineTo(x, bottom);
+  ctx.lineTo(x + 5, top + height);
+  ctx.fillStyle = "rgba(255,250,238,0.95)";
+  ctx.fill();
+  ctx.fillStyle = "#2a1f14";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  lines.forEach((item, index) => ctx.fillText(item, x, top + 5 + BUBBLE_LINE * (index + 0.5)));
+}
+
 function drawStar(ctx: CanvasRenderingContext2D, x: number, y: number, radius: number) {
   ctx.beginPath();
   for (let i = 0; i < 10; i++) {
@@ -374,16 +427,26 @@ function drawStar(ctx: CanvasRenderingContext2D, x: number, y: number, radius: n
   ctx.stroke();
 }
 
+/** 옷 입은 스프라이트를 굽는 캔버스 크기(px). 화면에는 최대 STAND_SIZE(76) × 기기 픽셀 비율 2 = 152px로 그린다 */
+const DRESSED_PX = 192;
+
+interface OutfitDrawer {
+  /** 옷 이미지 (처음 부를 때 불러온다) */
+  image: (src: string) => HTMLImageElement;
+  /** 옷 입은 스프라이트를 구워 둔 캔버스. 입은 옷이 없거나 옷 이미지를 아직 불러오는 중이면 null */
+  dressed: (base: HTMLImageElement, outfit: Outfit, view: Facing | "sit-down") => HTMLCanvasElement | null;
+}
+
 /**
  * 스프라이트 한 장(left, top, 정사각형 size) 위에 옷을 전부 입힌다.
- * 앉은 정면은 옷장 미리보기와 같은 그림이라 옷장 자리(SLOT_INFO), 나머지 동작은 서 있는 몸 상자 자리(WORLD_ANCHORS)에
- * 바라보는 방향의 옷 그림(앞·뒤·옆)을 쓴다. 왼쪽을 보면 오른쪽 옆모습 자리와 그림을 좌우 반전한다. 그 방향 그림이 없는 옷은 건너뛴다
+ * 앉은 정면은 옷장 미리보기와 같은 그림이라 옷장 자리(SLOT_INFO), 나머지 동작은 서 있는 몸 상자 자리(WORLD_ANCHORS)에서
+ * 바라보는 방향(앞·뒤·옆·앞대각선·뒤대각선)의 자리를 쓴다. 왼쪽을 보는 방향은 오른쪽 기준 자리와 그림을 좌우 반전한다
  */
 function drawOutfit(
   ctx: CanvasRenderingContext2D,
   base: HTMLImageElement,
   outfit: Outfit,
-  view: Direction | "sit-down",
+  view: Facing | "sit-down",
   left: number,
   top: number,
   size: number,
@@ -391,7 +454,7 @@ function drawOutfit(
 ) {
   const sitting = view === "sit-down";
   const wardrobeView = sitting ? "front" : VIEW_OF[view];
-  const flip = view === "left";
+  const flip = !sitting && view.endsWith("left");
   const anchorsOf = (slot: WardrobeSlot) => (sitting ? SLOT_INFO[slot].anchors : (WORLD_ANCHORS[wardrobeView][slot] ?? []));
   const put = (slot: WardrobeSlot, anchor: WardrobeAnchor) => {
     const id = outfit[slot];
@@ -447,10 +510,20 @@ function drawCapybara(
   facing: Facing,
   look: CapybaraLook,
   outfit: Outfit,
-  outfitImage: (src: string) => HTMLImageElement,
+  wardrobe: OutfitDrawer,
   now: number,
   animate: boolean,
 ) {
+  /** 옷 입은 스프라이트 한 장. 구워 둔 캔버스가 있으면 한 번에, 옷 이미지를 불러오는 중이면 겹쳐 그린다 */
+  const drawDressed = (image: HTMLImageElement, view: Facing | "sit-down", left: number, top: number, size: number) => {
+    const dressed = wardrobe.dressed(image, outfit, view);
+    if (dressed) {
+      ctx.drawImage(dressed, left, top, size, size);
+      return;
+    }
+    ctx.drawImage(image, left, top, size, size);
+    drawOutfit(ctx, image, outfit, view, left, top, size, wardrobe.image);
+  };
   if (!look.sitting) {
     ctx.fillStyle = "rgba(30,40,10,0.25)";
     ctx.beginPath();
@@ -464,8 +537,7 @@ function drawCapybara(
       ctx.save();
       ctx.translate(x, y);
       ctx.rotate(animate ? Math.sin(now / 90) * 0.07 : 0); // 비틀비틀
-      ctx.drawImage(image, -STAND_SIZE / 2, -STAND_SIZE * STAND_FOOT, STAND_SIZE, STAND_SIZE);
-      drawOutfit(ctx, image, outfit, "down", -STAND_SIZE / 2, -STAND_SIZE * STAND_FOOT, STAND_SIZE, outfitImage);
+      drawDressed(image, "down", -STAND_SIZE / 2, -STAND_SIZE * STAND_FOOT, STAND_SIZE);
       ctx.restore();
     }
     for (let i = 0; i < 3; i++) {
@@ -504,14 +576,15 @@ function drawCapybara(
         ? "up"
         : key.startsWith("yawn") || key.startsWith("doze")
           ? (DIRECTIONS.find((side) => key.endsWith(`-${side}`)) ?? "down")
-          : direction;
+          : key === walkKey
+            ? facing // 서기·걷기는 대각선 스프라이트가 있어서 대각선 자리
+            : direction;
   if (key.startsWith("doze") && animate) {
     // 조는 동안 몸이 천천히 앞뒤로 흔들린다
     ctx.save();
     ctx.translate(x, y);
     ctx.rotate(Math.sin(now / 650) * 0.035);
-    ctx.drawImage(image, -size / 2, -size * foot, size, size);
-    drawOutfit(ctx, image, outfit, view, -size / 2, -size * foot, size, outfitImage);
+    drawDressed(image, view, -size / 2, -size * foot, size);
     ctx.restore();
     return;
   }
@@ -521,8 +594,7 @@ function drawCapybara(
     ctx.save();
     ctx.translate(x + wiggle * 1.5, y);
     ctx.rotate(wiggle * 0.05);
-    ctx.drawImage(image, -size / 2, -size * foot, size, size);
-    drawOutfit(ctx, image, outfit, view, -size / 2, -size * foot, size, outfitImage);
+    drawDressed(image, view, -size / 2, -size * foot, size);
     ctx.restore();
     return;
   }
@@ -532,13 +604,11 @@ function drawCapybara(
     ctx.save();
     ctx.translate(x, y - Math.abs(step) * 3);
     ctx.rotate(step * 0.045);
-    ctx.drawImage(image, -size / 2, -size * foot, size, size);
-    drawOutfit(ctx, image, outfit, view, -size / 2, -size * foot, size, outfitImage);
+    drawDressed(image, view, -size / 2, -size * foot, size);
     ctx.restore();
     return;
   }
-  ctx.drawImage(image, x + fx * lunge - size / 2, y + fy * lunge - size * foot, size, size);
-  drawOutfit(ctx, image, outfit, view, x + fx * lunge - size / 2, y + fy * lunge - size * foot, size, outfitImage);
+  drawDressed(image, view, x + fx * lunge - size / 2, y + fy * lunge - size * foot, size);
 }
 
 /** 맞은 자리에 터지는 "퍽" 효과. progress 0 → 1 */
@@ -614,6 +684,12 @@ export function Lobby({ games }: { games: DoorGame[] }) {
   const knobRef = useRef<HTMLDivElement>(null);
   /** 입은 옷. 게임 루프가 매 프레임 읽어서 그리고 서버에 보낸다 */
   const outfitRef = useRef<Outfit>({});
+  /** 보낼 채팅. 게임 루프가 가져가 말풍선을 띄우고 다음 동기화에 실어 보낸다 */
+  const chatRequest = useRef<string | null>(null);
+  const chatInputRef = useRef<HTMLInputElement>(null);
+  const lastChatAt = useRef(-Infinity);
+  /** 스크린리더용: 캔버스 말풍선은 읽히지 않아서 방금 들은 채팅을 글로도 둔다 */
+  const [heardChat, setHeardChat] = useState("");
   const [world] = useState(() => createWorld(LOBBY_SEED, games));
   const [activeDoor, setActiveDoor] = useState<Door | null>(null);
   const [sitting, setSitting] = useState(false);
@@ -667,6 +743,38 @@ export function Lobby({ games }: { games: DoorGame[] }) {
       }
       return image;
     };
+    // 옷 입은 스프라이트는 (스프라이트·방향·옷 조합)마다 한 번만 캔버스에 구워 두고, 매 프레임엔 그 한 장만 그린다
+    const dressedCache = new Map<string, HTMLCanvasElement>();
+    const wardrobe: OutfitDrawer = {
+      image: outfitImage,
+      dressed: (base, outfit, view) => {
+        const worn = WARDROBE_SLOTS.flatMap((slot) => {
+          const id = outfit[slot];
+          return id ? [`${slot}:${id}`] : [];
+        });
+        if (worn.length === 0) return null;
+        const key = `${base.src}|${view}|${worn.join(",")}`;
+        const cached = dressedCache.get(key);
+        if (cached) return cached;
+        // 옷 이미지를 다 불러온 뒤에만 굽는다 (덜 불러온 채 구우면 빠진 옷이 그대로 굳는다)
+        const loaded = WARDROBE_SLOTS.every((slot) => {
+          const id = outfit[slot];
+          return !id || ready(outfitImage(wardrobeSrc(slot, id)));
+        });
+        if (!loaded) return null;
+        const canvas = document.createElement("canvas");
+        canvas.width = DRESSED_PX;
+        canvas.height = DRESSED_PX;
+        const bake = canvas.getContext("2d");
+        if (!bake) return null;
+        bake.drawImage(base, 0, 0, DRESSED_PX, DRESSED_PX);
+        drawOutfit(bake, base, outfit, view, 0, 0, DRESSED_PX, outfitImage);
+        // ponytail: 넘치면 통째로 비운다 (청크 캐시와 같은 방식). 사람이 많아 자주 비워지면 LRU로
+        if (dressedCache.size > 300) dressedCache.clear();
+        dressedCache.set(key, canvas);
+        return canvas;
+      },
+    };
 
     // 타일은 청크(16×16) 단위로 한 번만 계산하고, 바닥은 청크마다 캔버스 한 장으로 구워 둔다
     const chunks = new Map<string, Chunk>();
@@ -719,6 +827,8 @@ export function Lobby({ games }: { games: DoorGame[] }) {
       lastAttackAt: -Infinity,
       pendingFacing: "up" as Facing,
       facingSince: 0,
+      chat: "",
+      chatUntil: 0,
     };
     const saved: Partial<{ x: number; y: number }> = JSON.parse(loadSession(positionKey) ?? "{}");
     if (typeof saved.x === "number" && typeof saved.y === "number" && !blocked(saved.x, saved.y)) {
@@ -758,6 +868,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
     let charge = 0;
     let leaving = false;
     let attackQueued = false;
+    let chatQueued: string | null = null;
     let shownDoor: Door | null = null;
     let shownSitting = false;
     let shownSeat = false;
@@ -807,6 +918,8 @@ export function Lobby({ games }: { games: DoorGame[] }) {
     resize();
 
     const onKeyDown = (event: KeyboardEvent) => {
+      // 채팅 입력 중엔 WASD·F·Space가 글자로 들어가야 한다
+      if (event.target instanceof HTMLInputElement) return;
       if (KEY_VECTORS[event.code]) {
         event.preventDefault(); // 방향키 스크롤 방지
         pressed.add(event.code);
@@ -823,7 +936,12 @@ export function Lobby({ games }: { games: DoorGame[] }) {
         if (!event.repeat) sitRequest.current = true;
       } else if (event.code === "Enter") {
         const door = nearestDoor();
-        if (door) enter(door);
+        if (door) {
+          enter(door);
+        } else {
+          event.preventDefault();
+          chatInputRef.current?.focus();
+        }
       }
     };
     const onKeyUp = (event: KeyboardEvent) => pressed.delete(event.code);
@@ -877,10 +995,12 @@ export function Lobby({ games }: { games: DoorGame[] }) {
       const sent = { x: me.x, y: me.y };
       const attack = attackQueued;
       attackQueued = false;
+      const chat = chatQueued ?? undefined;
+      chatQueued = null;
       fetch("/api/lobby", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token, ...sent, facing: me.facing, sitting: me.sitting, attack, outfit: outfitRef.current }),
+        body: JSON.stringify({ token, ...sent, facing: me.facing, sitting: me.sitting, attack, outfit: outfitRef.current, chat }),
       })
         .then(async (response) => {
           const data: Partial<PresenceResponse> = await response.json();
@@ -898,37 +1018,57 @@ export function Lobby({ games }: { games: DoorGame[] }) {
           }
 
           const seen = new Set<string>();
+          let heard = "";
           for (const player of data.players) {
             seen.add(player.id);
             // 남은 시간이 0이면 0으로 둔다 (received를 넣으면 같은 프레임의 rAF 시각보다 커서 잠깐 기절처럼 보인다)
             const stunUntil = player.stunMs > 0 ? received + player.stunMs : 0;
+            const chatUntil = player.chatMs > 0 ? received + player.chatMs : 0;
             const remote = remotes.get(player.id);
+            if (chatUntil > 0 && (!remote || remote.chat !== player.chat || remote.chatUntil < received)) {
+              heard = `카피바라 ${player.id.slice(0, 4)}: ${player.chat}`;
+            }
             if (remote) {
-              remote.targetX = player.x;
-              remote.targetY = player.y;
+              // 다음 위치가 올 때까지(=지난 수신 간격) 걸쳐 옮긴다. 지수 감속으로 따라가면 받을 때마다 빨라졌다 느려져서 끊겨 보인다
+              remote.fromX = remote.x;
+              remote.fromY = remote.y;
+              remote.toX = player.x;
+              remote.toY = player.y;
+              remote.segMs = Math.min(500, Math.max(SYNC_MS, received - remote.receivedAt));
+              remote.receivedAt = received;
               remote.facing = player.facing;
               remote.sitting = player.sitting;
               remote.outfit = player.outfit ?? {};
               remote.stunUntil = stunUntil;
+              remote.chat = player.chat;
+              remote.chatUntil = chatUntil;
               if (player.attackMs > 0) remote.attackUntil = received + player.attackMs;
             } else {
               remotes.set(player.id, {
                 id: player.id,
                 x: player.x,
                 y: player.y,
-                targetX: player.x,
-                targetY: player.y,
+                fromX: player.x,
+                fromY: player.y,
+                toX: player.x,
+                toY: player.y,
+                receivedAt: received,
+                segMs: SYNC_MS,
+                movedAt: -Infinity,
                 facing: player.facing,
                 sitting: player.sitting,
                 walkDist: 0,
                 idleMs: 0,
                 stunUntil,
                 attackUntil: player.attackMs > 0 ? received + player.attackMs : 0,
+                chat: player.chat,
+                chatUntil,
                 outfit: player.outfit ?? {},
               });
             }
           }
           for (const id of remotes.keys()) if (!seen.has(id)) remotes.delete(id);
+          if (heard) setHeardChat(heard);
           if (data.hit) hitEffects.set(data.hit, received + 450);
           setOffline(false);
         })
@@ -1009,6 +1149,12 @@ export function Lobby({ games }: { games: DoorGame[] }) {
           attackQueued = true;
         }
       }
+      if (chatRequest.current !== null) {
+        me.chat = chatRequest.current;
+        me.chatUntil = now + CHAT_MS;
+        chatQueued = chatRequest.current;
+        chatRequest.current = null;
+      }
       if (wantsMove && me.sitting) standUp(); // 움직이면 일어난다
 
       const startX = me.x;
@@ -1065,13 +1211,16 @@ export function Lobby({ games }: { games: DoorGame[] }) {
       if (isStunned !== shownStunned) setStunned((shownStunned = isStunned));
 
       for (const remote of remotes.values()) {
-        const ease = Math.min(1, dt / 100);
-        const moving = Math.hypot(remote.targetX - remote.x, remote.targetY - remote.y) > 2;
-        const stepX = (remote.targetX - remote.x) * ease;
-        const stepY = (remote.targetY - remote.y) * ease;
-        remote.x += stepX;
-        remote.y += stepY;
-        remote.walkDist = moving ? remote.walkDist + Math.hypot(stepX, stepY) : 0;
+        // rAF 시각이 수신 시각보다 살짝 이를 수 있어서 0 아래로 내려가지 않게 한다
+        const t = Math.max(0, Math.min(1, (now - remote.receivedAt) / remote.segMs));
+        const nextX = remote.fromX + (remote.toX - remote.fromX) * t;
+        const nextY = remote.fromY + (remote.toY - remote.fromY) * t;
+        const step = Math.hypot(nextX - remote.x, nextY - remote.y);
+        remote.x = nextX;
+        remote.y = nextY;
+        if (step > 0.05) remote.movedAt = now;
+        const moving = now - remote.movedAt < 200;
+        remote.walkDist = moving ? remote.walkDist + step : 0;
         const busy = moving || remote.sitting || now < remote.stunUntil || now < remote.attackUntil;
         remote.idleMs = busy ? 0 : nextIdle(remote.idleMs, dt);
       }
@@ -1191,7 +1340,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
         drawables.push({
           y: remote.y + (remote.sitting ? TILE * 0.5 : 0),
           draw: () =>
-            drawCapybara(ctx, sprites, remote.x, remote.y, remote.facing, look, remote.outfit, outfitImage, now, !reducedMotion),
+            drawCapybara(ctx, sprites, remote.x, remote.y, remote.facing, look, remote.outfit, wardrobe, now, !reducedMotion),
         });
       }
       const myLook: CapybaraLook = {
@@ -1209,7 +1358,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
       const drawnY = me.hop.fromY + (me.y - me.hop.fromY) * hopEase - Math.sin(hop * Math.PI) * 12;
       drawables.push({
         y: me.y + (me.sitting ? TILE * 0.5 : 0),
-        draw: () => drawCapybara(ctx, sprites, drawnX, drawnY, me.facing, myLook, outfitRef.current, outfitImage, now, !reducedMotion),
+        draw: () => drawCapybara(ctx, sprites, drawnX, drawnY, me.facing, myLook, outfitRef.current, wardrobe, now, !reducedMotion),
       });
       drawables.sort((a, b) => a.y - b.y);
       for (const item of drawables) item.draw();
@@ -1218,8 +1367,11 @@ export function Lobby({ games }: { games: DoorGame[] }) {
         if (inView(item.x, item.y, TILE * 4)) drawLabel(ctx, item.title, item.x, item.y + TILE * 0.85, true);
       }
       for (const remote of remotes.values()) {
-        drawLabel(ctx, `카피바라 ${remote.id.slice(0, 4)}`, remote.x, remote.y - (remote.sitting ? SIT_SIZE : STAND_SIZE) - 8);
+        const labelY = remote.y - (remote.sitting ? SIT_SIZE : STAND_SIZE) - 8;
+        drawLabel(ctx, `카피바라 ${remote.id.slice(0, 4)}`, remote.x, labelY);
+        if (now < remote.chatUntil) drawBubble(ctx, remote.chat, remote.x, labelY - 10);
       }
+      if (now < me.chatUntil) drawBubble(ctx, me.chat, drawnX, drawnY - (me.sitting ? SIT_SIZE : STAND_SIZE) - 4);
       for (const [id, until] of hitEffects) {
         const target = remotes.get(id);
         const progress = 1 - (until - now) / 450;
@@ -1270,6 +1422,25 @@ export function Lobby({ games }: { games: DoorGame[] }) {
 
   const status = stunned ? "기절! 2초 동안 못 움직여요" : notice || (activeDoor ? `${activeDoor.title} 들어가는 중… (Enter로 바로)` : offline ? "혼자 모드 (연결 끊김)" : "");
 
+  const sendChat = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const input = chatInputRef.current;
+    if (!input) return;
+    const text = cleanChat(input.value);
+    // 빈 Enter면 입력을 끝내고 다시 걷는다
+    if (!text) {
+      input.value = "";
+      input.blur();
+      return;
+    }
+    // 서버도 쿨타임 안의 채팅을 버리므로, 너무 빠르면 지우지 않고 남겨서 다시 보내게 한다
+    const now = performance.now();
+    if (now - lastChatAt.current < CHAT_COOLDOWN_MS) return;
+    lastChatAt.current = now;
+    chatRequest.current = text;
+    input.value = "";
+  };
+
   return (
     <>
       <canvas
@@ -1279,6 +1450,29 @@ export function Lobby({ games }: { games: DoorGame[] }) {
         // touch-none: 누른 채 끌 때 페이지가 스크롤·확대되지 않게
         className="absolute inset-0 size-full touch-none select-none"
       />
+
+      {/* 오른쪽 위 옷장 버튼 자리를 비워 둔다 */}
+      <form onSubmit={sendChat} className="absolute left-4 right-24 top-[max(1rem,env(safe-area-inset-top))] flex max-w-sm gap-2">
+        <Input
+          ref={chatInputRef}
+          name="lobby-chat"
+          aria-label="채팅"
+          placeholder="Enter로 채팅…"
+          autoComplete="off"
+          enterKeyHint="send"
+          maxLength={CHAT_MAX}
+          onKeyDown={(event) => {
+            if (event.key === "Escape") event.currentTarget.blur();
+          }}
+          className="h-11 min-w-0 bg-card/85 text-base text-text-strong backdrop-blur"
+        />
+        <Button type="submit" className="h-11 shrink-0">
+          보내기
+        </Button>
+        <p aria-live="polite" className="sr-only">
+          {heardChat}
+        </p>
+      </form>
 
       <Wardrobe
         onChange={(outfit) => {
@@ -1296,7 +1490,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
         </p>
         <p className="max-w-full text-balance rounded-lg bg-card/80 px-3 py-1.5 text-center text-caption-3 text-text-caption backdrop-blur">
           <span className="[@media(pointer:coarse)]:hidden">
-            방향키·WASD 걷기 · F 때리기 · 통나무 앞에서 Space 앉기 · 오두막 문 앞에 가면 입장
+            방향키·WASD 걷기 · F 때리기 · 통나무 앞에서 Space 앉기 · Enter 채팅 · 오두막 문 앞에 가면 입장
           </span>
           <span className="hidden [@media(pointer:coarse)]:inline">화면을 누른 채 끌면 그쪽으로 걸어요 · 오두막 문 앞에 가면 입장</span>
         </p>
