@@ -7,6 +7,7 @@ import { type FormEvent, useEffect, useEffectEvent, useRef, useState } from "rea
 
 import { pretendard } from "@/config";
 import { cn } from "@/lib";
+import { API_URL } from "@/lib/api-url";
 
 /** 캔버스는 CSS 폰트를 물려받지 않으니 사이트 폰트(Pretendard) 이름을 직접 쓴다 */
 const CANVAS_FONT = pretendard.style.fontFamily;
@@ -1013,7 +1014,8 @@ export function Lobby({ games }: { games: DoorGame[] }) {
       attackQueued = false;
       const chat = chatQueued ?? undefined;
       chatQueued = null;
-      fetch("/api/lobby", {
+      // ponytail: 150ms 게임 루프라 React Query 없이 직접 보낸다(렌더 없이 캔버스만 갱신)
+      fetch(`${API_URL}/api/lobby`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ token, ...sent, facing: me.facing, sitting: me.sitting, attack, outfit: outfitRef.current, chat }),
