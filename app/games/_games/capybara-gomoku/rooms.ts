@@ -1,17 +1,2 @@
-import { createRoomStore } from "@/lib/games/rooms";
-
-import { createGame, type GomokuState, playMove, resign, timeOut, TURN_TIME_MS } from "./logic";
-
-const GOMOKU_ACTIONS = ["move", "resign"] as const;
-export type GomokuAction = (typeof GOMOKU_ACTIONS)[number];
-
-export const gomokuRooms = createRoomStore<GomokuState, GomokuAction>("capybara-gomoku", {
-  actions: GOMOKU_ACTIONS,
-  turnTimeMs: TURN_TIME_MS,
-  create: () => createGame(),
-  timeOut,
-  act(state, action, seat) {
-    if (action.type === "move") return playMove(state, action.index ?? -1, seat);
-    return resign(state, seat);
-  },
-});
+/** 온라인 대전에서 보낼 수 있는 행동. 판정은 백엔드(04_game_b)가 한다 */
+export type GomokuAction = "move" | "resign";
