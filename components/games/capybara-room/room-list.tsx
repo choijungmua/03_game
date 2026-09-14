@@ -35,7 +35,20 @@ export function RoomList({ room, className }: RoomListProps) {
       )}
 
       {rooms.length === 0 ? (
-        !failed && <p className="py-8 text-center text-caption-1 text-text-caption">열린 방이 없어요. 방을 만들어 보세요</p>
+        // 목록을 못 받은 동안에는 "열린 방이 없어요"로 보이지 않게 위 안내만 둔다
+        !failed && (
+          <div className="flex flex-1 flex-col items-center justify-center gap-3 py-8 text-center">
+            <Image
+              src="/assets/images/games/capybara-board/stone-black.webp"
+              alt=""
+              width={96}
+              height={96}
+              draggable={false}
+              className="size-24 opacity-80"
+            />
+            <p className="text-caption-1 text-text-caption">열린 방이 없어요. 방을 만들어 보세요</p>
+          </div>
+        )
       ) : (
         <ul className="-mx-1 flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto overscroll-contain p-1">
           {rooms.map(({ code, status }) => {

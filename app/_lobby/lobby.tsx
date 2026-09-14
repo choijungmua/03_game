@@ -24,7 +24,8 @@ import {
   type SpriteId,
 } from "@/lib/lobby/assets";
 import { Input } from "@/components/inputs/input";
-import { DEFAULT_LOBBY_SETTINGS } from "@/lib/lobby/constants";
+import { DEFAULT_LOBBY_SETTINGS, REMOTE_GONE_MS, REMOTE_RENDER_DELAY_MS } from "@/lib/lobby/constants";
+import { pushSnapshot, sampleSnapshots, type Snapshot } from "@/lib/lobby/interpolation";
 import { type LobbySettings, loadLobbySettings, playSound, saveLobbySettings } from "@/lib/lobby/settings";
 
 import { CAPYBARA_EMOTES, emoteChat, emoteImage, parseEmoteChat } from "@/lib/games/emotes";
@@ -110,13 +111,10 @@ interface Remote {
   name: string;
   x: number;
   y: number;
-  /** 마지막으로 받은 위치까지 fromX,Y에서 segMs 동안 일정한 속도로 옮겨 간다 */
-  fromX: number;
-  fromY: number;
-  toX: number;
-  toY: number;
-  receivedAt: number;
-  segMs: number;
+  /** 받은 위치들. 매 프레임 조금 과거(REMOTE_RENDER_DELAY_MS)를 보간해 그린다 (lib/lobby/interpolation.ts) */
+  snapshots: Snapshot[];
+  /** 마지막으로 응답에 들어 있던 시각 */
+  seenAt: number;
   /** 마지막으로 실제로 움직인 시각. 다음 위치를 기다리는 짧은 멈춤에도 걷기 모습을 유지한다 */
   movedAt: number;
   facing: Facing;
@@ -934,6 +932,9 @@ export function Lobby({ games }: { games: DoorGame[] }) {
     let shownSitting = false;
     let shownSeat = false;
     let shownStunned = false;
+    // 내 캐릭터 동작 프레임이 바뀌는 순간에만 효과음을 내려고 지난 프레임을 기억한다
+    let soundPose: Pose = "stand";
+    let soundIdle: IdleFrame | null = null;
     let noticeTimer = 0;
 
     const showNotice = (text: string) => {
@@ -1104,13 +1105,8 @@ export function Lobby({ games }: { games: DoorGame[] }) {
               heard = `${player.name}: ${emote === null ? player.chat : `${CAPYBARA_EMOTES[emote]} (이모티콘)`}`;
             }
             if (remote) {
-              // 다음 위치가 올 때까지(=지난 수신 간격) 걸쳐 옮긴다. 지수 감속으로 따라가면 받을 때마다 빨라졌다 느려져서 끊겨 보인다
-              remote.fromX = remote.x;
-              remote.fromY = remote.y;
-              remote.toX = player.x;
-              remote.toY = player.y;
-              remote.segMs = Math.min(500, Math.max(SYNC_MS, received - remote.receivedAt));
-              remote.receivedAt = received;
+              pushSnapshot(remote.snapshots, player.x, player.y, received, SYNC_MS);
+              remote.seenAt = received;
               remote.facing = player.facing;
               remote.sitting = player.sitting;
               remote.outfit = player.outfit ?? {};
@@ -1124,12 +1120,8 @@ export function Lobby({ games }: { games: DoorGame[] }) {
                 name: player.name,
                 x: player.x,
                 y: player.y,
-                fromX: player.x,
-                fromY: player.y,
-                toX: player.x,
-                toY: player.y,
-                receivedAt: received,
-                segMs: SYNC_MS,
+                snapshots: [{ x: player.x, y: player.y, at: received }],
+                seenAt: received,
                 movedAt: -Infinity,
                 facing: player.facing,
                 sitting: player.sitting,
@@ -1143,7 +1135,8 @@ export function Lobby({ games }: { games: DoorGame[] }) {
               });
             }
           }
-          for (const id of remotes.keys()) if (!seen.has(id)) remotes.delete(id);
+          // 한 번 응답에서 빠졌다고 바로 지우면 사라졌다 다시 나타나 깜빡인다
+          for (const [id, remote] of remotes) if (!seen.has(id) && received - remote.seenAt > REMOTE_GONE_MS) remotes.delete(id);
           if (heard) {
             setHeardChat(heard);
             playSound("chat", settingsRef.current);
@@ -1226,6 +1219,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
             me.facing = "down";
             me.sitting = true;
             me.seatIndex = index;
+            playSound("sit", settingsRef.current);
           } else {
             showNotice(index >= 0 ? "누가 이미 앉아 있어요" : "통나무 의자 앞에서 앉을 수 있어요");
           }
@@ -1284,6 +1278,15 @@ export function Lobby({ games }: { games: DoorGame[] }) {
       me.pose = moved ? walkPose(me.walkDist) : "stand";
       const attacking = now < me.attackUntil;
       me.idleMs = moved || wantsMove || me.sitting || isStunned || attacking ? 0 : nextIdle(me.idleMs, dt);
+      // 발을 내딛는 프레임마다 톡, 긁는 박자마다 슥슥, 하품을 시작할 때 하아암
+      if (me.pose !== soundPose && me.pose !== "stand") playSound("step", settingsRef.current);
+      soundPose = me.pose;
+      const idleFrame = idleSprite(me.idleMs);
+      if (idleFrame !== soundIdle) {
+        if (idleFrame === "scratch-2" || idleFrame === "scratch-3") playSound("scratch", settingsRef.current);
+        if (idleFrame === "yawn-1") playSound("yawn", settingsRef.current);
+        soundIdle = idleFrame;
+      }
 
       const follow = reducedMotion ? 1 : Math.min(1, dt / 120);
       camera.x += (me.x - camera.x) * follow;
@@ -1304,10 +1307,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
       if (isStunned !== shownStunned) setStunned((shownStunned = isStunned));
 
       for (const remote of remotes.values()) {
-        // rAF 시각이 수신 시각보다 살짝 이를 수 있어서 0 아래로 내려가지 않게 한다
-        const t = Math.max(0, Math.min(1, (now - remote.receivedAt) / remote.segMs));
-        const nextX = remote.fromX + (remote.toX - remote.fromX) * t;
-        const nextY = remote.fromY + (remote.toY - remote.fromY) * t;
+        const { x: nextX, y: nextY } = sampleSnapshots(remote.snapshots, now - REMOTE_RENDER_DELAY_MS);
         const step = Math.hypot(nextX - remote.x, nextY - remote.y);
         remote.x = nextX;
         remote.y = nextY;

@@ -1,4 +1,4 @@
-import type { LobbySettings, LobbySound } from "./settings";
+import type { LobbySettings, LobbySound, SoundLayer } from "./settings";
 
 /** 이모지를 이어 붙이는 보이지 않는 문자(ZWJ). 지우면 가족·직업 이모지 같은 조합 이모지가 낱개로 흩어진다 (보이지 않는 글자라 코드값으로 쓴다) */
 export const ZWJ = String.fromCharCode(0x200d);
@@ -7,11 +7,55 @@ export const DEFAULT_LOBBY_SETTINGS: LobbySettings = { muted: false, volume: 0.6
 
 export const LOBBY_SETTINGS_STORAGE_KEY = "ggpli:lobby-settings";
 
-/** 효과음 파일 없이 오실레이터로 합성하는 짧은 소리들 (주파수 Hz, 길이 ms, 최대 크기 0~1) */
-export const SOUND_TONES: Record<LobbySound, { wave: OscillatorType; from: number; to: number; ms: number; level: number }> = {
-  chat: { wave: "sine", from: 740, to: 1180, ms: 120, level: 0.18 },
-  swing: { wave: "triangle", from: 420, to: 140, ms: 140, level: 0.16 },
-  hit: { wave: "square", from: 180, to: 55, ms: 200, level: 0.12 },
+/** 다른 유저는 이만큼 과거 위치를 그린다. 폴링(150ms)이 한 번 늦어도 멈칫하지 않게 두 틱이 조금 안 되게 둔다 */
+export const REMOTE_RENDER_DELAY_MS = 250;
+/** 응답에서 이만큼 계속 빠진 유저만 지운다. 한 번 빠졌다고 지우면 사라졌다 다시 나타나 깜빡인다 */
+export const REMOTE_GONE_MS = 1_000;
+/** 유저마다 들고 있는 과거 위치 개수 */
+export const MAX_SNAPSHOTS = 8;
+/** 이보다 오래 같은 자리에 있다가 움직이면, 서 있던 시간에 걸쳐 느리게 오지 않고 한 틱 동안 걷게 한다 */
+export const SNAPSHOT_RESTART_MS = 500;
+
+/** 효과음 파일 없이 오실레이터(tone)·걸러낸 잡음(noise)을 겹쳐 합성하는 짧은 소리들 (주파수 Hz, 길이·시작 ms, 최대 크기 0~1) */
+export const SOUNDS: Record<LobbySound, readonly SoundLayer[]> = {
+  chat: [{ kind: "tone", wave: "sine", from: 740, to: 1180, ms: 120, level: 0.18 }],
+  swing: [{ kind: "tone", wave: "triangle", from: 420, to: 140, ms: 140, level: 0.16 }],
+  hit: [{ kind: "tone", wave: "square", from: 180, to: 55, ms: 200, level: 0.12 }],
+  // 톡: 발바닥이 풀밭에 닿는 낮고 부드러운 소리
+  step: [
+    { kind: "noise", filter: "lowpass", q: 1, from: 900, to: 250, ms: 70, level: 0.2 },
+    { kind: "tone", wave: "sine", from: 120, to: 70, ms: 60, level: 0.1 },
+  ],
+  // 뿅 → 털썩: 폴짝 뛰어올라 통나무에 엉덩이를 붙인다
+  sit: [
+    { kind: "tone", wave: "sine", from: 520, to: 160, ms: 150, level: 0.18 },
+    { at: 120, kind: "noise", filter: "lowpass", q: 1, from: 700, to: 200, ms: 100, level: 0.3 },
+    { at: 120, kind: "tone", wave: "sine", from: 110, to: 60, ms: 90, level: 0.14 },
+  ],
+  // 하아~암: 천천히 올라갔다 길게 내려오는 목소리 + 숨소리
+  yawn: [
+    { kind: "tone", wave: "triangle", from: 240, to: 420, ms: 550, level: 0.1, attack: 180 },
+    { at: 450, kind: "tone", wave: "triangle", from: 420, to: 170, ms: 850, level: 0.1, attack: 80 },
+    { kind: "noise", filter: "bandpass", q: 0.8, from: 1000, to: 600, ms: 1200, level: 0.05, attack: 300 },
+  ],
+  // 슥슥: 털을 긁는 짧고 까슬한 소리 두 번
+  scratch: [
+    { kind: "noise", filter: "bandpass", q: 1.5, from: 2600, to: 1800, ms: 90, level: 0.16 },
+    { at: 70, kind: "noise", filter: "bandpass", q: 1.5, from: 2200, to: 1500, ms: 80, level: 0.12 },
+  ],
+  // 아삭 쩝: 수박을 크게 베어 무는 바삭한 소리 + 과즙이 톡 튀는 소리
+  chomp: [
+    { kind: "noise", filter: "highpass", q: 0.7, from: 3800, to: 1800, ms: 45, level: 0.4 },
+    { at: 30, kind: "noise", filter: "bandpass", q: 1.2, from: 2600, to: 900, ms: 75, level: 0.32 },
+    { at: 10, kind: "tone", wave: "sine", from: 230, to: 110, ms: 70, level: 0.16 },
+    { at: 95, kind: "tone", wave: "sine", from: 1300, to: 700, ms: 35, level: 0.05 },
+  ],
+  // 헉!: 깜짝 놀라 치솟았다가 털썩 내려앉는 소리
+  caught: [
+    { kind: "tone", wave: "square", from: 320, to: 900, ms: 110, level: 0.1 },
+    { at: 130, kind: "tone", wave: "sawtooth", from: 700, to: 140, ms: 480, level: 0.09 },
+    { at: 130, kind: "noise", filter: "lowpass", q: 1, from: 600, to: 150, ms: 220, level: 0.25 },
+  ],
 };
 
 /** 로비 플레이어 이름표 = 꾸밈말 + 이름 ("졸린 치킨바라"). 서버가 입장할 때 접속 중인 사람과 안 겹치게 고른다 (presence.ts pickName)
