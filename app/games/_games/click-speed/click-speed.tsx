@@ -6,6 +6,7 @@ import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { AdSlot } from "@/components/ads/ad-slot";
 import { ShareButton } from "@/components/games/share-button";
 import { cn } from "@/lib";
+import { GAME_TITLES } from "@/lib/games/constants";
 import { useInView } from "@/lib/games/use-in-view";
 
 import { ClickSpeedLeaderboard } from "./leaderboard";
@@ -253,7 +254,7 @@ export function ClickSpeed() {
       {phase === "idle" && (
         <ShareButton
           className="absolute right-4 top-[max(1rem,env(safe-area-inset-top))]"
-          title="클릭 스피드 테스트"
+          title={GAME_TITLES["click-speed"]}
           text={shareText}
         />
       )}
@@ -262,7 +263,7 @@ export function ClickSpeed() {
         <div className="flex w-full max-w-md flex-col items-center gap-8 text-center">
           <header className="space-y-2">
             {/* 좌우 여백: 좁은 폰에서 제목이 오른쪽 위 공유 버튼 밑으로 들어가지 않게 */}
-            <h1 className="px-12 text-title-1 font-bold text-text-strong">클릭 스피드 테스트</h1>
+            <h1 className="px-12 text-title-1 font-bold text-text-strong">{GAME_TITLES["click-speed"]}</h1>
             <p className="text-caption-1 text-balance text-text-caption">
               화면을 누르면 3·2·1 카운트다운이 시작돼요. 초록 화면이 되면 정한 시간 동안 최대한 빠르게 연타하세요.
             </p>
@@ -276,7 +277,7 @@ export function ClickSpeed() {
         </div>
       )}
 
-      {phase !== "idle" && <h1 className="sr-only">클릭 스피드 테스트</h1>}
+      {phase !== "idle" && <h1 className="sr-only">{GAME_TITLES["click-speed"]}</h1>}
 
       {phase === "countdown" && (
         <div className="flex flex-col items-center gap-4 text-center">
@@ -350,7 +351,7 @@ export function ClickSpeed() {
               onClick={stopPropagation}
             >
               <p className="text-caption-1 font-semibold">이 기록을 친구에게 공유할까요?</p>
-              <ShareButton title="클릭 스피드 테스트" text={shareText} />
+              <ShareButton title={GAME_TITLES["click-speed"]} text={shareText} />
             </div>
 
             <div className="flex flex-col items-center gap-2">

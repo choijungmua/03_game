@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { GAME_TITLES } from "@/lib/games/constants";
 import { mockIntersectionObserver } from "@/lib/games/testing/mock-intersection-observer";
 
 import { ClickSpeed, COUNTDOWN_STEP_MS, COUNTDOWN_VALUES } from "./click-speed";
@@ -71,7 +72,7 @@ describe("ClickSpeed", () => {
     it("제목과 가운데 시작 안내를 보여준다", () => {
       render(<ClickSpeed />);
       expect(getScreenEl()).toHaveAttribute("data-phase", "idle");
-      expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("클릭 스피드 테스트");
+      expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(GAME_TITLES["click-speed"]);
       expect(screen.getByText("클릭해서 시작하세요")).toBeInTheDocument();
     });
 

@@ -7,6 +7,7 @@ import { useEffect, useEffectEvent, useRef, useState, useSyncExternalStore } fro
 import { AdSlot } from "@/components/ads/ad-slot";
 import { ShareButton } from "@/components/games/share-button";
 import { cn } from "@/lib";
+import { GAME_TITLES } from "@/lib/games/constants";
 import { useInView } from "@/lib/games/use-in-view";
 import { lobbyAssetSrc } from "@/lib/lobby/assets";
 
@@ -53,7 +54,7 @@ const SWIPE_PX = 36;
 const TAP_MS = 250;
 const TAP_PX = 10;
 
-const TITLE = "카피바라 통나무 피하기";
+const TITLE = GAME_TITLES["capybara-log-dodge"];
 const LEFT_KEYS = new Set(["ArrowLeft", "a", "A"]);
 const RIGHT_KEYS = new Set(["ArrowRight", "d", "D"]);
 const JUMP_KEYS = new Set(["ArrowUp", "w", "W", " "]);

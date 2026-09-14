@@ -1,6 +1,7 @@
 "use client";
 
 import { CapybaraRoom } from "@/components/games/capybara-room";
+import { GAME_TITLES } from "@/lib/games/constants";
 import { opponent, type Stone } from "@/lib/games/rooms";
 import { useRoom } from "@/lib/games/use-room";
 
@@ -24,7 +25,7 @@ export function CapybaraGomoku() {
 
   return (
     <CapybaraRoom
-      title="카피바라 오목"
+      title={GAME_TITLES["capybara-gomoku"]}
       guide={`친구를 초대해서 카피바라 다섯 마리를 먼저 한 줄로 이으면 이겨요. 한 수에 ${TURN_TIME_MS / 1000}초`}
       room={room}
       starPoints={STAR_POINTS}

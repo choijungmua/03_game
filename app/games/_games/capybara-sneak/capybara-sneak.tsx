@@ -8,6 +8,7 @@ import { Progress } from "@/components/feedback/progress";
 import { Button } from "@/components/inputs/button";
 import { Dialog } from "@/components/overlay/dialog";
 import { cn } from "@/lib";
+import { GAME_TITLES } from "@/lib/games/constants";
 
 import {
   addBite,
@@ -245,7 +246,7 @@ export function CapybaraSneak() {
       onContextMenu={preventDefault}
       className="relative h-dvh w-full cursor-pointer touch-none select-none overflow-hidden bg-background [-webkit-tap-highlight-color:transparent] [-webkit-touch-callout:none]"
     >
-      <h1 className="sr-only">카피바라 몰래 먹기</h1>
+      <h1 className="sr-only">{GAME_TITLES["capybara-sneak"]}</h1>
       <p aria-live="polite" className="sr-only">
         {OWNER_STATUS_MESSAGE[ownerState]}
       </p>

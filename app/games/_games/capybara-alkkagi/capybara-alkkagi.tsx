@@ -19,6 +19,7 @@ import { Button } from "@/components/inputs/button";
 import { Input } from "@/components/inputs/input";
 import { Dialog } from "@/components/overlay/dialog";
 import { cn } from "@/lib";
+import { GAME_TITLES } from "@/lib/games/constants";
 import { opponent, type RoomView, type Stone, type Vector } from "@/lib/games/rooms";
 import { useRoom } from "@/lib/games/use-room";
 
@@ -267,7 +268,7 @@ export function CapybaraAlkkagi() {
 
   return (
     <div className="relative h-dvh w-full touch-manipulation select-none overflow-hidden bg-background text-text-strong [-webkit-tap-highlight-color:transparent]">
-      <h1 className="sr-only">카피바라 알까기</h1>
+      <h1 className="sr-only">{GAME_TITLES["capybara-alkkagi"]}</h1>
 
       <Image
         src={`${ASSET}/background-landscape.webp`}
@@ -295,7 +296,7 @@ export function CapybaraAlkkagi() {
           <div className={cn(CARD, "flex w-full max-w-md flex-col gap-5 p-6")}>
             <div className="flex flex-col items-center gap-2">
               <p aria-hidden="true" className="text-center text-title-1 font-black">
-                카피바라 알까기
+                {GAME_TITLES["capybara-alkkagi"]}
               </p>
               <p className="text-center text-caption-1 text-text-caption">
                 내 카피바라를 뒤로 당겼다 놓아서 상대 카피바라를 판 밖으로 떨어뜨려요. 왕관 쓴 대장은 크고 무거워서 잘 안 밀려요.
