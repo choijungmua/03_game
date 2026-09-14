@@ -732,7 +732,6 @@ export function Lobby({ games }: { games: DoorGame[] }) {
   const [seatNearby, setSeatNearby] = useState(false);
   const [stunned, setStunned] = useState(false);
   const [notice, setNotice] = useState("");
-  const [offline, setOffline] = useState(false);
   // 게임 루프 effect가 router 변경으로 다시 실행되면 캐릭터·멀티 상태가 초기화되므로 이벤트로 감싼다
   const goToGame = useEffectEvent((slug: string) => router.push(`/games/${slug}`));
   const prefetchGame = useEffectEvent((slug: string) => router.prefetch(`/games/${slug}`));
@@ -1139,9 +1138,9 @@ export function Lobby({ games }: { games: DoorGame[] }) {
             hitEffects.set(data.hit, received + 450);
             playSound("hit", settingsRef.current);
           }
-          setOffline(false);
         })
-        .catch(() => setOffline(true))
+        // 연결이 끊겨도 따로 알리지 않는다. 다음 동기화에서 다시 붙으면 다른 유저가 그대로 보인다
+        .catch(() => {})
         .finally(() => {
           inFlight = false;
         });
@@ -1493,7 +1492,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
     };
   }, [world]);
 
-  const status = stunned ? "기절! 2초 동안 못 움직여요" : notice || (activeDoor ? `${activeDoor.title} 들어가는 중… (Enter로 바로)` : offline ? "혼자 모드 (연결 끊김)" : "");
+  const status = stunned ? "기절! 2초 동안 못 움직여요" : notice || (activeDoor ? `${activeDoor.title} 들어가는 중… (Enter로 바로)` : "");
 
   const sendChat = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
