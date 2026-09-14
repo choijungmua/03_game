@@ -2,6 +2,7 @@
 
 // 캔버스용 new Image()와 이름이 겹치지 않게 NextImage로 가져온다
 import NextImage from "next/image";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { type FormEvent, useEffect, useEffectEvent, useRef, useState } from "react";
 
@@ -22,6 +23,14 @@ import {
   type SpriteId,
 } from "@/lib/lobby/assets";
 import { Input } from "@/components/inputs/input";
+import { DEFAULT_LOBBY_SETTINGS } from "@/lib/lobby/constants";
+import { type LobbySettings, loadLobbySettings, playSound, saveLobbySettings } from "@/lib/lobby/settings";
+
+import { CAPYBARA_EMOTES, emoteChat, emoteImage, parseEmoteChat } from "@/lib/games/emotes";
+
+import { BUBBLE_LINE, BUBBLE_TEXT_WIDTH, EMOTE_SIZE, SITE_LINKS } from "./constants";
+import { EmotePicker } from "./emote-picker";
+import { SoundToggle } from "./lobby-settings";
 import {
   ATTACK_COOLDOWN_MS,
   ATTACK_MS,
@@ -29,6 +38,7 @@ import {
   CHAT_MAX,
   CHAT_MS,
   cleanChat,
+  graphemes,
   type PresenceResponse,
 } from "@/lib/lobby/presence";
 import {
@@ -96,6 +106,7 @@ interface CapybaraLook {
 
 interface Remote {
   id: string;
+  name: string;
   x: number;
   y: number;
   /** 마지막으로 받은 위치까지 fromX,Y에서 segMs 동안 일정한 속도로 옮겨 간다 */
@@ -383,30 +394,12 @@ function drawLabel(ctx: CanvasRenderingContext2D, text: string, x: number, y: nu
   ctx.fillText(text, x, y);
 }
 
-const BUBBLE_TEXT_WIDTH = 160;
-const BUBBLE_LINE = 16;
-
-/** 꼬리 끝이 (x, bottom)에 오는 말풍선. 한글은 띄어쓰기 없이 길게 쓰기도 해서 글자 단위로 줄을 바꾼다 */
-function drawBubble(ctx: CanvasRenderingContext2D, text: string, x: number, bottom: number) {
-  ctx.font = `500 12px ${CANVAS_FONT}`;
-  const lines: string[] = [];
-  let line = "";
-  for (const char of text) {
-    if (line && ctx.measureText(line + char).width > BUBBLE_TEXT_WIDTH) {
-      lines.push(line);
-      line = char.trimStart();
-    } else {
-      line += char;
-    }
-  }
-  if (line) lines.push(line);
-  const width = Math.round(Math.max(...lines.map((item) => ctx.measureText(item).width)) + 20);
-  const height = lines.length * BUBBLE_LINE + 10;
+/** 꼬리 끝이 (x, bottom)에 오는 흰 말풍선 몸통을 칠하고 몸통 top을 돌려준다. 꼬리는 몸통과 한 번에 채워 이음새가 안 보이게 */
+function fillBubble(ctx: CanvasRenderingContext2D, x: number, bottom: number, width: number, height: number, radius: number) {
   const left = Math.round(x - width / 2);
   const top = Math.round(bottom - 5 - height);
-  // 한 줄이면 알약, 여러 줄이면 둥근 카드. 꼬리는 몸통과 한 번에 채워 이음새가 안 보이게
   ctx.beginPath();
-  ctx.roundRect(left, top, width, height, Math.min(height / 2, 10));
+  ctx.roundRect(left, top, width, height, radius);
   ctx.moveTo(x - 4, top + height - 1);
   ctx.lineTo(x, bottom);
   ctx.lineTo(x + 4, top + height - 1);
@@ -418,6 +411,34 @@ function drawBubble(ctx: CanvasRenderingContext2D, text: string, x: number, bott
   ctx.fillStyle = "#fff";
   ctx.fill();
   ctx.restore();
+  return top;
+}
+
+/** 카피바라 이모티콘 그림 하나를 담은 말풍선 */
+function drawEmoteBubble(ctx: CanvasRenderingContext2D, image: HTMLImageElement, x: number, bottom: number) {
+  const size = EMOTE_SIZE + 8;
+  const top = fillBubble(ctx, x, bottom, size, size, 14);
+  ctx.drawImage(image, Math.round(x - EMOTE_SIZE / 2), top + 4, EMOTE_SIZE, EMOTE_SIZE);
+}
+
+/** 꼬리 끝이 (x, bottom)에 오는 말풍선. 한글은 띄어쓰기 없이 길게 쓰기도 해서 글자 단위로 줄을 바꾼다 */
+function drawBubble(ctx: CanvasRenderingContext2D, text: string, x: number, bottom: number) {
+  ctx.font = `500 12px ${CANVAS_FONT}`;
+  const lines: string[] = [];
+  let line = "";
+  for (const char of graphemes(text)) {
+    if (line && ctx.measureText(line + char).width > BUBBLE_TEXT_WIDTH) {
+      lines.push(line);
+      line = char.trimStart();
+    } else {
+      line += char;
+    }
+  }
+  if (line) lines.push(line);
+  const width = Math.round(Math.max(...lines.map((item) => ctx.measureText(item).width)) + 20);
+  const height = lines.length * BUBBLE_LINE + 10;
+  // 한 줄이면 알약, 여러 줄이면 둥근 카드
+  const top = fillBubble(ctx, x, bottom, width, height, Math.min(height / 2, 10));
   ctx.fillStyle = "#1f1a14";
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
@@ -700,6 +721,9 @@ export function Lobby({ games }: { games: DoorGame[] }) {
   const chatRequest = useRef<string | null>(null);
   const chatInputRef = useRef<HTMLInputElement>(null);
   const lastChatAt = useRef(-Infinity);
+  /** 화면(설정 창·소리 버튼)은 state, 게임 루프는 ref로 같은 설정을 읽는다 */
+  const [settings, setSettings] = useState<LobbySettings>(DEFAULT_LOBBY_SETTINGS);
+  const settingsRef = useRef<LobbySettings>(DEFAULT_LOBBY_SETTINGS);
   /** 스크린리더용: 캔버스 말풍선은 읽히지 않아서 방금 들은 채팅을 글로도 둔다 */
   const [heardChat, setHeardChat] = useState("");
   const [world] = useState(() => createWorld(LOBBY_SEED, games));
@@ -720,6 +744,11 @@ export function Lobby({ games }: { games: DoorGame[] }) {
 
     const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     outfitRef.current = loadOutfit();
+    // 캔버스는 쓰는 굵기의 폰트를 스스로 내려받지 않아서, 안 받아 둔 굵기는 대체 폰트로 그려진다
+    for (const weight of [500, 600, 700]) document.fonts.load(`${weight} 13px ${CANVAS_FONT}`, "가A").catch(() => {});
+    // 저장된 설정은 서버 렌더와 어긋나지 않게 화면에 붙은 뒤 읽는다
+    settingsRef.current = loadLobbySettings();
+    setSettings(settingsRef.current);
 
     const sprites = new Map<SpriteKey, HTMLImageElement>();
     for (const facing of FACINGS) {
@@ -754,6 +783,14 @@ export function Lobby({ games }: { games: DoorGame[] }) {
         outfitImages.set(src, image);
       }
       return image;
+    };
+    /** 머리 위 말풍선. 카피바라 이모티콘이면 그림으로, 그림이 아직 안 받아졌으면 그 이모티콘 글로 */
+    const drawSpeech = (text: string, x: number, bottom: number) => {
+      const emote = parseEmoteChat(text);
+      if (emote === null) return drawBubble(ctx, text, x, bottom);
+      const image = outfitImage(emoteImage(emote));
+      if (ready(image)) drawEmoteBubble(ctx, image, x, bottom);
+      else drawBubble(ctx, CAPYBARA_EMOTES[emote], x, bottom);
     };
     // 옷 입은 스프라이트는 (스프라이트·방향·옷 조합)마다 한 번만 캔버스에 구워 두고, 매 프레임엔 그 한 장만 그린다
     const dressedCache = new Map<string, HTMLCanvasElement>();
@@ -845,6 +882,8 @@ export function Lobby({ games }: { games: DoorGame[] }) {
       facingSince: 0,
       chat: "",
       chatUntil: 0,
+      /** 서버가 정해 준 이름표. 첫 동기화 전엔 비어 있다 */
+      name: "",
     };
     const saved: Partial<{ x: number; y: number }> = JSON.parse(loadSession(positionKey) ?? "{}");
     if (typeof saved.x === "number" && typeof saved.y === "number" && !blocked(saved.x, saved.y)) {
@@ -1024,9 +1063,13 @@ export function Lobby({ games }: { games: DoorGame[] }) {
           const data: Partial<PresenceResponse> = await response.json();
           if (!response.ok || !data.you || !Array.isArray(data.players)) throw new Error("sync failed");
           const received = performance.now();
+          me.name = data.you.name;
 
           if (data.you.stunMs > 0) {
-            if (me.stunUntil < received) camera.shakeUntil = received + 300;
+            if (me.stunUntil < received) {
+              camera.shakeUntil = received + 300;
+              playSound("hit", settingsRef.current);
+            }
             me.stunUntil = received + data.you.stunMs;
             if (me.sitting) standUp();
           } else if (Math.hypot(data.you.x - sent.x, data.you.y - sent.y) > 1 && !blocked(data.you.x, data.you.y)) {
@@ -1044,7 +1087,8 @@ export function Lobby({ games }: { games: DoorGame[] }) {
             const chatUntil = player.chatMs > 0 ? received + player.chatMs : 0;
             const remote = remotes.get(player.id);
             if (chatUntil > 0 && (!remote || remote.chat !== player.chat || remote.chatUntil < received)) {
-              heard = `카피바라 ${player.id.slice(0, 4)}: ${player.chat}`;
+              const emote = parseEmoteChat(player.chat);
+              heard = `${player.name}: ${emote === null ? player.chat : `${CAPYBARA_EMOTES[emote]} (이모티콘)`}`;
             }
             if (remote) {
               // 다음 위치가 올 때까지(=지난 수신 간격) 걸쳐 옮긴다. 지수 감속으로 따라가면 받을 때마다 빨라졌다 느려져서 끊겨 보인다
@@ -1064,6 +1108,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
             } else {
               remotes.set(player.id, {
                 id: player.id,
+                name: player.name,
                 x: player.x,
                 y: player.y,
                 fromX: player.x,
@@ -1086,8 +1131,14 @@ export function Lobby({ games }: { games: DoorGame[] }) {
             }
           }
           for (const id of remotes.keys()) if (!seen.has(id)) remotes.delete(id);
-          if (heard) setHeardChat(heard);
-          if (data.hit) hitEffects.set(data.hit, received + 450);
+          if (heard) {
+            setHeardChat(heard);
+            playSound("chat", settingsRef.current);
+          }
+          if (data.hit) {
+            hitEffects.set(data.hit, received + 450);
+            playSound("hit", settingsRef.current);
+          }
           setOffline(false);
         })
         .catch(() => setOffline(true))
@@ -1165,12 +1216,14 @@ export function Lobby({ games }: { games: DoorGame[] }) {
           me.attackUntil = now + ATTACK_MS;
           me.lastAttackAt = now;
           attackQueued = true;
+          playSound("swing", settingsRef.current);
         }
       }
       if (chatRequest.current !== null) {
         me.chat = chatRequest.current;
         me.chatUntil = now + CHAT_MS;
         chatQueued = chatRequest.current;
+        playSound("chat", settingsRef.current);
         chatRequest.current = null;
       }
       if (wantsMove && me.sitting) standUp(); // 움직이면 일어난다
@@ -1386,10 +1439,12 @@ export function Lobby({ games }: { games: DoorGame[] }) {
       }
       for (const remote of remotes.values()) {
         const labelY = remote.y - (remote.sitting ? SIT_SIZE : STAND_SIZE) - 8;
-        drawLabel(ctx, `카피바라 ${remote.id.slice(0, 4)}`, remote.x, labelY);
-        if (now < remote.chatUntil) drawBubble(ctx, remote.chat, remote.x, labelY - 10);
+        drawLabel(ctx, remote.name, remote.x, labelY);
+        if (now < remote.chatUntil) drawSpeech(remote.chat, remote.x, labelY - 10);
       }
-      if (now < me.chatUntil) drawBubble(ctx, me.chat, drawnX, drawnY - (me.sitting ? SIT_SIZE : STAND_SIZE) - 4);
+      const myLabelY = drawnY - (me.sitting ? SIT_SIZE : STAND_SIZE) - 8;
+      if (me.name) drawLabel(ctx, me.name, drawnX, myLabelY);
+      if (now < me.chatUntil) drawSpeech(me.chat, drawnX, me.name ? myLabelY - 10 : myLabelY + 4);
       for (const [id, until] of hitEffects) {
         const target = remotes.get(id);
         const progress = 1 - (until - now) / 450;
@@ -1459,6 +1514,19 @@ export function Lobby({ games }: { games: DoorGame[] }) {
     input.value = "";
   };
 
+  const sendEmote = (id: number) => {
+    const now = performance.now();
+    if (now - lastChatAt.current < CHAT_COOLDOWN_MS) return;
+    lastChatAt.current = now;
+    chatRequest.current = emoteChat(id);
+  };
+
+  const updateSettings = (next: LobbySettings) => {
+    settingsRef.current = next;
+    setSettings(next);
+    saveLobbySettings(next);
+  };
+
   return (
     <>
       <canvas
@@ -1469,9 +1537,11 @@ export function Lobby({ games }: { games: DoorGame[] }) {
         className="absolute inset-0 size-full touch-none select-none"
       />
 
-      {/* 오른쪽 위 옷장 버튼 자리를 비워 둔다 */}
-      {/* 있는 듯 없는 듯: 평소엔 반투명 알약, 입력할 때만 넓어지고 또렷해진다. 보내기는 Enter(모바일은 키보드 전송) */}
-      <form onSubmit={sendChat} className="absolute left-3 top-[max(0.75rem,env(safe-area-inset-top))] w-36 max-w-[calc(100%-6rem)] transition-[width] duration-150 focus-within:w-64 motion-reduce:transition-none">
+      {/* 있는 듯 없는 듯: 평소엔 반투명 알약, 입력할 때만 넓어지고 또렷해진다. 보내기는 Enter(모바일은 키보드 전송). 오른쪽 위 버튼 줄 자리는 비워 둔다 */}
+      <form
+        onSubmit={sendChat}
+        className="group absolute left-3 top-[max(0.75rem,env(safe-area-inset-top))] flex w-44 max-w-[calc(100%-5.5rem)] items-center rounded-full bg-black/25 transition-[width,background-color] duration-150 has-[input:focus]:w-72 has-[input:focus]:bg-card/90 has-[input:focus-visible]:ring-1 has-[input:focus-visible]:ring-primary motion-reduce:transition-none"
+      >
         <Input
           ref={chatInputRef}
           name="lobby-chat"
@@ -1484,18 +1554,24 @@ export function Lobby({ games }: { games: DoorGame[] }) {
             if (event.key === "Escape") event.currentTarget.blur();
           }}
           shape="pill"
-          className="h-8 border-transparent bg-black/25 px-3 text-base text-white shadow-none placeholder:text-white/60 focus-visible:bg-card/90 focus-visible:text-text-strong focus-visible:placeholder:text-text-placeholder md:text-caption-1"
+          className="h-8 min-w-0 flex-1 border-transparent bg-transparent pl-3 pr-1 text-base text-white shadow-none placeholder:text-white/60 focus-visible:ring-0 group-has-[input:focus]:text-text-strong group-has-[input:focus]:placeholder:text-text-placeholder md:text-caption-1"
         />
+        <EmotePicker onPick={sendEmote} />
         <p aria-live="polite" className="sr-only">
           {heardChat}
         </p>
       </form>
 
-      <Wardrobe
-        onChange={(outfit) => {
-          outfitRef.current = outfit;
-        }}
-      />
+      {/* 오른쪽 위 세로 줄: 카피바라 옷장 → 효과음. 설정 버튼은 나중에 이 줄에 다시 넣는다 */}
+      {/* 효과음 버튼의 헤드폰이 원 밖으로 삐져나오는 만큼 위(옷장)·오른쪽(화면 끝)을 띄운다 */}
+      <div className="absolute right-5 top-[max(0.75rem,env(safe-area-inset-top))] flex flex-col items-center gap-5">
+        <Wardrobe
+          onChange={(outfit) => {
+            outfitRef.current = outfit;
+          }}
+        />
+        <SoundToggle settings={settings} onChange={updateSettings} />
+      </div>
 
       <div className="pointer-events-none absolute inset-x-0 bottom-0 flex flex-col items-center gap-2 px-4 pb-[max(1.25rem,env(safe-area-inset-bottom))]">
         <p
@@ -1505,12 +1581,25 @@ export function Lobby({ games }: { games: DoorGame[] }) {
         >
           {status}
         </p>
-        <p className="max-w-full text-balance rounded-lg bg-card/80 px-3 py-1.5 text-center text-caption-3 text-text-caption backdrop-blur">
-          <span className="[@media(pointer:coarse)]:hidden">
-            방향키·WASD 걷기 · F 때리기 · 통나무 앞에서 Space 앉기 · Enter 채팅 · 오두막 문 앞에 가면 입장
-          </span>
-          <span className="hidden [@media(pointer:coarse)]:inline">화면을 누른 채 끌면 그쪽으로 걸어요 · 오두막 문 앞에 가면 입장</span>
-        </p>
+        {settings.showHelp && (
+          <p className="max-w-full text-balance rounded-lg bg-card/80 px-3 py-1.5 text-center text-caption-3 text-text-caption backdrop-blur">
+            <span className="[@media(pointer:coarse)]:hidden">
+              방향키·WASD 걷기 · F 때리기 · 통나무 앞에서 Space 앉기 · Enter 채팅 · 오두막 문 앞에 가면 입장
+            </span>
+            <span className="hidden [@media(pointer:coarse)]:inline">화면을 누른 채 끌면 그쪽으로 걸어요 · 오두막 문 앞에 가면 입장</span>
+          </p>
+        )}
+        <nav aria-label="사이트 정보" className="pointer-events-auto flex gap-1 text-caption-3 text-text-caption">
+          {SITE_LINKS.map(({ href, label }) => (
+            <Link
+              key={href}
+              href={href}
+              className="flex min-h-6 items-center rounded-md bg-card/60 px-2 transition-colors hover:text-text-strong focus-visible:outline-2 focus-visible:outline-primary"
+            >
+              {label}
+            </Link>
+          ))}
+        </nav>
       </div>
 
       {/* 터치 조이스틱: 누른 자리에 나타난다. 위치는 게임 루프가 DOM에 직접 쓴다 */}

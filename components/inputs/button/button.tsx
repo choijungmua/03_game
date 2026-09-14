@@ -1,6 +1,6 @@
 import { Slot } from "@radix-ui/react-slot";
 import { cn } from "@/lib";
-import { Loading } from "@/components/feedback/loading";
+import { Loader2 } from "lucide-react";
 import { buttonVariants } from "./variable";
 import { ButtonProps } from "./type";
 import { SLOT, BUTTON_VARIANTS } from "./constants";
@@ -24,7 +24,16 @@ function Button({
 
 
   const isIconOnly = isIcon;
-  const loader = <Loading size={16} variant={variant === BUTTON_VARIANTS.DEFAULT || variant === BUTTON_VARIANTS.DESTRUCTIVE ? "white" : "alternative"} />;
+  // 버튼 안은 작아서 카피바라 로딩 대신 스피너
+  const loader = (
+    <Loader2
+      size={16}
+      className={cn(
+        "animate-spin",
+        variant === BUTTON_VARIANTS.DEFAULT || variant === BUTTON_VARIANTS.DESTRUCTIVE ? "text-primary-foreground" : "text-text-alternative",
+      )}
+    />
+  );
 
   return (
     <Comp

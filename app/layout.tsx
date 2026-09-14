@@ -2,19 +2,52 @@ import type { Metadata } from "next";
 
 import { Toaster } from "@/components/feedback/sonner";
 import { pretendard } from "@/config";
+import { JsonLd, websiteJsonLd } from "@/lib/seo/json-ld";
+import { SITE_DESCRIPTION, SITE_NAME, SITE_URL } from "@/lib/seo/site";
 
 import "./globals.css";
 import { Providers } from "./providers";
 
+// 소유 확인 값은 공개값이라 기본값으로 둔다. 바꿀 때는 배포 환경변수로 덮어쓴다
+const naverVerification = process.env.NAVER_SITE_VERIFICATION ?? "9515f491bca12bedec4cbf4d83d09b9950554a92";
+
 export const metadata: Metadata = {
-  title: "ggpli",
-  description: "ggpli 게임 모음",
+  metadataBase: new URL(SITE_URL),
+  // 모든 페이지 제목은 "ggpli - 페이지 이름" (lib/seo/site.ts siteTitle과 같은 모양)
+  title: { default: SITE_NAME, template: `${SITE_NAME} - %s` },
+  description: SITE_DESCRIPTION,
+  applicationName: SITE_NAME,
+  openGraph: {
+    type: "website",
+    siteName: SITE_NAME,
+    locale: "ko_KR",
+    title: SITE_NAME,
+    description: SITE_DESCRIPTION,
+  },
+  twitter: { card: "summary_large_image" },
+  alternates: {
+    types: { "application/rss+xml": [{ url: "/rss.xml", title: `${SITE_NAME} 게임 소식` }] },
+  },
+  // 구글 서치 콘솔·네이버 서치어드바이저 소유 확인
+  verification: {
+    google: process.env.GOOGLE_SITE_VERIFICATION,
+    other: { "naver-site-verification": naverVerification },
+  },
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html lang="ko" className="dark" suppressHydrationWarning>
+      <head>
+        {/* 애드센스 사이트 확인·광고 로더. next/script는 data-nscript 속성을 붙여 애드센스가 경고하므로 일반 script를 쓴다 */}
+        <script
+          async
+          src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-1459138523237889"
+          crossOrigin="anonymous"
+        />
+      </head>
       <body className={pretendard.variable}>
+        <JsonLd data={websiteJsonLd()} />
         <Providers>
           {children}
           <Toaster />

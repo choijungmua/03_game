@@ -7,8 +7,10 @@ import { useEffect, useEffectEvent, useRef, useState, useSyncExternalStore } fro
 import { AdSlot } from "@/components/ads/ad-slot";
 import { ShareButton } from "@/components/games/share-button";
 import { cn } from "@/lib";
+import { GAME_TITLES } from "@/lib/games/constants";
 import { submitGameRecord } from "@/lib/games/supabase";
 import { useInView } from "@/lib/games/use-in-view";
+import { useLockPageScroll } from "@/lib/games/use-lock-page-scroll";
 import { lobbyAssetSrc } from "@/lib/lobby/assets";
 
 import { LogDodgeLeaderboard } from "./leaderboard";
@@ -54,7 +56,7 @@ const SWIPE_PX = 36;
 const TAP_MS = 250;
 const TAP_PX = 10;
 
-const TITLE = "카피바라 통나무 피하기";
+const TITLE = GAME_TITLES["capybara-log-dodge"];
 const LEFT_KEYS = new Set(["ArrowLeft", "a", "A"]);
 const RIGHT_KEYS = new Set(["ArrowRight", "d", "D"]);
 const JUMP_KEYS = new Set(["ArrowUp", "w", "W", " "]);
@@ -231,6 +233,7 @@ export function CapybaraLogDodge() {
   /** 게임 좌표 1px이 화면에서 몇 CSS px인지. 드래그 거리를 게임 좌표로 바꿀 때 쓴다 */
   const scaleRef = useRef(1);
   const { ref: recordsRef, inView: recordsVisible } = useInView<HTMLElement>(phase === "result");
+  useLockPageScroll(phase === "countdown" || phase === "playing");
 
   const course = mode === "daily" ? courseDate : null;
   const courseBest = courseDate ? getCourseBest(records, courseDate) : null;

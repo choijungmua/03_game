@@ -10,23 +10,22 @@ import {
   parseRecords,
 } from "./records";
 
-function record(count: number, cps: number, at: number): ClickSpeedRecord {
-  return { id: `${at}-${count}`, count, cps, at };
+function record(count: number, cps: number, at: number, seconds = 5): ClickSpeedRecord {
+  return { id: `${at}-${count}`, count, cps, seconds, at };
 }
 
 describe("calculateCps", () => {
-  it("첫 탭부터 마지막 탭까지의 간격으로 초당 클릭 수를 구한다", () => {
-    expect(calculateCps(11, 0, 1000)).toBe(10);
+  it("클릭 수를 정한 시간으로 나눠 초당 클릭 수를 구한다", () => {
+    expect(calculateCps(50, 5)).toBe(10);
   });
 
   it("소수 첫째 자리까지 반올림한다", () => {
-    expect(calculateCps(4, 0, 700)).toBe(4.3);
+    expect(calculateCps(22, 3)).toBe(7.3);
   });
 
-  it("탭이 한 번 이하이거나 간격이 없으면 0이다", () => {
-    expect(calculateCps(0, 0, 0)).toBe(0);
-    expect(calculateCps(1, 500, 500)).toBe(0);
-    expect(calculateCps(5, 300, 300)).toBe(0);
+  it("탭이 없거나 시간이 0이면 0이다", () => {
+    expect(calculateCps(0, 5)).toBe(0);
+    expect(calculateCps(5, 0)).toBe(0);
   });
 });
 
@@ -46,11 +45,18 @@ describe("insertRecord", () => {
     expect(insertRecord(existing, record(10, 8, 99))).toHaveLength(6);
   });
 
-  it(`최대 ${MAX_STORED_RECORDS}개까지만 저장한다`, () => {
+  it(`시간마다 최대 ${MAX_STORED_RECORDS}개까지만 저장한다`, () => {
     const existing = Array.from({ length: MAX_STORED_RECORDS }, (_, i) => record(500 - i, 8, i));
     const result = insertRecord(existing, record(1, 8, 999));
     expect(result).toHaveLength(MAX_STORED_RECORDS);
     expect(result.some((r) => r.count === 1)).toBe(false);
+  });
+
+  it("다른 시간 기록은 건드리지 않는다", () => {
+    const tenSeconds = record(999, 99, 1, 10);
+    const result = insertRecord([tenSeconds], record(10, 2, 2));
+    expect(result).toContainEqual(tenSeconds);
+    expect(result).toHaveLength(2);
   });
 });
 
@@ -66,6 +72,10 @@ describe("getRank", () => {
     expect(getRank([record(30, 8, 4)], record(30, 9, 50))).toBe(1);
     expect(getRank([record(30, 8, 4)], record(30, 8, 50))).toBe(2);
   });
+
+  it("다른 시간 기록은 순위에 넣지 않는다", () => {
+    expect(getRank([record(300, 10, 1, 30)], record(20, 4, 2))).toBe(1);
+  });
 });
 
 describe("parseRecords", () => {
@@ -75,7 +85,7 @@ describe("parseRecords", () => {
   });
 
   it("형식이 맞지 않는 항목은 버린다", () => {
-    const raw = JSON.stringify([record(12, 5.5, 1), { id: "x", count: 3, at: 2 }]);
+    const raw = JSON.stringify([record(12, 5.5, 1), { id: "x", count: 3, cps: 1, at: 2 }]);
     expect(parseRecords(raw)).toEqual([record(12, 5.5, 1)]);
   });
 });

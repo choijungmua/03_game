@@ -1,23 +1,20 @@
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { GAME_TITLES } from "@/lib/games/constants";
 import { mockIntersectionObserver } from "@/lib/games/testing/mock-intersection-observer";
 
-import {
-  ClickSpeed,
-  COUNTDOWN_STEP_MS,
-  COUNTDOWN_VALUES,
-  IDLE_STOP_MS,
-} from "./click-speed";
+import { ClickSpeed, COUNTDOWN_STEP_MS, COUNTDOWN_VALUES } from "./click-speed";
+import { DEFAULT_SECONDS } from "./records";
 
 function getScreenEl() {
   return screen.getByTestId("click-speed-screen");
 }
 
 // 실제 탭처럼 pointerdown -> click 순서로 발생시킨다
-function press() {
-  fireEvent.pointerDown(getScreenEl(), { clientX: 120, clientY: 80 });
-  fireEvent.click(getScreenEl(), { clientX: 120, clientY: 80 });
+function press(target: HTMLElement = getScreenEl()) {
+  fireEvent.pointerDown(target, { clientX: 120, clientY: 80 });
+  fireEvent.click(target, { clientX: 120, clientY: 80 });
 }
 
 async function advance(ms: number) {
@@ -38,10 +35,11 @@ async function tapTimes(times: number, intervalMs: number) {
   }
 }
 
-async function playRound(times: number, intervalMs: number) {
+/** 탭을 다 치고 정한 시간이 끝날 때까지 기다린다 */
+async function playRound(times: number, intervalMs: number, seconds = DEFAULT_SECONDS) {
   await startPlaying();
   await tapTimes(times, intervalMs);
-  await advance(IDLE_STOP_MS);
+  await advance(seconds * 1000 - Math.max(0, times - 1) * intervalMs);
 }
 
 function getLeaderboardRows() {
@@ -50,6 +48,10 @@ function getLeaderboardRows() {
 
 function getAdSlot() {
   return document.querySelector("[data-ad-placement]");
+}
+
+function getDurationButton(seconds: number) {
+  return screen.getByRole("button", { name: `${seconds}초` });
 }
 
 describe("ClickSpeed", () => {
@@ -70,7 +72,7 @@ describe("ClickSpeed", () => {
     it("제목과 가운데 시작 안내를 보여준다", () => {
       render(<ClickSpeed />);
       expect(getScreenEl()).toHaveAttribute("data-phase", "idle");
-      expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("클릭 스피드 테스트");
+      expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(GAME_TITLES["click-speed"]);
       expect(screen.getByText("클릭해서 시작하세요")).toBeInTheDocument();
     });
 
@@ -84,6 +86,48 @@ describe("ClickSpeed", () => {
     it("광고는 보이지 않는다", () => {
       render(<ClickSpeed />);
       expect(getAdSlot()).toBeNull();
+    });
+  });
+
+  describe("연타 시간 선택", () => {
+    it("기본은 5초가 선택돼 있다", () => {
+      render(<ClickSpeed />);
+      expect(DEFAULT_SECONDS).toBe(5);
+      expect(getDurationButton(5)).toHaveAttribute("aria-pressed", "true");
+      expect(getDurationButton(10)).toHaveAttribute("aria-pressed", "false");
+    });
+
+    it("시간 버튼을 눌러도 게임이 시작되지 않는다", () => {
+      render(<ClickSpeed />);
+      press(getDurationButton(10));
+      expect(getDurationButton(10)).toHaveAttribute("aria-pressed", "true");
+      expect(getScreenEl()).toHaveAttribute("data-phase", "idle");
+    });
+
+    it("고른 시간 동안 플레이하고 그 시간으로 속도를 구한다", async () => {
+      render(<ClickSpeed />);
+      press(getDurationButton(10));
+      await startPlaying();
+      expect(screen.getByTestId("play-timer")).toHaveTextContent("10.00초");
+
+      await tapTimes(20, 100);
+      await advance(10_000 - 19 * 100 - 1);
+      expect(getScreenEl()).toHaveAttribute("data-phase", "playing");
+
+      await advance(1);
+      expect(getScreenEl()).toHaveAttribute("data-phase", "result");
+      expect(screen.getByTestId("result-seconds")).toHaveTextContent("10초 동안");
+      expect(screen.getByTestId("result-cps")).toHaveTextContent("2.0");
+    });
+
+    it("순위표는 고른 시간의 기록만 보여준다", async () => {
+      render(<ClickSpeed />);
+      await playRound(20, 100);
+      expect(getLeaderboardRows()[0]).toHaveTextContent("20회");
+
+      press(getDurationButton(3));
+      expect(getScreenEl()).toHaveAttribute("data-phase", "result");
+      expect(getLeaderboardRows()[0]).toHaveTextContent("-");
     });
   });
 
@@ -143,30 +187,22 @@ describe("ClickSpeed", () => {
       expect(screen.getByTestId("count")).toHaveTextContent("2");
     });
 
-    it("멈추지 않고 계속 탭하면 플레이가 이어진다", async () => {
+    it("탭을 멈춰도 정한 시간이 끝날 때까지 플레이가 이어진다", async () => {
       render(<ClickSpeed />);
       await startPlaying();
-      await tapTimes(3, IDLE_STOP_MS - 500);
+      press();
+      await advance(DEFAULT_SECONDS * 1000 - 1);
       expect(getScreenEl()).toHaveAttribute("data-phase", "playing");
-      expect(screen.getByTestId("count")).toHaveTextContent("3");
+      await advance(1);
+      expect(getScreenEl()).toHaveAttribute("data-phase", "result");
     });
 
-    it("오른쪽 아래 타이머는 첫 탭 전까지 0.00초에 머문다", async () => {
+    it("오른쪽 아래 타이머는 남은 시간을 줄여 간다", async () => {
       render(<ClickSpeed />);
       await startPlaying();
-      expect(screen.getByTestId("play-timer")).toHaveTextContent("0.00초");
-      await advance(500);
-      expect(screen.getByTestId("play-timer")).toHaveTextContent("0.00초");
-    });
-
-    it("첫 탭부터 걸린 시간이 올라간다", async () => {
-      render(<ClickSpeed />);
-      await startPlaying();
-      press();
-      await advance(600);
-      press();
-      await advance(630);
-      expect(screen.getByTestId("play-timer")).toHaveTextContent("1.23초");
+      expect(screen.getByTestId("play-timer")).toHaveTextContent("5.00초");
+      await advance(1230);
+      expect(screen.getByTestId("play-timer")).toHaveTextContent("3.77초");
     });
 
     it("카운트다운과 결과 화면에는 타이머가 없다", async () => {
@@ -176,18 +212,19 @@ describe("ClickSpeed", () => {
 
       await advance(COUNTDOWN_STEP_MS * COUNTDOWN_VALUES.length);
       press();
-      await advance(IDLE_STOP_MS);
+      await advance(DEFAULT_SECONDS * 1000);
       expect(screen.queryByTestId("play-timer")).toBeNull();
     });
   });
 
   describe("결과", () => {
-    it("탭을 멈추면 클릭 수, 초당 속도, 등급을 보여주고 광고가 나온다", async () => {
+    it("시간이 끝나면 클릭 수, 초당 속도, 등급을 보여주고 광고가 나온다", async () => {
       render(<ClickSpeed />);
-      await playRound(11, 100);
+      await playRound(50, 90);
 
       expect(getScreenEl()).toHaveAttribute("data-phase", "result");
-      expect(screen.getByTestId("result-count")).toHaveTextContent("11");
+      expect(screen.getByTestId("result-seconds")).toHaveTextContent("5초 동안");
+      expect(screen.getByTestId("result-count")).toHaveTextContent("50");
       expect(screen.getByTestId("result-cps")).toHaveTextContent("10.0");
       expect(screen.getByTestId("result-tier")).toHaveTextContent(/^프로게이머$/);
       expect(getScreenEl()).toHaveClass("bg-violet-600");
@@ -196,7 +233,7 @@ describe("ClickSpeed", () => {
 
     it("느린 연타는 그에 맞는 등급 색을 보여준다", async () => {
       render(<ClickSpeed />);
-      await playRound(5, 250);
+      await playRound(20, 100);
       expect(screen.getByTestId("result-cps")).toHaveTextContent("4.0");
       expect(screen.getByTestId("result-tier")).toHaveTextContent(/^조금 느림$/);
       expect(getScreenEl()).toHaveClass("bg-warning");
@@ -205,7 +242,7 @@ describe("ClickSpeed", () => {
     it("한 번도 탭하지 않으면 기록을 남기지 않는다", async () => {
       render(<ClickSpeed />);
       await startPlaying();
-      await advance(IDLE_STOP_MS);
+      await advance(DEFAULT_SECONDS * 1000);
 
       expect(screen.getByTestId("result-count")).toHaveTextContent("0");
       expect(screen.getByTestId("result-rank")).toHaveTextContent("탭한 기록이 없어요");
@@ -224,31 +261,31 @@ describe("ClickSpeed", () => {
     it("클릭 수가 많은 순서로 1위, 2위에 올리고 순위를 알려준다", async () => {
       render(<ClickSpeed />);
 
-      await playRound(5, 250);
+      await playRound(20, 100);
       expect(screen.getByTestId("result-rank")).toHaveTextContent("1위");
 
-      await playRound(11, 100);
+      await playRound(50, 90);
       expect(screen.getByTestId("result-rank")).toHaveTextContent("1위");
 
       const rows = getLeaderboardRows();
-      expect(rows[0]).toHaveTextContent("11회");
-      expect(rows[1]).toHaveTextContent("5회");
+      expect(rows[0]).toHaveTextContent("50회");
+      expect(rows[1]).toHaveTextContent("20회");
     });
 
     it("적은 기록은 그 순위를 알려준다", async () => {
       render(<ClickSpeed />);
-      await playRound(11, 100);
-      await playRound(5, 250);
+      await playRound(50, 90);
+      await playRound(20, 100);
       expect(screen.getByTestId("result-rank")).toHaveTextContent("2위");
     });
 
     it("새로고침해도 순위표가 남아 있다", async () => {
       const { unmount } = render(<ClickSpeed />);
-      await playRound(7, 150);
+      await playRound(35, 100);
       unmount();
 
       render(<ClickSpeed />);
-      expect(getLeaderboardRows()[0]).toHaveTextContent("7회");
+      expect(getLeaderboardRows()[0]).toHaveTextContent("35회");
     });
   });
 
@@ -289,7 +326,7 @@ describe("ClickSpeed", () => {
   describe("결과 요약과 공유 문구", () => {
     it("몇 위인지만 보여준다", async () => {
       render(<ClickSpeed />);
-      await playRound(5, 250);
+      await playRound(20, 100);
       expect(screen.getByTestId("result-rank").textContent).toBe("1위");
     });
 
@@ -304,7 +341,7 @@ describe("ClickSpeed", () => {
 
     it("마지막에 등급, 속도, 설명을 한 줄로 보여준다", async () => {
       render(<ClickSpeed />);
-      await playRound(11, 100);
+      await playRound(50, 90);
       expect(screen.getByTestId("result-summary").textContent).toBe(
         "프로게이머 초당 10.0회, 손가락이 안 보일 정도예요",
       );
@@ -330,14 +367,14 @@ describe("ClickSpeed", () => {
   describe("스크롤하면 나오는 순위 기록", () => {
     it("처음에는 순위 기록이 가려져 있고 배경은 등급 색이다", async () => {
       render(<ClickSpeed />);
-      await playRound(11, 100);
+      await playRound(50, 90);
       expect(screen.getByTestId("result-records")).toHaveAttribute("data-visible", "false");
       expect(getScreenEl()).toHaveClass("bg-violet-600");
     });
 
     it("스크롤해서 순위 기록이 보이면 배경이 바뀌고 목록이 나타난다", async () => {
       render(<ClickSpeed />);
-      await playRound(11, 100);
+      await playRound(50, 90);
       await setRecordsVisible(true);
 
       expect(screen.getByTestId("result-records")).toHaveAttribute("data-visible", "true");
@@ -347,7 +384,7 @@ describe("ClickSpeed", () => {
 
     it("다시 위로 올리면 등급 색으로 돌아온다", async () => {
       render(<ClickSpeed />);
-      await playRound(11, 100);
+      await playRound(50, 90);
       await setRecordsVisible(true);
       await setRecordsVisible(false);
 
@@ -357,7 +394,7 @@ describe("ClickSpeed", () => {
 
     it("순위 기록 영역을 눌러도 다시 시작되지 않는다", async () => {
       render(<ClickSpeed />);
-      await playRound(11, 100);
+      await playRound(50, 90);
       await setRecordsVisible(true);
 
       const records = screen.getByTestId("result-records");
@@ -368,9 +405,9 @@ describe("ClickSpeed", () => {
 
     it("다음 판 결과는 순위 기록이 가려진 상태로 시작한다", async () => {
       render(<ClickSpeed />);
-      await playRound(11, 100);
+      await playRound(50, 90);
       await setRecordsVisible(true);
-      await playRound(5, 250);
+      await playRound(20, 100);
 
       expect(screen.getByTestId("result-records")).toHaveAttribute("data-visible", "false");
       expect(getScreenEl()).toHaveClass("bg-warning");

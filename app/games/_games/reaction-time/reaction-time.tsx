@@ -6,6 +6,7 @@ import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { AdSlot } from "@/components/ads/ad-slot";
 import { ShareButton } from "@/components/games/share-button";
 import { cn } from "@/lib";
+import { GAME_TITLES } from "@/lib/games/constants";
 import { submitGameRecord } from "@/lib/games/supabase";
 import { useInView } from "@/lib/games/use-in-view";
 
@@ -185,7 +186,7 @@ export function ReactionTime() {
       {phase === "idle" && (
         <ShareButton
           className="absolute right-4 top-[max(1rem,env(safe-area-inset-top))]"
-          title="반응속도 테스트"
+          title={GAME_TITLES["reaction-time"]}
           text={shareText}
         />
       )}
@@ -194,7 +195,7 @@ export function ReactionTime() {
         <div className="flex w-full max-w-md flex-col items-center gap-8 text-center">
           <header className="space-y-2">
             {/* 좌우 여백: 좁은 폰에서 제목이 오른쪽 위 공유 버튼 밑으로 들어가지 않게 */}
-            <h1 className="px-12 text-title-1 font-bold text-text-strong">반응속도 테스트</h1>
+            <h1 className="px-12 text-title-1 font-bold text-text-strong">{GAME_TITLES["reaction-time"]}</h1>
             <p className="text-caption-1 text-balance text-text-caption">
               화면을 누르면 3·2·1 카운트다운이 시작돼요. 숫자가 올라가기 시작하면 바로 누르세요.
             </p>
@@ -206,7 +207,7 @@ export function ReactionTime() {
         </div>
       )}
 
-      {phase !== "idle" && <h1 className="sr-only">반응속도 테스트</h1>}
+      {phase !== "idle" && <h1 className="sr-only">{GAME_TITLES["reaction-time"]}</h1>}
 
       {phase === "countdown" && (
         <div className="flex flex-col items-center gap-4 text-center">
@@ -267,7 +268,7 @@ export function ReactionTime() {
               onClick={stopPropagation}
             >
               <p className="text-caption-1 font-semibold">이 기록을 친구에게 공유할까요?</p>
-              <ShareButton title="반응속도 테스트" text={shareText} />
+              <ShareButton title={GAME_TITLES["reaction-time"]} text={shareText} />
             </div>
 
             <div className="flex flex-col items-center gap-1 opacity-80">

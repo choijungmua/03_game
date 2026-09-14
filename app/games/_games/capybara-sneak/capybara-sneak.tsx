@@ -8,6 +8,8 @@ import { Progress } from "@/components/feedback/progress";
 import { Button } from "@/components/inputs/button";
 import { Dialog } from "@/components/overlay/dialog";
 import { cn } from "@/lib";
+import { GAME_TITLES } from "@/lib/games/constants";
+import { useLockPageScroll } from "@/lib/games/use-lock-page-scroll";
 
 import {
   addBite,
@@ -80,6 +82,7 @@ export function CapybaraSneak() {
   const [gauge, setGauge] = useState(0);
   const [trend, setTrend] = useState<GaugeTrend>("up");
   const [pressing, setPressing] = useState(false);
+  useLockPageScroll(status === "playing");
 
   // 먹기·감소·주인 타이머는 화면이 다시 그려지기 전에도 여러 번 돌 수 있어서,
   // 판정은 렌더링 결과 대신 항상 최신 값을 담은 ref로 한다
@@ -237,6 +240,8 @@ export function CapybaraSneak() {
   const isShrinking = trend === "down" && gauge > 0;
   const pose: CapybaraPose =
     status === "fail" ? "caught" : status === "success" || pressing ? "eating" : "idle";
+  // 게임 중 꾹 누르고 있으면 와구와구 씹고 접시가 들썩인다
+  const munching = status === "playing" && pressing;
 
   return (
     <div
@@ -245,7 +250,7 @@ export function CapybaraSneak() {
       onContextMenu={preventDefault}
       className="relative h-dvh w-full cursor-pointer touch-none select-none overflow-hidden bg-background [-webkit-tap-highlight-color:transparent] [-webkit-touch-callout:none]"
     >
-      <h1 className="sr-only">카피바라 몰래 먹기</h1>
+      <h1 className="sr-only">{GAME_TITLES["capybara-sneak"]}</h1>
       <p aria-live="polite" className="sr-only">
         {OWNER_STATUS_MESSAGE[ownerState]}
       </p>
@@ -329,6 +334,7 @@ export function CapybaraSneak() {
               className={cn(
                 "pointer-events-none absolute h-auto",
                 foodStage === stage ? "opacity-100" : "opacity-0",
+                munching && "animate-plate-shake",
               )}
               style={FOOD_BOX}
             />
@@ -348,10 +354,25 @@ export function CapybaraSneak() {
               loading="eager"
               sizes={SPRITE_SIZES}
               draggable={false}
-              className={cn("pointer-events-none absolute h-auto", pose === key ? "opacity-100" : "opacity-0")}
+              className={cn(
+                "pointer-events-none absolute h-auto origin-bottom",
+                pose === key ? "opacity-100" : "opacity-0",
+                munching && key === "eating" && "animate-munch",
+              )}
               style={CAPYBARA_BOXES[key]}
             />
           ))}
+          {munching &&
+            (["와구", "와구", "냠"] as const).map((word, i) => (
+              <span
+                key={i}
+                aria-hidden="true"
+                className="absolute top-[52%] animate-munch-pop text-[2.6cqw] font-black text-white opacity-0 [paint-order:stroke] [-webkit-text-stroke:0.4cqw_rgb(0_0_0/0.55)]"
+                style={{ left: `${56 + i * 4}%`, animationDelay: `${i * 200}ms` }}
+              >
+                {word}
+              </span>
+            ))}
         </div>
       </div>
 
