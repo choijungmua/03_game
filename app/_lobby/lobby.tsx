@@ -77,7 +77,7 @@ import { markLobbyExit } from "@/components/navigation/lobby-link";
 
 import { CAPYBARA_EMOTES, emoteChat, emoteImage, parseEmoteChat } from "@/lib/games/emotes";
 
-import { BUBBLE_LINE, BUBBLE_TEXT_WIDTH, EMOTE_SIZE, FISH_BUTTON_SRC, SITE_LINKS } from "./constants";
+import { BUBBLE_DEPTH, BUBBLE_LINE, BUBBLE_TEXT_WIDTH, EMOTE_SIZE, FISH_BUTTON_SRC, SITE_LINKS } from "./constants";
 import { EmotePicker } from "./emote-picker";
 import { FishBag } from "./fish-bag";
 import { KeyboardGuide } from "./keyboard-guide";
@@ -467,31 +467,67 @@ function drawLabel(ctx: CanvasRenderingContext2D, text: string, x: number, y: nu
   ctx.fillText(text, x, y);
 }
 
-/** 꼬리 끝이 (x, bottom)에 오는 흰 말풍선 몸통을 칠하고 몸통 top을 돌려준다. 꼬리는 몸통과 한 번에 채워 이음새가 안 보이게 */
+/** 둥근 몸통과 꼬리를 끊김 없는 한 선으로 잇는 말풍선 윤곽. 꼬리는 곡선으로 몸통 밑변에서 흘러내린다 */
+function bubblePath(ctx: CanvasRenderingContext2D, x: number, bottom: number, left: number, top: number, width: number, height: number, radius: number) {
+  const right = left + width;
+  const base = top + height;
+  const tail = Math.max(2, Math.min(7, x - left - radius, right - radius - x));
+  ctx.beginPath();
+  ctx.moveTo(left + radius, top);
+  ctx.arcTo(right, top, right, base, radius);
+  ctx.arcTo(right, base, left, base, radius);
+  ctx.lineTo(x + tail, base);
+  ctx.quadraticCurveTo(x + 1, base + 1, x, bottom);
+  ctx.quadraticCurveTo(x - 2, base + 2, x - tail, base);
+  ctx.arcTo(left, base, left, top, radius);
+  ctx.arcTo(left, top, right, top, radius);
+  ctx.closePath();
+}
+
+/** 꼬리 끝이 (x, bottom)에 오는 입체 말풍선을 칠하고 몸통 top을 돌려준다. 그림자 + 아래 두께 + 위에서 아래로 옅어지는 음영 */
 function fillBubble(ctx: CanvasRenderingContext2D, x: number, bottom: number, width: number, height: number, radius: number) {
   const left = Math.round(x - width / 2);
-  const top = Math.round(bottom - 5 - height);
-  ctx.beginPath();
-  ctx.roundRect(left, top, width, height, radius);
-  ctx.moveTo(x - 4, top + height - 1);
-  ctx.lineTo(x, bottom);
-  ctx.lineTo(x + 4, top + height - 1);
-  ctx.closePath();
+  const top = Math.round(bottom - BUBBLE_DEPTH - 5 - height);
+  const tip = bottom - BUBBLE_DEPTH;
   ctx.save();
-  ctx.shadowColor = "rgba(40,28,16,0.25)";
-  ctx.shadowBlur = 6;
-  ctx.shadowOffsetY = 1;
-  ctx.fillStyle = "#fff";
+  // 두께 판: 몸통을 아래로 밀어 어둡게 칠하고, 바닥 그림자는 이 판에만 준다
+  ctx.translate(0, BUBBLE_DEPTH);
+  bubblePath(ctx, x, tip, left, top, width, height, radius);
+  ctx.shadowColor = "rgba(40,28,16,0.35)";
+  ctx.shadowBlur = 8;
+  ctx.shadowOffsetY = 3;
+  ctx.fillStyle = "#cbbca6";
   ctx.fill();
+  ctx.restore();
+
+  bubblePath(ctx, x, tip, left, top, width, height, radius);
+  const shade = ctx.createLinearGradient(0, top, 0, top + height);
+  shade.addColorStop(0, "#ffffff");
+  shade.addColorStop(0.55, "#fbf8f3");
+  shade.addColorStop(1, "#ece3d6");
+  ctx.fillStyle = shade;
+  ctx.fill();
+  ctx.lineWidth = 1;
+  ctx.strokeStyle = "rgba(120,92,62,0.22)";
+  ctx.stroke();
+
+  // 윗면 광택: 위쪽 가장자리 안쪽에 얇은 흰 띠
+  ctx.save();
+  ctx.clip();
+  ctx.fillStyle = "rgba(255,255,255,0.9)";
+  ctx.fillRect(left + radius / 2, top + 1, width - radius, 1.5);
   ctx.restore();
   return top;
 }
 
-/** 카피바라 이모티콘 그림 하나를 담은 말풍선 */
-function drawEmoteBubble(ctx: CanvasRenderingContext2D, image: HTMLImageElement, x: number, bottom: number) {
-  const size = EMOTE_SIZE + 8;
-  const top = fillBubble(ctx, x, bottom, size, size, 14);
-  ctx.drawImage(image, Math.round(x - EMOTE_SIZE / 2), top + 4, EMOTE_SIZE, EMOTE_SIZE);
+/** 카피바라 이모티콘은 말풍선 없이 투명 그림만 띄운다. 배경과 섞이지 않게 그림 테두리에만 옅은 그림자 */
+function drawEmote(ctx: CanvasRenderingContext2D, image: HTMLImageElement, x: number, bottom: number) {
+  ctx.save();
+  ctx.shadowColor = "rgba(40,28,16,0.35)";
+  ctx.shadowBlur = 6;
+  ctx.shadowOffsetY = 2;
+  ctx.drawImage(image, Math.round(x - EMOTE_SIZE / 2), Math.round(bottom - EMOTE_SIZE), EMOTE_SIZE, EMOTE_SIZE);
+  ctx.restore();
 }
 
 /** 꼬리 끝이 (x, bottom)에 오는 말풍선. 한글은 띄어쓰기 없이 길게 쓰기도 해서 글자 단위로 줄을 바꾼다 */
@@ -1169,7 +1205,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
       const emote = parseEmoteChat(text);
       if (emote === null) return drawBubble(ctx, text, x, bottom);
       const image = outfitImage(emoteImage(emote));
-      if (ready(image)) drawEmoteBubble(ctx, image, x, bottom);
+      if (ready(image)) drawEmote(ctx, image, x, bottom);
       else drawBubble(ctx, CAPYBARA_EMOTES[emote], x, bottom);
     };
     // 옷 입은 스프라이트는 (스프라이트·방향·옷 조합)마다 한 번만 캔버스에 구워 두고, 매 프레임엔 그 한 장만 그린다
