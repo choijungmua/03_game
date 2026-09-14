@@ -96,11 +96,15 @@ export function playGameSound(layers: readonly SoundLayer[]) {
 // ponytail: 효과음 파일 없이 오실레이터·잡음으로 짧게 합성한다(저작권 걱정 없음). 효과음 파일이 생기면 여기서 AudioBuffer 재생으로 바꾼다
 function playLayers(layers: readonly SoundLayer[], settings: LobbySettings) {
   if (settings.muted || settings.volume <= 0) return;
+  // 소리는 곁들이라 Web Audio가 어디서 예외를 던져도(오디오 장치 중단·잘못된 값 등) 부른 쪽으로 번지지 않게 삼킨다.
+  // 번지면 알까기 샷 애니메이션이 끊겨 알이 잠기거나, 이펙트에서 나면 게임 화면이 오류 화면으로 바뀐다
   try {
-    audio ??= new AudioContext();
-  } catch {
-    return;
-  }
+    synthesize(layers, settings);
+  } catch {}
+}
+
+function synthesize(layers: readonly SoundLayer[], settings: LobbySettings) {
+  audio ??= new AudioContext();
   // 브라우저는 한 번 누르거나 키를 치기 전까지 소리를 막는다. 막혀 있으면 조용히 넘어간다
   if (audio.state === "suspended") audio.resume().catch(() => {});
   if (!noise) {

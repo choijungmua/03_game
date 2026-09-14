@@ -17,6 +17,14 @@ export const SPRITES = {
   enemyZigzagHit: `${BASE}/enemy/zigzag-hit.webp`,
   enemyShooter: `${BASE}/enemy/shooter.webp`,
   enemyShooterHit: `${BASE}/enemy/shooter-hit.webp`,
+  enemyShield: `${BASE}/enemy/shield.webp`,
+  enemyShieldHit: `${BASE}/enemy/shield-hit.webp`,
+  enemyDasher: `${BASE}/enemy/dasher.webp`,
+  enemyDasherHit: `${BASE}/enemy/dasher-hit.webp`,
+  enemySplitter: `${BASE}/enemy/splitter.webp`,
+  enemySplitterHit: `${BASE}/enemy/splitter-hit.webp`,
+  enemyHoming: `${BASE}/enemy/homing.webp`,
+  enemyHomingHit: `${BASE}/enemy/homing-hit.webp`,
   boss: `${BASE}/enemy/boss.webp`,
   bossHit: `${BASE}/enemy/boss-hit.webp`,
   itemDouble: `${BASE}/item/double.webp`,
@@ -78,11 +86,18 @@ export const TIER_SPRITES: readonly SpriteKey[] = [
 /** 엔진 불꽃은 두 프레임을 번갈아 보여준다 */
 export const FLAME_FRAMES: readonly SpriteKey[] = ["planeFlame1", "planeFlame2"];
 
-/** 카피바라의 천적들: 직선 = 하피독수리, 지그재그 = 말벌, 조준 사격 = 재규어, 보스 = 카이만 */
+/**
+ * 카피바라의 천적들: 직선 = 하피독수리, 지그재그 = 말벌, 조준 사격 = 재규어, 방패 = 아르마딜로, 돌진 = 칼새,
+ * 분열 = 독화살개구리(갈라진 작은 개구리도 같은 그림을 작게 그린다), 추적 = 흡혈박쥐, 보스 = 카이만
+ */
 export const ENEMY_SPRITES: Record<EnemyKind, { normal: SpriteKey; hit: SpriteKey }> = {
   straight: { normal: "enemyStraight", hit: "enemyStraightHit" },
   zigzag: { normal: "enemyZigzag", hit: "enemyZigzagHit" },
   shooter: { normal: "enemyShooter", hit: "enemyShooterHit" },
+  shield: { normal: "enemyShield", hit: "enemyShieldHit" },
+  dasher: { normal: "enemyDasher", hit: "enemyDasherHit" },
+  splitter: { normal: "enemySplitter", hit: "enemySplitterHit" },
+  homing: { normal: "enemyHoming", hit: "enemyHomingHit" },
   boss: { normal: "boss", hit: "bossHit" },
 };
 

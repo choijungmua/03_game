@@ -1,6 +1,6 @@
 "use client";
 
-import { ChevronDown, Heart } from "lucide-react";
+import { Bomb, ChevronDown, Heart, Shield, Zap } from "lucide-react";
 import Image from "next/image";
 import { useEffect, useEffectEvent, useRef, useState } from "react";
 
@@ -22,6 +22,7 @@ import {
   PLANE_EXPLOSION_SIZE,
   PLANE_SHOOTER_SOUNDS,
   RESULT_TAP_GUARD_MS,
+  SKILL_KEYS,
   SOUND_GAP_MS,
 } from "./constants";
 import {
@@ -37,12 +38,16 @@ import {
 } from "./effects";
 import { PlaneShooterLeaderboard } from "./leaderboard";
 import {
+  BARRIER_RADIUS,
   BOSS_CLEAR_SCORE,
   BOSS_PATTERN_LABELS,
   BOSS_REWARD_LEVELS,
+  BOSS_STUN_LABEL,
   CHARGE_WINDUP_MS,
   createState,
+  DASHER_WINDUP_MS,
   EXPLOSION_MS,
+  GAME_SPEED,
   type GameInput,
   type GameState,
   getBossHomeY,
@@ -50,13 +55,22 @@ import {
   getBossPhase,
   getPlaneY,
   getStageConfig,
+  isBossGuarding,
   isBossStage,
+  isLaserActive,
+  isShieldUp,
   ITEMS,
   KILL_SCORE,
   BULLET_RADIUS,
+  LASER_HALF_WIDTH,
+  LASER_WINDUP_MS,
   MAX_FRAME_MS,
   MAX_HP,
   MAX_WEAPON_LEVEL,
+  OVERDRIVE_LEVELS,
+  SKILL_GAUGE_MAX,
+  type SkillKind,
+  SKILLS,
   STAGE_CLEAR_SCORE,
   step,
   type WeaponKind,
@@ -86,6 +100,7 @@ export const COUNTDOWN_STEP_MS = 800;
 const TITLE = GAME_TITLES["capybara-plane-shooter"];
 const LEFT_KEYS = new Set(["ArrowLeft", "a", "A"]);
 const RIGHT_KEYS = new Set(["ArrowRight", "d", "D"]);
+const SKILL_ICONS: Record<SkillKind, typeof Shield> = { barrier: Shield, overdrive: Zap, bomb: Bomb };
 
 /**
  * 게임 세계 크기는 기기와 상관없이 고정이다. 화면에는 이 비율 그대로 확대·축소만 해서 맞추므로
@@ -121,6 +136,9 @@ interface Hud {
   score: number;
   weapon: WeaponKind;
   weaponLevel: number;
+  skillGauge: number;
+  barrier: boolean;
+  overdrive: boolean;
   /** 보스 남은 체력(%, 2 단위). 보스가 없으면 null */
   bossHp: number | null;
   /** 보스가 지금 쓰는 패턴 이름 (보스가 없으면 null) */
@@ -163,9 +181,13 @@ function readHud(state: GameState): Hud {
     score: state.score,
     weapon: state.weapon,
     weaponLevel: state.weaponLevel,
+    // 게이지는 정수로만 바꿔 보스 피해로 조금씩 찰 때마다 다시 그리지 않게 한다
+    skillGauge: Math.floor(state.skillGauge),
+    barrier: state.barrierMs > 0,
+    overdrive: state.overdriveMs > 0,
     // 체력바는 2% 단위로만 바꿔 맞을 때마다 HUD 전체를 다시 그리지 않게 한다
     bossHp: boss ? Math.max(0, Math.ceil((boss.hp / boss.maxHp) * 50) * 2) : null,
-    bossPattern: boss ? BOSS_PATTERN_LABELS[getBossPattern(state)] : null,
+    bossPattern: boss ? (state.bossStunMs > 0 ? BOSS_STUN_LABEL : BOSS_PATTERN_LABELS[getBossPattern(state)]) : null,
     killsLeft: Math.max(0, getStageConfig(state.stage).killGoal - state.stageKills),
   };
 }
@@ -173,8 +195,24 @@ function readHud(state: GameState): Hud {
 /** step 직전 상태 중 효과음·연출 판단에 필요한 것만 떠 둔다 (배열은 새로 생긴·사라진 것을 가리려고 참조를 복사) */
 type FrameSnapshot = Pick<
   GameState,
-  "hp" | "stage" | "bank" | "fireInMs" | "weaponLevel" | "bossPatternIndex" | "bossPatternMs" | "items"
+  | "hp"
+  | "stage"
+  | "bank"
+  | "fireInMs"
+  | "weaponLevel"
+  | "shieldBlocks"
+  | "splits"
+  | "skillGauge"
+  | "barrierMs"
+  | "overdriveMs"
+  | "bombMs"
+  | "bossPatternIndex"
+  | "bossPatternMs"
+  | "bossStunMs"
+  | "items"
 > & {
+  /** 보스가 부하를 불렀는지 보려고 적 수를 센다 */
+  enemyCount: number;
   hasBoss: boolean;
   /** 보스가 격파되면 이번 프레임에 사라지므로 터질 자리를 미리 떠 둔다 */
   bossX: number;
@@ -192,8 +230,16 @@ function takeFrameSnapshot(state: GameState): FrameSnapshot {
     bank: state.bank,
     fireInMs: state.fireInMs,
     weaponLevel: state.weaponLevel,
+    shieldBlocks: state.shieldBlocks,
+    splits: state.splits,
+    skillGauge: state.skillGauge,
+    barrierMs: state.barrierMs,
+    overdriveMs: state.overdriveMs,
+    bombMs: state.bombMs,
     bossPatternIndex: state.bossPatternIndex,
     bossPatternMs: state.bossPatternMs,
+    bossStunMs: state.bossStunMs,
+    enemyCount: state.enemies.length,
     items: [...state.items],
     hasBoss: boss !== undefined,
     bossX: boss?.x ?? 0,
@@ -225,6 +271,16 @@ function playStepSounds(
     if (enemy.flashMs !== 80) continue;
     if (enemy.kind === "boss") throttled("bossHit", PLANE_SHOOTER_SOUNDS.bossHit);
     else throttled("enemyHit", PLANE_SHOOTER_SOUNDS.enemyHit);
+  }
+  if (state.shieldBlocks > prev.shieldBlocks) throttled("shieldBlock", PLANE_SHOOTER_SOUNDS.shieldBlock);
+  if (state.splits > prev.splits) playGameSound(PLANE_SHOOTER_SOUNDS.split);
+  if (state.barrierMs > prev.barrierMs) playGameSound(PLANE_SHOOTER_SOUNDS.barrier);
+  if (state.overdriveMs > prev.overdriveMs) playGameSound(PLANE_SHOOTER_SOUNDS.overdrive);
+  if (state.bombMs > prev.bombMs) playGameSound(PLANE_SHOOTER_SOUNDS.bomb);
+  if (prev.skillGauge < SKILL_GAUGE_MAX && state.skillGauge >= SKILL_GAUGE_MAX) playGameSound(PLANE_SHOOTER_SOUNDS.skillReady);
+  // 칼새가 멈춘 프레임에는 경고 시간이 아직 줄지 않아 DASHER_WINDUP_MS 그대로다
+  if (state.enemies.some((enemy) => enemy.kind === "dasher" && enemy.vy === 0 && enemy.timerMs === DASHER_WINDUP_MS)) {
+    throttled("dasherWarn", PLANE_SHOOTER_SOUNDS.dasherWarn);
   }
 
   const damaged = state.hp < prev.hp;
@@ -265,6 +321,14 @@ function playStepSounds(
     return;
   }
   if (getBossPhase(boss) > prev.bossPhase) playGameSound(PLANE_SHOOTER_SOUNDS.bossPhase);
+  if (state.bossStunMs > 0 && prev.bossStunMs === 0) playGameSound(PLANE_SHOOTER_SOUNDS.bossStun);
+  if (getBossPattern(state) === "laser") {
+    if (prev.bossPatternMs === 0 && state.bossPatternMs > 0) playGameSound(PLANE_SHOOTER_SOUNDS.laserWarn);
+    if (prev.bossPatternMs < LASER_WINDUP_MS && state.bossPatternMs >= LASER_WINDUP_MS) playGameSound(PLANE_SHOOTER_SOUNDS.laserBeam);
+  }
+  if (getBossPattern(state) === "summon" && state.enemies.length > prev.enemyCount) {
+    throttled("summon", PLANE_SHOOTER_SOUNDS.summon);
+  }
   if (state.bossPatternIndex !== prev.bossPatternIndex) playGameSound(PLANE_SHOOTER_SOUNDS.bossPattern);
   if (getBossPattern(state) !== "charge") return;
   if (prev.bossPatternMs === 0 && state.bossPatternMs > 0) playGameSound(PLANE_SHOOTER_SOUNDS.chargeWindup);
@@ -312,6 +376,18 @@ function applyStepEffects(prev: FrameSnapshot, state: GameState, effects: Effect
     if (state.weaponLevel < prev.weaponLevel) popup(effects, labelX, labelY, "Lv -1", "danger");
   }
 
+  if (state.barrierMs > prev.barrierMs) popup(effects, labelX, labelY, `${SKILLS.barrier.label}!`, "success");
+  if (state.overdriveMs > prev.overdriveMs) popup(effects, labelX, labelY, `${SKILLS.overdrive.label}! Lv+${OVERDRIVE_LEVELS}`, "warning");
+  if (state.bombMs > prev.bombMs) {
+    popup(effects, state.width / 2, state.height * 0.5, `${SKILLS.bomb.label}!`, "warning", true);
+    if (motion) {
+      effects.ringMs = EFFECTS.ringMs;
+      effects.ringX = state.planeX;
+      effects.ringY = getPlaneY(state);
+      shake(effects, EFFECTS.shake.gameOver.power, EFFECTS.shake.gameOver.ms);
+    }
+  }
+
   // 사라진 간식 중 화면 아래로 떨어진 게 아니면 먹은 것
   for (const item of prev.items) {
     if (state.items.includes(item) || item.y - item.r >= state.height) continue;
@@ -340,6 +416,9 @@ function applyStepEffects(prev: FrameSnapshot, state: GameState, effects: Effect
   }
 
   const boss = state.enemies.find((enemy) => enemy.kind === "boss");
+  if (boss && prev.bossStunMs === 0 && state.bossStunMs > 0) {
+    popup(effects, state.width / 2, state.height * 0.32, "기절! 약점 3배", "warning", true);
+  }
   if (boss && prev.hasBoss && getBossPhase(boss) > prev.bossPhase) {
     popup(effects, state.width / 2, state.height * 0.4, getBossPhase(boss) === 3 ? "보스 분노!" : "보스 2페이즈", "danger", true);
     if (motion) shake(effects, EFFECTS.shake.chargeDash.power, EFFECTS.shake.chargeDash.ms);
@@ -408,14 +487,73 @@ function draw(
     ctx.globalAlpha = 1;
   }
 
+  if (boss && getBossPattern(state) === "laser" && state.bossStunMs <= 0) {
+    const top = boss.y + boss.r * 0.6;
+    if (state.bossPatternMs > 0 && state.bossPatternMs < LASER_WINDUP_MS) {
+      // 레이저 예고: 쏘기 시작할 자리에 가는 붉은 선
+      ctx.fillStyle = palette.danger;
+      ctx.globalAlpha = reducedMotion ? 0.5 : 0.35 + 0.25 * Math.sin(clockMs / 60);
+      ctx.fillRect(state.bossLaserX - 2, top, 4, state.height - top);
+    } else if (isLaserActive(state)) {
+      // 레이저: 붉은 테두리에 밝은 노란 심지
+      ctx.globalAlpha = 0.55;
+      ctx.fillStyle = palette.danger;
+      ctx.fillRect(state.bossLaserX - LASER_HALF_WIDTH, top, LASER_HALF_WIDTH * 2, state.height - top);
+      ctx.globalAlpha = 0.9;
+      ctx.fillStyle = palette.warning;
+      ctx.fillRect(state.bossLaserX - LASER_HALF_WIDTH / 3, top, (LASER_HALF_WIDTH * 2) / 3, state.height - top);
+    }
+    ctx.globalAlpha = 1;
+  }
+
   for (const item of state.items) {
     const pulse = reducedMotion ? 1 : 1 + 0.08 * Math.sin(clockMs / 180 + item.x);
     drawSprite(ctx, sprites[ITEM_SPRITES[item.kind]], item.x, item.y, item.r * ITEM_SIZE_RATIO * pulse);
   }
 
   for (const enemy of state.enemies) {
+    if (enemy.kind !== "dasher" || enemy.vy !== 0) continue;
+    // 칼새 돌진 예고: 내리꽂을 줄을 붉게 칠해 옆으로 비켜날 시간을 준다
+    ctx.fillStyle = palette.danger;
+    ctx.globalAlpha = reducedMotion ? 0.28 : 0.2 + 0.1 * Math.sin(clockMs / 70);
+    ctx.fillRect(enemy.x - enemy.r, enemy.y, enemy.r * 2, state.height - enemy.y);
+  }
+  ctx.globalAlpha = 1;
+
+  for (const enemy of state.enemies) {
     const sprite = ENEMY_SPRITES[enemy.kind];
     drawSprite(ctx, sprites[enemy.flashMs > 0 ? sprite.hit : sprite.normal], enemy.x, enemy.y, enemy.r * ENEMY_SIZE_RATIO);
+    if (isShieldUp(enemy)) {
+      // 아르마딜로가 든 방패: 아래쪽 반원. 쏠 때 잠깐 사라진다
+      ctx.strokeStyle = palette.text;
+      ctx.globalAlpha = 0.75;
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.arc(enemy.x, enemy.y, enemy.r * 1.3, Math.PI * 0.15, Math.PI * 0.85);
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+    }
+    if (enemy.kind !== "boss") continue;
+    if (isBossGuarding(state)) {
+      // 보스 앞 방패: 정면을 넓게 가린 굵은 반원 (옆은 비어 있다)
+      ctx.strokeStyle = palette.text;
+      ctx.globalAlpha = 0.8;
+      ctx.lineWidth = 6;
+      ctx.beginPath();
+      ctx.arc(enemy.x, enemy.y, enemy.r * 1.15, Math.PI * 0.3, Math.PI * 0.7);
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+    }
+    if (state.bossStunMs > 0) {
+      // 기절: 머리 위를 도는 별 세 개
+      ctx.fillStyle = palette.warning;
+      for (let index = 0; index < 3; index += 1) {
+        const angle = (reducedMotion ? 0 : clockMs / 300) + (index * Math.PI * 2) / 3;
+        ctx.beginPath();
+        ctx.arc(enemy.x + Math.cos(angle) * enemy.r * 0.55, enemy.y - enemy.r * 0.9 + Math.sin(angle) * 8, 4, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
   }
 
   for (const explosion of state.explosions) {
@@ -437,6 +575,14 @@ function draw(
   const x = state.planeX;
   const y = getPlaneY(state);
   if (deathMs === null) {
+    if (state.overdriveMs > 0) {
+      // 폭주 중: 비행기 뒤에 노란 기운
+      ctx.globalAlpha = 0.35;
+      ctx.fillStyle = palette.warning;
+      ctx.beginPath();
+      ctx.arc(x, y, PLANE_SIZE * 0.7, 0, Math.PI * 2);
+      ctx.fill();
+    }
     // 맞은 뒤 무적 시간에는 어지러워하는 조종사 그림 + 반투명 (깜빡임은 광과민 우려로 쓰지 않는다)
     ctx.globalAlpha = state.invincibleMs > 0 ? 0.7 : 1;
     const flame = reducedMotion ? 0 : Math.floor(clockMs / FLAME_FRAME_MS) % FLAME_FRAMES.length;
@@ -457,6 +603,15 @@ function draw(
       ctx.beginPath();
       ctx.arc(x, y - PLANE_SIZE / 2, 5, 0, Math.PI * 2);
       ctx.fill();
+    }
+    if (state.barrierMs > 0) {
+      // 방어막: 비행기를 감싼 원. 끝나갈 무렵(0.6초)부터 서서히 흐려진다
+      ctx.globalAlpha = Math.min(1, state.barrierMs / 600) * 0.8;
+      ctx.strokeStyle = palette.success;
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.arc(x, y, BARRIER_RADIUS, 0, Math.PI * 2);
+      ctx.stroke();
     }
     ctx.globalAlpha = 1;
   } else if (deathMs < PLANE_EXPLOSION_MS) {
@@ -512,6 +667,8 @@ export function CapybaraPlaneShooter() {
   const pausedRef = useRef(false);
   /** 결과 화면이 뜬 시각. 드래그하던 손을 떼는 click이 곧바로 새 판을 열지 않게 잠깐 탭을 무시하는 기준 */
   const resultAtRef = useRef(0);
+  /** 버튼·키로 요청한 스킬. rAF 루프가 다음 step에 넘기고 비운다 */
+  const skillRef = useRef<SkillKind | null>(null);
   const { ref: recordsRef, inView: recordsVisible } = useInView<HTMLElement>(phase === "result");
   useLockPageScroll(phase === "countdown" || phase === "playing");
 
@@ -646,14 +803,20 @@ export function CapybaraPlaneShooter() {
         }
 
         const { left, right } = keysRef.current;
-        const input: GameInput = {
-          direction: left === right ? 0 : left ? -1 : 1,
-          targetX: dragRef.current?.targetX ?? null,
-        };
-        const before = takeFrameSnapshot(state);
-        step(state, frameMs, input);
-        playStepSounds(before, state, now, lastPlayed);
-        applyStepEffects(before, state, effects, reducedMotion);
+        const direction = left === right ? 0 : left ? -1 : 1;
+        const targetX = dragRef.current?.targetX ?? null;
+        const skill = skillRef.current;
+        skillRef.current = null;
+        // 게임 속도 GAME_SPEED배: 한 프레임에 step을 여러 번 돈다. 격추당하거나 맞아서 잠깐 멈추면 남은 반복은 건너뛴다
+        for (let substep = 0; substep < GAME_SPEED && state.hp > 0 && effects.hitStopMs <= 0; substep += 1) {
+          const input: GameInput = { direction, targetX, skill: substep === 0 ? skill : null };
+          const before = takeFrameSnapshot(state);
+          step(state, frameMs, input);
+          // 게이지가 모자라 스킬이 안 나갔으면 삐빅 (썼으면 비용만큼 줄어 이전보다 작다)
+          if (input.skill && state.skillGauge >= before.skillGauge) playGameSound(GAME_SOUNDS.wrong);
+          playStepSounds(before, state, now, lastPlayed);
+          applyStepEffects(before, state, effects, reducedMotion);
+        }
 
         if (state.hp <= 0) {
           deathMs = 0;
@@ -687,8 +850,14 @@ export function CapybaraPlaneShooter() {
     };
   }, [phase]);
 
+  function requestSkill(kind: SkillKind) {
+    if (phase !== "playing" || pausedRef.current) return;
+    skillRef.current = kind;
+  }
+
   function startCountdown() {
     changePaused(false);
+    skillRef.current = null;
     keysRef.current = { left: false, right: false };
     setHud(null);
     setCountdownIndex(0);
@@ -724,6 +893,13 @@ export function CapybaraPlaneShooter() {
 
   const handleKey = useEffectEvent((event: KeyboardEvent) => {
     const pressed = event.type === "keydown";
+    const skill = (Object.keys(SKILL_KEYS) as SkillKind[]).find((kind) => SKILL_KEYS[kind].keys.includes(event.key));
+    if (skill) {
+      if (phase !== "playing" || pausedRef.current) return;
+      event.preventDefault();
+      if (pressed && !event.repeat) requestSkill(skill);
+      return;
+    }
     if (LEFT_KEYS.has(event.key) || RIGHT_KEYS.has(event.key)) {
       if (phase !== "playing" || pausedRef.current) return;
       event.preventDefault();
@@ -820,7 +996,7 @@ export function CapybaraPlaneShooter() {
             {/* 좌우 여백: 좁은 폰에서 제목이 오른쪽 위 공유 버튼 밑으로 들어가지 않게 */}
             <h1 className="px-12 text-title-1 font-bold text-text-strong">{TITLE}</h1>
             <p className="text-caption-1 text-balance text-text-caption">
-              카피바라 조종사가 풀잎탄을 자동으로 쏴요. 화면을 좌우로 드래그하거나 방향키로 움직여 하피독수리·말벌·재규어를 격추하세요. 떨어진 간식을 먹으면 무기가 바뀌고 무기 레벨이 {MAX_WEAPON_LEVEL}레벨까지 올라 탄이 점점 많아져요. 맞으면 레벨이 하나 내려가요. 5스테이지마다 나오는 카이만 보스는 체력이 줄수록 거세지니, 격파해서 무기 레벨을 {BOSS_REWARD_LEVELS} 올리세요. 체력은 {MAX_HP}칸이에요.
+              카피바라 조종사가 풀잎탄을 자동으로 쏴요. 화면을 좌우로 드래그하거나 방향키로 움직여 하피독수리·말벌·재규어를 격추하세요. 스테이지가 오르면 방패로 막는 아르마딜로, 경고선 뒤 내리꽂는 칼새, 둘로 갈라지는 독화살개구리, 따라오는 흡혈박쥐도 나와요. 떨어진 간식을 먹으면 무기가 바뀌고 무기 레벨이 {MAX_WEAPON_LEVEL}레벨까지 올라 탄이 점점 많아져요. 맞으면 레벨이 하나 내려가요. 격추할수록 스킬 게이지가 차서 방어막(Z)·폭주(X)·폭탄(C)을 오른쪽 아래 버튼으로 쓸 수 있어요. 5스테이지마다 나오는 카이만 보스는 체력이 줄수록 거세지고 레이저·부하 소환·앞 방패도 써요. 돌격 뒤 기절했을 때 쏘면 피해가 3배예요. 격파해서 무기 레벨을 {BOSS_REWARD_LEVELS} 올리세요. 체력은 {MAX_HP}칸이에요.
             </p>
           </header>
 
@@ -915,7 +1091,7 @@ export function CapybaraPlaneShooter() {
               className="pointer-events-none absolute top-1/2 right-2 flex -translate-y-1/2 flex-col items-center gap-1"
             >
               <span className="text-caption-2 font-black tabular-nums">
-                {hud.weaponLevel === MAX_WEAPON_LEVEL ? "MAX" : `Lv${hud.weaponLevel}`}
+                {hud.overdrive ? SKILLS.overdrive.label : hud.weaponLevel === MAX_WEAPON_LEVEL ? "MAX" : `Lv${hud.weaponLevel}`}
               </span>
               <span className="flex flex-col-reverse gap-0.5 rounded-full bg-black/30 p-1">
                 {Array.from({ length: MAX_WEAPON_LEVEL }, (_, index) => (
@@ -925,6 +1101,44 @@ export function CapybaraPlaneShooter() {
                   />
                 ))}
               </span>
+            </div>
+          )}
+          {hud && (
+            // 오른쪽 아래 스킬: 게이지 + 버튼 세 개. 누르는 동작이 뒤의 드래그·시작으로 새지 않게 막는다
+            <div
+              className="absolute right-2 bottom-[max(1rem,env(safe-area-inset-bottom))] flex flex-col items-center gap-2"
+              onPointerDown={stopPropagation}
+              onClick={stopPropagation}
+            >
+              <Progress
+                value={hud.skillGauge}
+                size="sm"
+                aria-label={`스킬 게이지 ${hud.skillGauge}/${SKILL_GAUGE_MAX}`}
+                className="w-11 bg-black/40 [&>*]:bg-warning"
+              />
+              {(Object.keys(SKILL_KEYS) as SkillKind[]).map((kind) => {
+                const ready = hud.skillGauge >= SKILLS[kind].cost;
+                const active = (kind === "barrier" && hud.barrier) || (kind === "overdrive" && hud.overdrive);
+                const Icon = SKILL_ICONS[kind];
+                return (
+                  <button
+                    key={kind}
+                    type="button"
+                    aria-label={`${SKILLS[kind].label} (${SKILL_KEYS[kind].key}), 게이지 ${SKILLS[kind].cost} 필요`}
+                    aria-disabled={!ready}
+                    aria-keyshortcuts={SKILL_KEYS[kind].key}
+                    onClick={() => requestSkill(kind)}
+                    className={cn(
+                      "flex size-11 cursor-pointer touch-manipulation flex-col items-center justify-center rounded-full bg-black/40 text-white transition-opacity focus-visible:outline-2 focus-visible:outline-warning",
+                      !ready && "opacity-40",
+                      active && "ring-2 ring-warning",
+                    )}
+                  >
+                    <Icon aria-hidden="true" className="size-5" />
+                    <span className="text-caption-3 leading-none font-bold tabular-nums">{SKILLS[kind].cost}</span>
+                  </button>
+                );
+              })}
             </div>
           )}
         </div>

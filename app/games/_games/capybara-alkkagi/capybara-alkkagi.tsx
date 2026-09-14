@@ -232,6 +232,17 @@ export function CapybaraAlkkagi() {
     let shown = -1;
     let lastClack = 0;
     let rafId = requestAnimationFrame(function tick(now) {
+      try {
+        rafId = step(now) ? 0 : requestAnimationFrame(tick);
+      } catch (caught) {
+        // 한 프레임이라도 에러로 끊기면 animating이 true로 남아 알을 영영 못 친다 — 최종 위치로 맞추고 풀어 준다
+        console.error(caught);
+        stopShot();
+      }
+    });
+
+    /** 한 화면 프레임을 그린다. 애니메이션이 끝났으면 true */
+    function step(now: number) {
       // rAF의 now는 그 화면 프레임이 시작된 시각이라 바로 앞에서 잰 startedAt보다 이를 수 있다 — 음수 index(frames[-1] = undefined)가 되지 않게 0에서 막는다
       const index = Math.max(0, Math.min(frames.length - 1, Math.floor((now - startedAt) / STEP_MS)));
       let shaken = false;
@@ -258,11 +269,11 @@ export function CapybaraAlkkagi() {
         drawPieces(view?.state.pieces ?? []);
         setAnimating(false);
         afterMessage();
-        return;
+        return true;
       }
       drawPieces(frames[index]);
-      rafId = requestAnimationFrame(tick);
-    });
+      return false;
+    }
 
     return () => cancelAnimationFrame(rafId);
   });
@@ -273,7 +284,14 @@ export function CapybaraAlkkagi() {
   });
 
   useLayoutEffect(() => {
-    const cancel = playNewShot();
+    let cancel: (() => void) | undefined;
+    try {
+      cancel = playNewShot();
+    } catch (caught) {
+      // 재생 준비(시뮬레이션·소리)에서 에러가 나도 화면을 오류로 넘기거나 알을 잠그지 않고 최종 위치로 둔다
+      console.error(caught);
+      stopShot();
+    }
     return () => {
       cancel?.();
       stopShot();
@@ -484,11 +502,11 @@ export function CapybaraAlkkagi() {
                   )
                 )}
               </div>
-              {/* 에러는 줄을 늘리지 않고 카드 아래(판 위)에 띄운다 */}
+              {/* 에러는 줄을 늘리지 않고 카드 아래(판 위)에 띄운다. 판 윗부분을 덮으므로 누른 건 아래 판으로 지나가게 한다 */}
               {error && (
                 <p
                   role="alert"
-                  className="absolute inset-x-0 top-full mt-2 rounded-xl bg-background/90 px-3 py-2 text-center text-caption-1 text-error shadow-lg backdrop-blur"
+                  className="pointer-events-none absolute inset-x-0 top-full mt-2 rounded-xl bg-background/90 px-3 py-2 text-center text-caption-1 text-error shadow-lg backdrop-blur"
                 >
                   {error}
                 </p>

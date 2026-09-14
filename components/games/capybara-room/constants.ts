@@ -19,6 +19,9 @@ export const RECORD_LIMIT = 100;
 
 export const NO_ROOM_IMAGE = "/assets/images/ui/rooms/no-room.webp";
 
+/** 이모티콘 판과 놀리기 버튼에 붙인 표시. 여기 안을 누를 때는 판을 닫지 않는다 */
+export const EMOTE_PICKER_SELECTOR = "[data-emote-picker]";
+
 /** 남은 시간이 이만큼(초) 되면 빨갛게 바뀌고 경고음 한 번 */
 export const URGENT_SECONDS = 10;
 /** 마지막 이만큼(초)은 초마다 틱 */

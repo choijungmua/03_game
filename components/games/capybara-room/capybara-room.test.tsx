@@ -5,17 +5,18 @@ import { createGame, type GomokuState } from "@/app/games/_games/capybara-gomoku
 import { GAME_TITLES } from "@/lib/games/constants";
 import type { RoomView, Stone } from "@/lib/games/rooms";
 
+import { EmotePicker } from "./capybara-emotes";
 import { CapybaraRoom } from "./capybara-room";
 import type { CapybaraRoomProps } from "./type";
 
 const STONE_NAME: Record<Stone, string> = { black: "갈색 카피바라", white: "흰 카피바라" };
 
-function renderRoom(view: RoomView<GomokuState>, sendEmote = vi.fn()) {
+function renderRoom(view: RoomView<GomokuState>, sendEmote = vi.fn(), error = "") {
   const onPlay = vi.fn();
   const room: CapybaraRoomProps<GomokuState>["room"] = {
     slug: "capybara-gomoku",
     view,
-    error: "",
+    error,
     pending: false,
     reconnecting: false,
     gone: false,
@@ -71,6 +72,31 @@ describe("놀리기 이모티콘", () => {
     // 떠 있는 동안에는 새로 못 보낸다
     expect(screen.getByRole("button", { name: "놀리기" })).toBeDisabled();
   });
+
+  it("열어 둔 채 막혔다가(상대 이모티콘이 뜸) 풀려도 이모티콘 판이 저절로 다시 떠서 판 아래 알을 가리지 않는다", () => {
+    const { rerender } = render(<EmotePicker onSend={vi.fn()} />);
+    fireEvent.click(screen.getByRole("button", { name: "놀리기" }));
+    expect(screen.getByRole("button", { name: "ㅋㅋㅋㅋㅋ" })).toBeInTheDocument();
+
+    rerender(<EmotePicker onSend={vi.fn()} disabled />);
+    rerender(<EmotePicker onSend={vi.fn()} />);
+    expect(screen.queryByRole("button", { name: "ㅋㅋㅋㅋㅋ" })).not.toBeInTheDocument();
+  });
+
+  it("이모티콘 판 바깥을 누르면 닫히고, 판 안을 누를 때는 닫히지 않는다", () => {
+    render(
+      <>
+        <EmotePicker onSend={vi.fn()} />
+        <button type="button">내 알</button>
+      </>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "놀리기" }));
+    fireEvent.pointerDown(screen.getByRole("button", { name: "다음" }));
+    expect(screen.getByRole("button", { name: "ㅋㅋㅋㅋㅋ" })).toBeInTheDocument();
+
+    fireEvent.pointerDown(screen.getByRole("button", { name: "내 알" }));
+    expect(screen.queryByRole("button", { name: "ㅋㅋㅋㅋㅋ" })).not.toBeInTheDocument();
+  });
 });
 
 describe("CapybaraRoom 판", () => {
@@ -80,6 +106,11 @@ describe("CapybaraRoom 판", () => {
     expect(cell).toBeEnabled();
     fireEvent.click(cell);
     expect(onPlay).toHaveBeenCalledWith(0);
+  });
+
+  it("에러 줄은 판 윗줄 위에 떠도 누른 것을 가로채지 않는다", () => {
+    renderRoom(viewAs("white"), vi.fn(), "이미 돌이 있는 자리예요");
+    expect(screen.getByRole("alert")).toHaveClass("pointer-events-none");
   });
 
   it("관전자는 판을 누를 수 없다", () => {
