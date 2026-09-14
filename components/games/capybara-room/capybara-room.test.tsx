@@ -13,6 +13,7 @@ const STONE_NAME: Record<Stone, string> = { black: "갈색 카피바라", white:
 function renderRoom(view: RoomView<GomokuState>, sendEmote = vi.fn()) {
   const onPlay = vi.fn();
   const room: CapybaraRoomProps<GomokuState>["room"] = {
+    slug: "capybara-gomoku",
     view,
     error: "",
     pending: false,
@@ -44,7 +45,7 @@ function renderRoom(view: RoomView<GomokuState>, sendEmote = vi.fn()) {
 
 function viewAs(you: Stone | null): RoomView<GomokuState> {
   // 흑 차례 판 — 백 화면 입장에서는 "상대 차례"로 알고 있는 상태
-  return { code: "ABCDEF", state: createGame(), joined: { black: true, white: true }, you, now: Date.now(), version: 1, emote: null };
+  return { code: "ABCDEF", state: createGame(), joined: { black: true, white: true }, you, now: Date.now(), version: 1, emote: null, bot: false };
 }
 
 describe("놀리기 이모티콘", () => {

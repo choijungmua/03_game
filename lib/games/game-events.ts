@@ -1,4 +1,6 @@
-// 브라우저 -> Supabase RPC (게임 입장 수·한 판 기록 적재). 실패해도 게임에는 영향 없음
+// 게임 이벤트(입장·한 판 기록·공유)를 백엔드(API_URL)로 한 번씩 보낸다. 저장은 백엔드가 맡는다. 실패해도 게임에는 영향 없음
+
+import { API_URL } from "@/lib/api-url";
 
 const SESSION_KEY = "game-session-id";
 
@@ -15,15 +17,11 @@ function getSessionId() {
   }
 }
 
-function callRpc(name: string, args: object): Promise<void> {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
-  if (!url || !key) return Promise.resolve();
-
-  return fetch(`${url}/rest/v1/rpc/${name}`, {
+function post(slug: string, kind: "visits" | "records" | "shares", body: object): Promise<void> {
+  return fetch(`${API_URL}/api/games/${slug}/${kind}`, {
     method: "POST",
-    headers: { apikey: key, "Content-Type": "application/json" },
-    body: JSON.stringify(args),
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ sessionId: getSessionId(), ...body }),
     keepalive: true,
   }).then(
     () => undefined,
@@ -32,20 +30,15 @@ function callRpc(name: string, args: object): Promise<void> {
 }
 
 export function recordGameVisit(slug: string) {
-  return callRpc("g_add_visit", { p_slug: slug, p_session_id: getSessionId() });
+  return post(slug, "visits", {});
 }
 
 /** 공유 완료 1회 기록. native = 기기 공유 창, clipboard = 링크 복사 */
 export function recordGameShare(slug: string, method: "native" | "clipboard") {
-  return callRpc("g_add_share", { p_slug: slug, p_session_id: getSessionId(), p_method: method });
+  return post(slug, "shares", { method });
 }
 
 /** 한 판 기록 적재. score는 그 게임의 순위 기준 값, data는 기록 객체 전체 */
 export function submitGameRecord(slug: string, score: number, data: object) {
-  return callRpc("g_add_record", {
-    p_slug: slug,
-    p_session_id: getSessionId(),
-    p_score: score,
-    p_data: data,
-  });
+  return post(slug, "records", { score, data });
 }

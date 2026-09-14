@@ -7,6 +7,7 @@ import { type FormEvent, useEffect, useEffectEvent, useRef, useState } from "rea
 
 import { pretendard } from "@/config";
 import { cn } from "@/lib";
+import { API_URL } from "@/lib/api-url";
 
 /** 캔버스는 CSS 폰트를 물려받지 않으니 사이트 폰트(Pretendard) 이름을 직접 쓴다 */
 const CANVAS_FONT = pretendard.style.fontFamily;
@@ -1052,7 +1053,8 @@ export function Lobby({ games }: { games: DoorGame[] }) {
       attackQueued = false;
       const chat = chatQueued ?? undefined;
       chatQueued = null;
-      fetch("/api/lobby", {
+      // ponytail: 150ms 게임 루프라 React Query 없이 직접 보낸다(렌더 없이 캔버스만 갱신)
+      fetch(`${API_URL}/api/lobby`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ token, ...sent, facing: me.facing, sitting: me.sitting, attack, outfit: outfitRef.current, chat }),
@@ -1561,8 +1563,8 @@ export function Lobby({ games }: { games: DoorGame[] }) {
       </form>
 
       {/* 오른쪽 위 세로 줄: 카피바라 옷장 → 효과음. 설정 버튼은 나중에 이 줄에 다시 넣는다 */}
-      {/* 효과음 버튼의 헤드폰이 원 밖으로 삐져나오는 만큼 위(옷장)·오른쪽(화면 끝)을 띄운다 */}
-      <div className="absolute right-5 top-[max(0.75rem,env(safe-area-inset-top))] flex flex-col items-center gap-5">
+      {/* 효과음 버튼의 헤드폰이 원 밖으로 삐져나오는 만큼 위(옷장)·오른쪽(화면 끝)을 띄운다. 두 버튼은 앉기·때리기와 같은 size-18 */}
+      <div className="absolute right-5 top-[max(0.75rem,env(safe-area-inset-top))] flex flex-col items-center gap-6">
         <Wardrobe
           onChange={(outfit) => {
             outfitRef.current = outfit;
@@ -1583,7 +1585,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
         {settings.showHelp && (
           <p className="max-w-full text-balance rounded-lg bg-card/80 px-3 py-1.5 text-center text-caption-3 text-text-caption backdrop-blur">
             <span className="[@media(pointer:coarse)]:hidden">
-              방향키·WASD 걷기 · F 때리기 · 통나무 앞에서 Space 앉기 · Enter 채팅 · 오두막 문 앞에 가면 입장
+              방향키·WASD 걷기 · F 때리기 · 통나무 앞에서 Space 앉기 · Enter 채팅 · P 프로필 · M 소리 · 오두막 문 앞에 가면 입장
             </span>
             <span className="hidden [@media(pointer:coarse)]:inline">화면을 누른 채 끌면 그쪽으로 걸어요 · 오두막 문 앞에 가면 입장</span>
           </p>
