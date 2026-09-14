@@ -93,7 +93,9 @@ import {
   type WardrobeAnchor,
   type WardrobeSlot,
   WARDROBE_SLOTS,
+  wardrobeSrc,
   wardrobeViewSrc,
+  VIEW_ART,
   VIEW_OF,
   WORLD_ANCHORS,
   WORLD_HEAD_ELLIPSE,
@@ -2033,7 +2035,8 @@ export function Lobby({ games }: { games: DoorGame[] }) {
       ...icons.values(),
       ...WARDROBE_SLOTS.flatMap((slot) => {
         const id = outfitRef.current[slot];
-        return id ? [outfitImage(wardrobeSrc(slot, id))] : [];
+        // 정면 + 뒤·옆·대각선 그림까지 받아 둬야 방향을 틀 때 옷이 늦게 나타나지 않는다
+        return id ? [wardrobeSrc(slot, id), ...VIEW_ART.map((view) => wardrobeViewSrc(slot, id, view))].map(outfitImage) : [];
       }),
     ];
     let loadedCount = 0;
