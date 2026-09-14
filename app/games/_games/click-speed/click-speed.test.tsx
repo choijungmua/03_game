@@ -71,6 +71,26 @@ describe("ClickSpeed", () => {
     vi.unstubAllGlobals();
   });
 
+  describe("플레이 중 스크롤", () => {
+    it("카운트다운·연타 중에는 페이지 스크롤과 브라우저 터치 제스처를 막고, 결과 화면에서 풀린다 — 연타하다 화면이 밀리지 않게", async () => {
+      render(<ClickSpeed />);
+      expect(getScreenEl()).toHaveClass("touch-manipulation");
+
+      press();
+      expect(document.documentElement.style.overflow).toBe("hidden");
+      expect(getScreenEl()).toHaveClass("touch-none");
+
+      await advance(COUNTDOWN_STEP_MS * COUNTDOWN_VALUES.length);
+      expect(getScreenEl()).toHaveAttribute("data-phase", "playing");
+      expect(document.documentElement.style.overflow).toBe("hidden");
+
+      await advance(DEFAULT_SECONDS * 1000);
+      expect(getScreenEl()).toHaveAttribute("data-phase", "result");
+      expect(document.documentElement.style.overflow).toBe("");
+      expect(getScreenEl()).toHaveClass("touch-manipulation");
+    });
+  });
+
   describe("시작 화면", () => {
     it("제목과 가운데 시작 안내를 보여준다", () => {
       render(<ClickSpeed />);

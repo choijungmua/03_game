@@ -1,7 +1,7 @@
 import NextImage from "next/image";
-import Link from "next/link";
 import type { ReactNode } from "react";
 
+import { LobbyLink } from "@/components/navigation/lobby-link";
 import { emoteImage } from "@/lib/games/emotes";
 
 import { CAPYBARA_IDLE, MEADOW_TEXTURE, PARTY_EMOTE, READING_LEFT, READING_RIGHT, SLEEP_EMOTE } from "./constants";
@@ -21,9 +21,9 @@ export function LegalPage({ title, children }: { title: string; children: ReactN
       className="min-h-dvh w-full scheme-light px-4 pb-[max(3rem,env(safe-area-inset-bottom))] pt-[max(1rem,env(safe-area-inset-top))] [--foreground:var(--capybara-dark)] [--muted-foreground:color-mix(in_oklab,var(--capybara-dark)_80%,var(--capybara-light))]"
       style={{ backgroundImage: `url(${MEADOW_TEXTURE})` }}
     >
-      <Link href="/" className={WOOD_BUTTON}>
+      <LobbyLink className={WOOD_BUTTON}>
         ← 로비로
-      </Link>
+      </LobbyLink>
 
       <div className="relative mx-auto mt-28 max-w-lg">
         <article className="rounded-[2rem] border-8 border-capybara bg-[color-mix(in_oklab,var(--capybara-light)_28%,white)] px-5 pb-8 pt-14 text-foreground shadow-xl sm:px-8">
@@ -49,9 +49,9 @@ export function LegalPage({ title, children }: { title: string; children: ReactN
               <span className="text-xs text-muted-foreground group-has-checked:hidden">카피바라가 다 읽을 때까지 기다리다 잠들었어요…</span>
               <span className="hidden text-xs font-semibold group-has-checked:inline">약속 완료! 이제 같이 놀아요</span>
             </label>
-            <Link href="/" className={WOOD_BUTTON}>
+            <LobbyLink className={WOOD_BUTTON}>
               로비로 놀러 가기
-            </Link>
+            </LobbyLink>
           </footer>
         </article>
 
