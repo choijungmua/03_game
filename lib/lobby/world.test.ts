@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
 
-import { createWorld, isBlockingTile, LOBBY_SEED, TILE } from "./world";
+import { createWorld, isBlockingTile, LOBBY_SEED, nearestWater, TILE } from "./world";
 
 const GAMES = Array.from({ length: 7 }, (_, i) => ({ slug: `game-${i}`, title: `게임 ${i}` }));
 const tileUnder = (world: ReturnType<typeof createWorld>, x: number, y: number) =>
@@ -67,5 +67,23 @@ describe("카피바라 습지 마을", () => {
       for (let tx = 60; tx < 260; tx++) found.add(world.tileAt(tx, ty));
     }
     expect(["water", "tree", "rock", "grass", "mud"].every((tile) => found.has(tile))).toBe(true);
+  });
+
+  it("물가에 서면 가까운 물을 찾고, 스폰(마을 한가운데)에선 못 찾는다", () => {
+    const world = createWorld(LOBBY_SEED, GAMES);
+    const tileAt = world.tileAt.bind(world);
+    expect(nearestWater(tileAt, world.spawn.x, world.spawn.y, TILE * 1.5)).toBeNull();
+    // 물 바로 왼쪽의 걸을 수 있는 칸을 찾아 그 가운데에 선다
+    let shore: { x: number; y: number } | null = null;
+    for (let ty = 60; ty < 260 && !shore; ty++) {
+      for (let tx = 60; tx < 260 && !shore; tx++) {
+        if (world.tileAt(tx, ty) === "water" && !isBlockingTile(world.tileAt(tx - 1, ty))) {
+          shore = { x: (tx - 0.5) * TILE, y: (ty + 0.5) * TILE };
+        }
+      }
+    }
+    expect(shore).not.toBeNull();
+    if (!shore) return;
+    expect(nearestWater(tileAt, shore.x, shore.y, TILE * 1.5)).toEqual({ x: shore.x + TILE, y: shore.y });
   });
 });
