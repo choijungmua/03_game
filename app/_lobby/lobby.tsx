@@ -51,6 +51,7 @@ import {
 import {
   applyFishEvent,
   type FishCatch,
+  fishCatchSrc,
   type FishEvent,
   type FishingLine,
   type FishInventory,
@@ -776,10 +777,31 @@ function drawBobber(ctx: CanvasRenderingContext2D, x: number, y: number) {
   ctx.fill();
 }
 
-/** 낚은 것 그림: 물고기는 꼬리·몸통·눈(입이 +x 쪽), 장화는 장화 모양. angle만큼 돌려 버둥대게 한다 */
+/** 낚은 것 펠트 그림 (가방 창과 같은 그림). 처음 그릴 때 한 번만 불러온다 */
+const catchImages = new Map<FishCatch, HTMLImageElement>();
+const catchImage = (name: FishCatch) => {
+  let image = catchImages.get(name);
+  if (!image) {
+    image = loadImage(fishCatchSrc(name));
+    catchImages.set(name, image);
+  }
+  return image;
+};
+
+/** 낚은 것 그림: 펠트 그림(입이 +x 쪽)을 angle만큼 돌려 버둥대게 한다. 그림을 아직 못 받았으면 꼬리·몸통·눈 도형으로 */
 function drawCatch(ctx: CanvasRenderingContext2D, name: FishCatch, x: number, y: number, angle: number) {
   const { color, size } = FISH_LOOKS[name];
   const half = size / 2;
+  const image = catchImage(name);
+  if (ready(image)) {
+    const side = size * 1.6; // 그림 칸에 여백이 있어 도형보다 조금 크게
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(angle);
+    ctx.drawImage(image, -side / 2, -side / 2, side, side);
+    ctx.restore();
+    return;
+  }
   ctx.save();
   ctx.translate(x, y);
   ctx.rotate(angle);
