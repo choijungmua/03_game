@@ -78,9 +78,22 @@ function allPlayers() {
   return (store.lobbyPlayers ??= new Map());
 }
 
-/** 제어·보이지 않는 문자와 줄바꿈을 공백 하나로 바꾸고 CHAT_MAX 글자로 자른다 (이모지가 반쪽 나지 않게 글자 단위로) */
+const GRAPHEMES = new Intl.Segmenter("ko", { granularity: "grapheme" });
+/** 이모지를 이어 붙이는 보이지 않는 문자. 지우면 👨‍👩‍👧가 👨 👩 👧로 흩어진다 */
+const ZWJ = "‍";
+
+/** 눈에 한 글자로 보이는 단위로 나눈다 (조합 이모지·피부색 이모지도 한 글자) */
+export function graphemes(text: string) {
+  return Array.from(GRAPHEMES.segment(text), ({ segment }) => segment);
+}
+
+/** 제어·보이지 않는 문자와 줄바꿈을 공백 하나로 바꾸고 CHAT_MAX 글자로 자른다 (이모지 조합은 남기고, 반쪽 나지 않게 보이는 글자 단위로) */
 export function cleanChat(text: string) {
-  return [...text.replace(/[\p{C}\s]+/gu, " ").trim()].slice(0, CHAT_MAX).join("").trim();
+  const flat = text
+    .replace(/[\p{C}\s]/gu, (char) => (char === ZWJ ? char : " "))
+    .replace(/ {2,}/g, " ")
+    .trim();
+  return graphemes(flat).slice(0, CHAT_MAX).join("").trim();
 }
 
 /** 요청 본문 검증. 바깥 입력이라 필드마다 타입을 확인한다 */

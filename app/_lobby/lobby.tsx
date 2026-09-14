@@ -21,6 +21,10 @@ import {
   type SpriteId,
 } from "@/lib/lobby/assets";
 import { Input } from "@/components/inputs/input";
+import { DEFAULT_LOBBY_SETTINGS, type LobbySettings, loadLobbySettings, playSound, saveLobbySettings } from "@/lib/lobby/settings";
+
+import { EmojiPicker } from "./emoji-picker";
+import { SettingsMenu, SoundToggle } from "./lobby-settings";
 import {
   ATTACK_COOLDOWN_MS,
   ATTACK_MS,
@@ -28,6 +32,7 @@ import {
   CHAT_MAX,
   CHAT_MS,
   cleanChat,
+  graphemes,
   type PresenceResponse,
 } from "@/lib/lobby/presence";
 import {
@@ -390,7 +395,7 @@ function drawBubble(ctx: CanvasRenderingContext2D, text: string, x: number, bott
   ctx.font = `500 12px ${CANVAS_FONT}`;
   const lines: string[] = [];
   let line = "";
-  for (const char of text) {
+  for (const char of graphemes(text)) {
     if (line && ctx.measureText(line + char).width > BUBBLE_TEXT_WIDTH) {
       lines.push(line);
       line = char.trimStart();
@@ -699,6 +704,9 @@ export function Lobby({ games }: { games: DoorGame[] }) {
   const chatRequest = useRef<string | null>(null);
   const chatInputRef = useRef<HTMLInputElement>(null);
   const lastChatAt = useRef(-Infinity);
+  /** 화면(설정 창·소리 버튼)은 state, 게임 루프는 ref로 같은 설정을 읽는다 */
+  const [settings, setSettings] = useState<LobbySettings>(DEFAULT_LOBBY_SETTINGS);
+  const settingsRef = useRef<LobbySettings>(DEFAULT_LOBBY_SETTINGS);
   /** 스크린리더용: 캔버스 말풍선은 읽히지 않아서 방금 들은 채팅을 글로도 둔다 */
   const [heardChat, setHeardChat] = useState("");
   const [world] = useState(() => createWorld(LOBBY_SEED, games));
@@ -719,6 +727,11 @@ export function Lobby({ games }: { games: DoorGame[] }) {
 
     const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     outfitRef.current = loadOutfit();
+    // 캔버스는 쓰는 굵기의 폰트를 스스로 내려받지 않아서, 안 받아 둔 굵기는 대체 폰트로 그려진다
+    for (const weight of [500, 600, 700]) document.fonts.load(`${weight} 13px ${CANVAS_FONT}`, "가A").catch(() => {});
+    // 저장된 설정은 서버 렌더와 어긋나지 않게 화면에 붙은 뒤 읽는다
+    settingsRef.current = loadLobbySettings();
+    setSettings(settingsRef.current);
 
     const sprites = new Map<SpriteKey, HTMLImageElement>();
     for (const facing of FACINGS) {
@@ -1024,7 +1037,10 @@ export function Lobby({ games }: { games: DoorGame[] }) {
           const received = performance.now();
 
           if (data.you.stunMs > 0) {
-            if (me.stunUntil < received) camera.shakeUntil = received + 300;
+            if (me.stunUntil < received) {
+              camera.shakeUntil = received + 300;
+              playSound("hit", settingsRef.current);
+            }
             me.stunUntil = received + data.you.stunMs;
             if (me.sitting) standUp();
           } else if (Math.hypot(data.you.x - sent.x, data.you.y - sent.y) > 1 && !blocked(data.you.x, data.you.y)) {
@@ -1084,8 +1100,14 @@ export function Lobby({ games }: { games: DoorGame[] }) {
             }
           }
           for (const id of remotes.keys()) if (!seen.has(id)) remotes.delete(id);
-          if (heard) setHeardChat(heard);
-          if (data.hit) hitEffects.set(data.hit, received + 450);
+          if (heard) {
+            setHeardChat(heard);
+            playSound("chat", settingsRef.current);
+          }
+          if (data.hit) {
+            hitEffects.set(data.hit, received + 450);
+            playSound("hit", settingsRef.current);
+          }
           setOffline(false);
         })
         .catch(() => setOffline(true))
@@ -1163,12 +1185,14 @@ export function Lobby({ games }: { games: DoorGame[] }) {
           me.attackUntil = now + ATTACK_MS;
           me.lastAttackAt = now;
           attackQueued = true;
+          playSound("swing", settingsRef.current);
         }
       }
       if (chatRequest.current !== null) {
         me.chat = chatRequest.current;
         me.chatUntil = now + CHAT_MS;
         chatQueued = chatRequest.current;
+        playSound("chat", settingsRef.current);
         chatRequest.current = null;
       }
       if (wantsMove && me.sitting) standUp(); // 움직이면 일어난다
@@ -1457,6 +1481,20 @@ export function Lobby({ games }: { games: DoorGame[] }) {
     input.value = "";
   };
 
+  const insertEmoji = (emoji: string) => {
+    const input = chatInputRef.current;
+    if (!input) return;
+    const start = input.selectionStart ?? input.value.length;
+    input.setRangeText(emoji, start, input.selectionEnd ?? start, "end");
+    input.focus();
+  };
+
+  const updateSettings = (next: LobbySettings) => {
+    settingsRef.current = next;
+    setSettings(next);
+    saveLobbySettings(next);
+  };
+
   return (
     <>
       <canvas
@@ -1467,9 +1505,11 @@ export function Lobby({ games }: { games: DoorGame[] }) {
         className="absolute inset-0 size-full touch-none select-none"
       />
 
-      {/* 오른쪽 위 옷장 버튼 자리를 비워 둔다 */}
-      {/* 있는 듯 없는 듯: 평소엔 반투명 알약, 입력할 때만 넓어지고 또렷해진다. 보내기는 Enter(모바일은 키보드 전송) */}
-      <form onSubmit={sendChat} className="absolute left-3 top-[max(0.75rem,env(safe-area-inset-top))] w-36 max-w-[calc(100%-6rem)] transition-[width] duration-150 focus-within:w-64 motion-reduce:transition-none">
+      {/* 있는 듯 없는 듯: 평소엔 반투명 알약, 입력할 때만 넓어지고 또렷해진다. 보내기는 Enter(모바일은 키보드 전송). 오른쪽 위 버튼 줄 자리는 비워 둔다 */}
+      <form
+        onSubmit={sendChat}
+        className="group absolute left-3 top-[max(0.75rem,env(safe-area-inset-top))] flex w-44 max-w-[calc(100%-12rem)] items-center rounded-full bg-black/25 transition-[width,background-color] duration-150 focus-within:w-72 focus-within:bg-card/90 has-[input:focus-visible]:ring-1 has-[input:focus-visible]:ring-primary motion-reduce:transition-none"
+      >
         <Input
           ref={chatInputRef}
           name="lobby-chat"
@@ -1482,18 +1522,23 @@ export function Lobby({ games }: { games: DoorGame[] }) {
             if (event.key === "Escape") event.currentTarget.blur();
           }}
           shape="pill"
-          className="h-8 border-transparent bg-black/25 px-3 text-base text-white shadow-none placeholder:text-white/60 focus-visible:bg-card/90 focus-visible:text-text-strong focus-visible:placeholder:text-text-placeholder md:text-caption-1"
+          className="h-8 min-w-0 flex-1 border-transparent bg-transparent pl-3 pr-1 text-base text-white shadow-none placeholder:text-white/60 focus-visible:ring-0 group-focus-within:text-text-strong group-focus-within:placeholder:text-text-placeholder md:text-caption-1"
         />
+        <EmojiPicker onPick={insertEmoji} />
         <p aria-live="polite" className="sr-only">
           {heardChat}
         </p>
       </form>
 
-      <Wardrobe
-        onChange={(outfit) => {
-          outfitRef.current = outfit;
-        }}
-      />
+      <div className="absolute right-3 top-[max(0.75rem,env(safe-area-inset-top))] flex items-center gap-2">
+        <SettingsMenu settings={settings} onChange={updateSettings} />
+        <SoundToggle settings={settings} onChange={updateSettings} />
+        <Wardrobe
+          onChange={(outfit) => {
+            outfitRef.current = outfit;
+          }}
+        />
+      </div>
 
       <div className="pointer-events-none absolute inset-x-0 bottom-0 flex flex-col items-center gap-2 px-4 pb-[max(1.25rem,env(safe-area-inset-bottom))]">
         <p
@@ -1503,12 +1548,14 @@ export function Lobby({ games }: { games: DoorGame[] }) {
         >
           {status}
         </p>
-        <p className="max-w-full text-balance rounded-lg bg-card/80 px-3 py-1.5 text-center text-caption-3 text-text-caption backdrop-blur">
-          <span className="[@media(pointer:coarse)]:hidden">
-            방향키·WASD 걷기 · F 때리기 · 통나무 앞에서 Space 앉기 · Enter 채팅 · 오두막 문 앞에 가면 입장
-          </span>
-          <span className="hidden [@media(pointer:coarse)]:inline">화면을 누른 채 끌면 그쪽으로 걸어요 · 오두막 문 앞에 가면 입장</span>
-        </p>
+        {settings.showHelp && (
+          <p className="max-w-full text-balance rounded-lg bg-card/80 px-3 py-1.5 text-center text-caption-3 text-text-caption backdrop-blur">
+            <span className="[@media(pointer:coarse)]:hidden">
+              방향키·WASD 걷기 · F 때리기 · 통나무 앞에서 Space 앉기 · Enter 채팅 · 오두막 문 앞에 가면 입장
+            </span>
+            <span className="hidden [@media(pointer:coarse)]:inline">화면을 누른 채 끌면 그쪽으로 걸어요 · 오두막 문 앞에 가면 입장</span>
+          </p>
+        )}
       </div>
 
       {/* 터치 조이스틱: 누른 자리에 나타난다. 위치는 게임 루프가 DOM에 직접 쓴다 */}
