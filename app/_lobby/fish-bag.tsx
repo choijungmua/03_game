@@ -13,7 +13,7 @@ import { type FishCatch, fishCatchSrc, type FishInventory } from "@/lib/lobby/fi
 import { FISH_BAG_SRC } from "./constants";
 import { flashButton, isShortcutKey } from "./shortcut";
 
-/** 오른쪽 위 잎 바구니 버튼. 누르면 그 자리에서 커지며 지금까지 낚은 것들과 포만감이 보이고, 낚은 걸 누르면 카피바라에게 먹인다 (옷장과 같은 방식) */
+/** 오른쪽 위 카피바라 백팩 버튼. 누르면 그 자리에서 커지며 지금까지 낚은 것들과 포만감이 보이고, 낚은 걸 누르면 카피바라에게 먹인다 (옷장과 같은 방식) */
 export function FishBag({
   inventory,
   satiety,
