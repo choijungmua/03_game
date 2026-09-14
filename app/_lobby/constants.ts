@@ -46,5 +46,6 @@ export const LOBBY_KEY_GUIDE = [
 export const SITE_LINKS = [
   { href: "/privacy", label: "개인정보처리방침" },
   { href: "/terms", label: "이용약관" },
+  { href: "/guestbook", label: "방명록" },
   { href: "/contact", label: "문의" },
 ] as const;

@@ -3,7 +3,19 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
-import { parseOutfit, SLOT_INFO, VIEW_OF, WARDROBE_SLOTS, wardrobeSrc, wear, WORLD_ANCHORS, WORLD_HEAD_ELLIPSE } from "./wardrobe";
+import {
+  parseOutfit,
+  SLOT_INFO,
+  VIEW_ART,
+  VIEW_ART_SLOTS,
+  VIEW_OF,
+  WARDROBE_SLOTS,
+  wardrobeSrc,
+  wardrobeViewSrc,
+  wear,
+  WORLD_ANCHORS,
+  WORLD_HEAD_ELLIPSE,
+} from "./wardrobe";
 import { FACINGS } from "./world";
 
 describe("로비 옷장", () => {
@@ -11,6 +23,18 @@ describe("로비 옷장", () => {
     for (const slot of WARDROBE_SLOTS) {
       for (const item of SLOT_INFO[slot].items) {
         expect(existsSync(join(process.cwd(), "public", wardrobeSrc(slot, item.id))), `${slot}/${item.id}`).toBe(true);
+      }
+    }
+  });
+
+  it("상의·하의·한벌옷·신발·장갑은 뒤·옆·대각선 그림이 옷마다 있다", () => {
+    for (const slot of VIEW_ART_SLOTS) {
+      for (const item of SLOT_INFO[slot].items) {
+        for (const view of VIEW_ART) {
+          const src = wardrobeViewSrc(slot, item.id, view);
+          expect(src, `${slot}/${item.id}/${view}`).not.toBe(wardrobeSrc(slot, item.id));
+          expect(existsSync(join(process.cwd(), "public", src)), src).toBe(true);
+        }
       }
     }
   });

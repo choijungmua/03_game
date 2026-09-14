@@ -6,8 +6,8 @@ const SESSION_KEY = "game-session-id";
 /** 통계 전송은 서버가 꺼져 있어도 오래 매달리지 않게 짧게 끊는다 */
 const EVENT_TIMEOUT_MS = 5000;
 
-/** 브라우저 탭 단위 세션 id. 같은 탭에서의 입장·기록은 같은 id로 묶인다 */
-function getSessionId() {
+/** 브라우저 탭 단위 세션 id. 같은 탭에서의 입장·기록·방명록 글은 같은 id로 묶인다 */
+export function getSessionId() {
   try {
     const saved = sessionStorage.getItem(SESSION_KEY);
     if (saved) return saved;

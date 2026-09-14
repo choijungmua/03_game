@@ -88,6 +88,26 @@ export const FISH_CATCH_SLUGS = {
   "낡은 장화": "old-boot",
 } as const satisfies Record<(typeof FISH_CATCHES)[number], string>;
 
+/** 카피바라 포만감(0~100, 이 기기에만 저장). 먹이면 오르고 시간이 지나면 떨어진다 */
+export const SATIETY_STORAGE_KEY = "ggpli:lobby-satiety";
+export const SATIETY_MAX = 100;
+/** 포만감 1이 떨어지는 시간(ms). 가득 찬 배가 1시간이면 다 꺼진다 */
+export const SATIETY_DECAY_MS = 36_000;
+/** 먹이면 오르는 포만감. 0이면 못 먹는 것(가방에서 안 줄어든다) */
+export const FOOD_SATIETY: Record<(typeof FISH_CATCHES)[number], number> = {
+  송사리: 8,
+  붕어: 15,
+  메기: 20,
+  피라냐: 15,
+  아로와나: 25,
+  "황금 잉어": 35,
+  "낡은 장화": 0,
+};
+/** 먹는 동작 한 번(세 입 베어 물기)과 한 입 간격, 먹은 뒤 하트가 더 떠오르는 시간 */
+export const EAT_MS = 1800;
+export const EAT_BITE_MS = 600;
+export const HEART_LINGER_MS = 900;
+
 /** 효과음 파일 없이 오실레이터(tone)·걸러낸 잡음(noise)을 겹쳐 합성하는 짧은 소리들 (주파수 Hz, 길이·시작 ms, 최대 크기 0~1) */
 export const SOUNDS: Record<LobbySound, readonly SoundLayer[]> = {
   chat: [{ kind: "tone", wave: "sine", from: 740, to: 1180, ms: 120, level: 0.18 }],
