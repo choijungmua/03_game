@@ -8,6 +8,7 @@ import { type FormEvent, useEffect, useEffectEvent, useRef, useState } from "rea
 
 import { pretendard } from "@/config";
 import { cn } from "@/lib";
+import { Armchair, HandFist } from "lucide-react";
 import { API_URL } from "@/lib/api-url";
 
 /** 캔버스는 CSS 폰트를 물려받지 않으니 사이트 폰트(Pretendard) 이름을 직접 쓴다 */
@@ -1585,7 +1586,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
         {settings.showHelp && (
           <p className="max-w-full text-balance rounded-lg bg-card/80 px-3 py-1.5 text-center text-caption-3 text-text-caption backdrop-blur">
             <span className="[@media(pointer:coarse)]:hidden">
-              방향키·WASD 걷기 · F 때리기 · 통나무 앞에서 Space 앉기 · Enter 채팅 · P 프로필 · M 소리 · 오두막 문 앞에 가면 입장
+              방향키·WASD 걷기 · F 때리기 · 통나무 앞에서 Space 앉기 · Enter 채팅 · , 이모티콘 · P 프로필 · M 소리 · 오두막 문 앞에 가면 입장
             </span>
             <span className="hidden [@media(pointer:coarse)]:inline">화면을 누른 채 끌면 그쪽으로 걸어요 · 오두막 문 앞에 가면 입장</span>
           </p>
@@ -1611,20 +1612,28 @@ export function Lobby({ games }: { games: DoorGame[] }) {
               }}
               aria-pressed={sitting}
               aria-label={sitting ? "일어나기" : "통나무에 앉기"}
+              aria-keyshortcuts="Space"
               className="group flex flex-col items-center gap-0.5 rounded-full focus-visible:outline-2 focus-visible:outline-primary"
             >
-              <NextImage
-                src={`${UI_BASE}/sit.webp`}
-                alt=""
-                width={256}
-                height={256}
-                unoptimized
-                draggable={false}
-                className={cn(
-                  "size-18 drop-shadow-md transition-transform duration-100 motion-safe:group-active:scale-90",
-                  sitting && "brightness-90",
-                )}
-              />
+              {/* 누르면 그림과 아이콘이 같이 줄어들게 감싼 쪽에 scale을 준다 */}
+              <span className="relative block size-18 transition-transform duration-100 motion-safe:group-active:scale-90">
+                <NextImage
+                  src={`${UI_BASE}/sit.webp`}
+                  alt=""
+                  width={256}
+                  height={256}
+                  unoptimized
+                  draggable={false}
+                  className={cn("size-18 drop-shadow-md", sitting && "brightness-90")}
+                />
+                {/* 마우스를 올리거나 키보드 포커스면 나무 테 안쪽 판 위에 의자 아이콘 (프로필·효과음과 같은 방식) */}
+                <span
+                  aria-hidden
+                  className="absolute inset-[16%] flex items-center justify-center rounded-full bg-overlay text-white opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-visible:opacity-100 motion-reduce:transition-none"
+                >
+                  <Armchair className="size-7" />
+                </span>
+              </span>
               <span className="rounded-full bg-card/85 px-2 py-0.5 text-caption-3 font-semibold text-text-strong">{sitting ? "일어나기" : "앉기"}</span>
             </button>
           )}
@@ -1635,17 +1644,28 @@ export function Lobby({ games }: { games: DoorGame[] }) {
             }}
             disabled={stunned}
             aria-label="때리기 (F)"
+            aria-keyshortcuts="F"
             className="group flex flex-col items-center gap-0.5 rounded-full focus-visible:outline-2 focus-visible:outline-primary disabled:opacity-50"
           >
-            <NextImage
-              src={`${UI_BASE}/punch.webp`}
-              alt=""
-              width={256}
-              height={256}
-              unoptimized
-              draggable={false}
-              className="size-18 drop-shadow-md transition-transform duration-100 motion-safe:group-active:scale-90"
-            />
+            {/* 누르면 그림과 아이콘이 같이 줄어들게 감싼 쪽에 scale을 준다 */}
+            <span className="relative block size-18 transition-transform duration-100 motion-safe:group-active:scale-90">
+              <NextImage
+                src={`${UI_BASE}/punch.webp`}
+                alt=""
+                width={256}
+                height={256}
+                unoptimized
+                draggable={false}
+                className="size-18 drop-shadow-md"
+              />
+              {/* 마우스를 올리거나 키보드 포커스면 나무 테 안쪽 판 위에 주먹 아이콘 (프로필·효과음과 같은 방식) */}
+              <span
+                aria-hidden
+                className="absolute inset-[16%] flex items-center justify-center rounded-full bg-overlay text-white opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-visible:opacity-100 motion-reduce:transition-none"
+              >
+                <HandFist className="size-7" />
+              </span>
+            </span>
             <span className="rounded-full bg-card/85 px-2 py-0.5 text-caption-3 font-semibold text-text-strong">때리기</span>
           </button>
         </div>
