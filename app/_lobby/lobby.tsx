@@ -11,7 +11,9 @@ import { cn } from "@/lib";
 import { Armchair, Fish, HandFist } from "lucide-react";
 import { API_URL } from "@/lib/api-url";
 
-import { flashButton } from "./shortcut";
+import { Loading } from "@/components/feedback/loading";
+
+import { flashButton, isShortcutKey } from "./shortcut";
 
 /** 캔버스는 CSS 폰트를 물려받지 않으니 사이트 폰트(Pretendard) 이름을 직접 쓴다 */
 const CANVAS_FONT = pretendard.style.fontFamily;
@@ -769,6 +771,10 @@ export function Lobby({ games }: { games: DoorGame[] }) {
   const [fishInventory, setFishInventory] = useState<FishInventory>({});
   const [stunned, setStunned] = useState(false);
   const [notice, setNotice] = useState("");
+  /** 하단 조작법 안내. 평소엔 숨기고 \ 키로 켜고 끈다 */
+  const [helpOpen, setHelpOpen] = useState(false);
+  /** 로비 이미지를 받은 비율(%). 100이 되기 전엔 로딩창을 덮고 게임 루프를 돌리지 않는다 */
+  const [loadProgress, setLoadProgress] = useState(0);
   // 게임 루프 effect가 router 변경으로 다시 실행되면 캐릭터·멀티 상태가 초기화되므로 이벤트로 감싼다
   const goToGame = useEffectEvent((slug: string) => router.push(`/games/${slug}`));
   const prefetchGame = useEffectEvent((slug: string) => router.prefetch(`/games/${slug}`));
@@ -975,10 +981,10 @@ export function Lobby({ games }: { games: DoorGame[] }) {
     let soundIdle: IdleFrame | null = null;
     let noticeTimer = 0;
 
-    const showNotice = (text: string) => {
+    const showNotice = (text: string, ms = 1600) => {
       setNotice(text);
       window.clearTimeout(noticeTimer);
-      noticeTimer = window.setTimeout(() => setNotice(""), 1600);
+      noticeTimer = window.setTimeout(() => setNotice(""), ms);
     };
 
     const enter = (door: Door) => {
@@ -1021,6 +1027,11 @@ export function Lobby({ games }: { games: DoorGame[] }) {
     const onKeyDown = (event: KeyboardEvent) => {
       // 채팅 입력 중엔 WASD·F·Space가 글자로 들어가야 한다
       if (event.target instanceof HTMLInputElement) return;
+      if (isShortcutKey(event, "Backslash")) {
+        setHelpOpen((open) => !open);
+        setNotice("");
+        return;
+      }
       if (KEY_VECTORS[event.code]) {
         event.preventDefault(); // 방향키 스크롤 방지
         pressed.add(event.code);
@@ -1711,18 +1722,51 @@ export function Lobby({ games }: { games: DoorGame[] }) {
       dot(me.x, me.y, 3.5, "#e5484d");
     };
 
-    window.addEventListener("resize", resize);
-    window.addEventListener("keydown", onKeyDown);
-    window.addEventListener("keyup", onKeyUp);
-    canvas.addEventListener("pointerdown", onPointerDown);
-    window.addEventListener("pointermove", onPointerMove);
-    window.addEventListener("pointerup", onPointerUp);
-    window.addEventListener("pointercancel", onPointerUp);
-    window.addEventListener("blur", onBlur);
-    document.addEventListener("visibilitychange", onVisibilityChange);
-    frame = requestAnimationFrame(tick);
-    connect();
-    const sendId = window.setInterval(send, LOBBY_TICK_MS);
+    // 화면에 그릴 이미지(캐릭터·에셋·바닥·건물·오두막 아이콘·내 옷)를 전부 받은 뒤에야 입력·그리기·접속을 시작한다.
+    // 못 받은 이미지(404 등)도 끝난 것으로 쳐서 로딩창에 갇히지 않게 한다. 남의 옷·이모티콘은 나타날 때 받는다
+    const preload = [
+      ...sprites.values(),
+      ...[...images.values()].map((entry) => entry.image),
+      ...textures.values(),
+      ...buildingImages,
+      ...icons.values(),
+      ...WARDROBE_SLOTS.flatMap((slot) => {
+        const id = outfitRef.current[slot];
+        return id ? [outfitImage(wardrobeSrc(slot, id))] : [];
+      }),
+    ];
+    let loadedCount = 0;
+    let sendId = 0;
+    const start = () => {
+      if (disposed) return;
+      setLoadProgress(100);
+      window.addEventListener("resize", resize);
+      window.addEventListener("keydown", onKeyDown);
+      window.addEventListener("keyup", onKeyUp);
+      canvas.addEventListener("pointerdown", onPointerDown);
+      window.addEventListener("pointermove", onPointerMove);
+      window.addEventListener("pointerup", onPointerUp);
+      window.addEventListener("pointercancel", onPointerUp);
+      window.addEventListener("blur", onBlur);
+      document.addEventListener("visibilitychange", onVisibilityChange);
+      frame = requestAnimationFrame(tick);
+      connect();
+      sendId = window.setInterval(send, LOBBY_TICK_MS);
+      // 조작법은 숨겨 두었으니 처음에 여는 법만 알려 준다 (터치는 \ 키가 없어 걷는 법을 바로 알려 준다)
+      const touch = window.matchMedia("(pointer: coarse)").matches;
+      showNotice(touch ? "화면을 누른 채 끌면 걸어요 · 오두막 문 앞에 가면 입장" : "\\ 키를 누르면 조작법이 보여요", 5000);
+    };
+    void Promise.all(
+      preload.map((image) =>
+        image
+          .decode()
+          .catch(() => {})
+          .then(() => {
+            loadedCount++;
+            if (!disposed) setLoadProgress(Math.min(99, Math.round((loadedCount / preload.length) * 100)));
+          }),
+      ),
+    ).then(start);
 
     return () => {
       window.removeEventListener("resize", resize);
@@ -1840,12 +1884,9 @@ export function Lobby({ games }: { games: DoorGame[] }) {
         >
           {status}
         </p>
-        {settings.showHelp && (
+        {helpOpen && (
           <p className="max-w-full text-balance rounded-lg bg-card/80 px-3 py-1.5 text-center text-caption-3 text-text-caption backdrop-blur">
-            <span className="[@media(pointer:coarse)]:hidden">
-              방향키·WASD 걷기 · F 때리기 · 통나무 앞 Space 앉기 · 물가 Space 낚시 · Enter 채팅 · , 이모티콘 · P 프로필 · I 가방 · M 소리 · 오두막 문 앞에 가면 입장
-            </span>
-            <span className="hidden [@media(pointer:coarse)]:inline">화면을 누른 채 끌면 그쪽으로 걸어요 · 오두막 문 앞에 가면 입장</span>
+            방향키·WASD 걷기 · F 때리기 · 통나무 앞 Space 앉기 · 물가 Space 낚시 · Enter 채팅 · , 이모티콘 · P 프로필 · I 가방 · M 소리 · 오두막 문 앞에 가면 입장 · \ 닫기
           </p>
         )}
       </div>
@@ -1964,6 +2005,13 @@ export function Lobby({ games }: { games: DoorGame[] }) {
           ))}
         </nav>
       </div>
+
+      {/* 이미지를 다 받을 때까지 검은 캔버스 대신 로딩창으로 덮는다. 서버 렌더에도 들어가 JS가 뜨기 전부터 보인다 */}
+      {loadProgress < 100 && (
+        <div className="absolute inset-0 z-max flex touch-none items-center justify-center bg-background">
+          <Loading description="로비 불러오는 중…" progress={loadProgress} />
+        </div>
+      )}
     </>
   );
 }
