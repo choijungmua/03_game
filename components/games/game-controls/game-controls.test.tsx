@@ -1,0 +1,109 @@
+import { fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
+
+import { GameControls } from "./game-controls";
+
+function pauseProps(paused: boolean) {
+  return { paused, onPause: vi.fn(), onResume: vi.fn(), onRestart: vi.fn() };
+}
+
+function setVisibility(value: DocumentVisibilityState) {
+  Object.defineProperty(document, "visibilityState", { value, configurable: true });
+}
+
+describe("GameControls", () => {
+  afterEach(() => {
+    setVisibility("visible");
+  });
+
+  it("기본 뒤로 버튼은 로비(/)로 가는 링크다", () => {
+    render(<GameControls />);
+    expect(screen.getByRole("link", { name: "로비로 돌아가기" })).toHaveAttribute("href", "/");
+    expect(screen.queryByRole("button", { name: "일시정지" })).toBeNull();
+  });
+
+  it("onCancelRound가 있으면 뒤로 버튼이 링크가 아니라 판 취소 버튼이다", () => {
+    const onCancelRound = vi.fn();
+    render(<GameControls onCancelRound={onCancelRound} />);
+    expect(screen.queryByRole("link", { name: "로비로 돌아가기" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "이번 판 그만하기" }));
+    expect(onCancelRound).toHaveBeenCalledTimes(1);
+  });
+
+  it("leaveConfirm이 있으면 확인 창을 띄우고, 나가기는 로비 링크다", () => {
+    render(<GameControls leaveConfirm="나가면 상대가 기다리게 돼요" />);
+    fireEvent.click(screen.getByRole("button", { name: "로비로 돌아가기" }));
+    expect(screen.getByText("나가면 상대가 기다리게 돼요")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "나가기" })).toHaveAttribute("href", "/");
+
+    fireEvent.click(screen.getByRole("button", { name: "계속 두기" }));
+    expect(screen.queryByText("나가면 상대가 기다리게 돼요")).toBeNull();
+  });
+
+  it("일시정지 버튼을 누르면 onPause를 부른다", () => {
+    const pause = pauseProps(false);
+    render(<GameControls pause={pause} />);
+    fireEvent.click(screen.getByRole("button", { name: "일시정지" }));
+    expect(pause.onPause).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  it("멈춘 상태면 멈춤 창을 띄우고 이어하기·처음부터·Esc·로비로를 제공한다", () => {
+    const pause = pauseProps(true);
+    render(<GameControls pause={pause} />);
+    const dialog = screen.getByRole("dialog");
+    expect(dialog).toHaveTextContent("일시정지");
+
+    fireEvent.click(screen.getByRole("button", { name: "이어하기" }));
+    expect(pause.onResume).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(screen.getByRole("button", { name: "처음부터" }));
+    expect(pause.onRestart).toHaveBeenCalledTimes(1);
+
+    expect(screen.getByRole("link", { name: "로비로" })).toHaveAttribute("href", "/");
+
+    fireEvent.keyDown(dialog, { key: "Escape" });
+    expect(pause.onResume).toHaveBeenCalledTimes(2);
+    expect(pause.onPause).not.toHaveBeenCalled();
+  });
+
+  it("플레이 중 Esc를 누르거나 탭이 숨겨지면 멈춘다", () => {
+    const pause = pauseProps(false);
+    render(<GameControls pause={pause} />);
+
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(pause.onPause).toHaveBeenCalledTimes(1);
+
+    setVisibility("hidden");
+    fireEvent(document, new Event("visibilitychange"));
+    expect(pause.onPause).toHaveBeenCalledTimes(2);
+  });
+
+  it("버튼과 멈춤 창 조작이 뒤의 게임 화면으로 전달되지 않는다", () => {
+    const onPointerDown = vi.fn();
+    const onClick = vi.fn();
+    const { rerender } = render(
+      <div onPointerDown={onPointerDown} onClick={onClick}>
+        <GameControls onCancelRound={vi.fn()} pause={pauseProps(false)} />
+      </div>,
+    );
+
+    for (const name of ["이번 판 그만하기", "일시정지"]) {
+      const button = screen.getByRole("button", { name });
+      fireEvent.pointerDown(button);
+      fireEvent.click(button);
+    }
+
+    rerender(
+      <div onPointerDown={onPointerDown} onClick={onClick}>
+        <GameControls onCancelRound={vi.fn()} pause={pauseProps(true)} />
+      </div>,
+    );
+    const resume = screen.getByRole("button", { name: "이어하기" });
+    fireEvent.pointerDown(resume);
+    fireEvent.click(resume);
+
+    expect(onPointerDown).not.toHaveBeenCalled();
+    expect(onClick).not.toHaveBeenCalled();
+  });
+});
