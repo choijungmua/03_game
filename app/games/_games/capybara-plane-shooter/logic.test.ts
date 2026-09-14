@@ -15,13 +15,19 @@ import {
   getDifficulty,
   getPlaneY,
   getStageConfig,
+  getWeaponSpec,
   INVINCIBLE_MS,
+  MAX_BULLETS,
   MAX_HP,
+  MAX_WEAPON_LEVEL,
   PEAK_STAGE,
   pickDrop,
+  PITY_KILLS,
   PLANE_HALF_WIDTH,
   STAGE_BANNER_MS,
   step,
+  WEAPON_DROPS,
+  type WeaponKind,
 } from "./logic";
 
 const IDLE = { direction: 0, targetX: null } as const;
@@ -78,7 +84,7 @@ describe("총알 → 적", () => {
   it("일반 적은 체력이 0이 되면 사라지고 점수가 오른다", () => {
     const state = playing({
       enemies: [enemy()],
-      bullets: [{ x: 200, y: 300, r: 3, vx: 0, vy: 0, weapon: "basic", hitIds: [] }],
+      bullets: [{ x: 200, y: 300, r: 3, vx: 0, vy: 0, weapon: "basic", damage: 1, hitIds: [] }],
     });
     step(state, 16, IDLE, noLuck);
     expect(state.enemies).toHaveLength(0);
@@ -96,7 +102,7 @@ describe("총알 → 적", () => {
     const state = playing({
       stage: 5,
       enemies: [boss],
-      bullets: [{ x: 200, y: 200, r: 3, vx: 0, vy: 0, weapon: "basic", hitIds: [] }],
+      bullets: [{ x: 200, y: 200, r: 3, vx: 0, vy: 0, weapon: "basic", damage: 1, hitIds: [] }],
     });
     step(state, 16, IDLE, noLuck);
     expect(state.enemies).toContain(boss);
@@ -120,7 +126,7 @@ describe("피격", () => {
 });
 
 describe("아이템", () => {
-  it("무기 아이템은 총을 바꾸고, 회복은 최대 체력을 넘지 않는다", () => {
+  it("무기 아이템은 총을 바꾸고 레벨을 올리며, 회복은 최대 체력을 넘지 않는다", () => {
     const planeY = getPlaneY(playing());
     const state = playing({
       hp: MAX_HP,
@@ -131,6 +137,7 @@ describe("아이템", () => {
     });
     step(state, 16, IDLE);
     expect(state.weapon).toBe("spread");
+    expect(state.weaponLevel).toBe(2);
     expect(state.hp).toBe(MAX_HP);
     expect(state.items).toHaveLength(0);
   });
@@ -140,14 +147,90 @@ describe("아이템", () => {
     expect(double).toBeGreaterThan(spread);
     expect(spread).toBeGreaterThan(rapid);
     expect(rapid).toBeGreaterThan(pierce);
+    // 레벨을 10까지 쌓을 수 있게 넉넉히(10% 안팎) 떨어진다
     const total = Object.values(DROP_CHANCES).reduce((sum, chance) => sum + chance, 0);
-    expect(total).toBeLessThan(0.03);
+    expect(total).toBeGreaterThan(0.08);
+    expect(total).toBeLessThan(0.15);
 
     // 한 번 굴린 값이 어느 구간에 들어가느냐로 아이템이 정해지고, 합계를 넘으면 아무것도 없다
     expect(pickDrop(() => 0)).toBe("double");
     expect(pickDrop(() => total - pierce / 2)).toBe("pierce");
     expect(pickDrop(() => total + 0.001)).toBeNull();
     expect(pickDrop(() => 0.99)).toBeNull();
+  });
+});
+
+describe("무기 레벨", () => {
+  const WEAPONS: readonly WeaponKind[] = ["basic", "double", "spread", "rapid", "pierce"];
+
+  function weaponItem(kind: (typeof WEAPON_DROPS)[number]) {
+    return { kind, x: 200, y: getPlaneY(playing()), r: 13, vx: 0, vy: 0 };
+  }
+
+  it("어떤 무기 간식이든 레벨이 1씩 쌓이고, 최대 레벨을 넘지 않는다", () => {
+    const state = playing({ weaponLevel: MAX_WEAPON_LEVEL - 1, items: [weaponItem("double"), weaponItem("rapid")] });
+    step(state, 16, IDLE);
+    expect(state.weaponLevel).toBe(MAX_WEAPON_LEVEL);
+    expect(state.weapon).toBe("rapid");
+  });
+
+  it("맞으면 레벨이 1 내려가고, 1 아래로는 내려가지 않는다", () => {
+    const planeY = getPlaneY(playing());
+    const shot = { x: 200, y: planeY, r: 5, vx: 0, vy: 0, fromBoss: false };
+    const state = playing({ weaponLevel: 5, shots: [{ ...shot }] });
+    step(state, 16, IDLE);
+    expect(state.weaponLevel).toBe(4);
+
+    const weakest = playing({ weaponLevel: 1, shots: [{ ...shot }] });
+    step(weakest, 16, IDLE);
+    expect(weakest.weaponLevel).toBe(1);
+  });
+
+  it("레벨이 오를수록 탄 수·피해는 줄지 않고 발사 간격은 늘지 않으며, 10레벨은 1레벨보다 확실히 세다", () => {
+    for (const weapon of WEAPONS) {
+      for (let level = 2; level <= MAX_WEAPON_LEVEL; level += 1) {
+        const prev = getWeaponSpec(weapon, level - 1);
+        const next = getWeaponSpec(weapon, level);
+        expect(next.pattern.length).toBeGreaterThanOrEqual(prev.pattern.length);
+        expect(next.damage).toBeGreaterThanOrEqual(prev.damage);
+        expect(next.intervalMs).toBeLessThanOrEqual(prev.intervalMs);
+      }
+      const first = getWeaponSpec(weapon, 1);
+      const max = getWeaponSpec(weapon, MAX_WEAPON_LEVEL);
+      // 초당 피해량(탄 수 × 피해 ÷ 간격)이 1레벨의 2.5배 넘게 오른다
+      const dps = (spec: typeof first) => (spec.pattern.length * spec.damage) / spec.intervalMs;
+      expect(dps(max)).toBeGreaterThan(dps(first) * 2.5);
+    }
+    expect(getWeaponSpec("spread", MAX_WEAPON_LEVEL).pattern).toHaveLength(11);
+    expect(getWeaponSpec("basic", MAX_WEAPON_LEVEL).pattern).toHaveLength(5);
+  });
+
+  it("레벨 피해만큼 적 체력을 깎는다", () => {
+    const state = playing({
+      enemies: [enemy({ hp: 5 })],
+      bullets: [{ x: 200, y: 300, r: 3, vx: 0, vy: 0, weapon: "basic", damage: 3, hitIds: [] }],
+    });
+    step(state, 16, IDLE, noLuck);
+    expect(state.enemies[0].hp).toBe(2);
+  });
+
+  it("아이템 없이 PITY_KILLS번 격추하면 무기 간식을 반드시 떨어뜨린다", () => {
+    const state = playing({ killsSinceDrop: PITY_KILLS - 2, enemies: [enemy({ id: 1 }), enemy({ id: 2, x: 100 })] });
+    state.bullets = [
+      { x: 200, y: 300, r: 3, vx: 0, vy: 0, weapon: "basic", damage: 1, hitIds: [] },
+      { x: 100, y: 300, r: 3, vx: 0, vy: 0, weapon: "basic", damage: 1, hitIds: [] },
+    ];
+    step(state, 16, IDLE, noLuck);
+    expect(state.items).toHaveLength(1);
+    expect(WEAPON_DROPS).toContain(state.items[0].kind);
+    expect(state.killsSinceDrop).toBe(0);
+  });
+
+  it("화면에 내 탄이 너무 많으면 더 쏘지 않는다", () => {
+    const bullet = { x: 200, y: 400, r: 3, vx: 0, vy: 0, weapon: "basic" as const, damage: 1, hitIds: [] };
+    const state = playing({ fireInMs: 0, bullets: Array.from({ length: MAX_BULLETS }, () => ({ ...bullet, hitIds: [] })) });
+    step(state, 16, IDLE);
+    expect(state.bullets).toHaveLength(MAX_BULLETS);
   });
 });
 

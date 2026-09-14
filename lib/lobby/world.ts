@@ -120,6 +120,28 @@ export function isBlockingTile(tile: Tile) {
   return !WALKABLE.has(tile);
 }
 
+/** 발 위치(px)에서 reach(px) 안의 가장 가까운 물 타일 가운데. 없으면 null — 낚시 찌를 던질 곳 */
+export function nearestWater(tileAt: (tx: number, ty: number) => Tile, x: number, y: number, reach: number) {
+  const range = Math.ceil(reach / TILE);
+  const fx = Math.floor(x / TILE);
+  const fy = Math.floor(y / TILE);
+  let best: { x: number; y: number } | null = null;
+  let bestDistance = reach;
+  for (let ty = fy - range; ty <= fy + range; ty++) {
+    for (let tx = fx - range; tx <= fx + range; tx++) {
+      if (tileAt(tx, ty) !== "water") continue;
+      const wx = (tx + 0.5) * TILE;
+      const wy = (ty + 0.5) * TILE;
+      const distance = Math.hypot(wx - x, wy - y);
+      if (distance <= bestDistance) {
+        best = { x: wx, y: wy };
+        bestDistance = distance;
+      }
+    }
+  }
+  return best;
+}
+
 function seedNumber(seed: string) {
   let hash = 2166136261; // FNV-1a
   for (let i = 0; i < seed.length; i++) {

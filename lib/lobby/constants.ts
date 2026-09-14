@@ -6,6 +6,8 @@ export const ZWJ = String.fromCharCode(0x200d);
 export const DEFAULT_LOBBY_SETTINGS: LobbySettings = { muted: false, volume: 0.6, showHelp: true };
 
 export const LOBBY_SETTINGS_STORAGE_KEY = "ggpli:lobby-settings";
+/** 같은 탭에서 설정을 저장했다고 알리는 이벤트 (storage 이벤트는 다른 탭에만 온다). 게임 화면 소리 버튼이 바로 따라 바뀐다 */
+export const LOBBY_SETTINGS_CHANGE_EVENT = "ggpli:lobby-settings-change";
 
 /** 다른 유저는 이만큼 과거 위치를 그린다. WebSocket 틱(50ms, presence.ts LOBBY_TICK_MS) 두 번치라 한 틱이 늦게 와도 멈칫하지 않는다 (150ms 폴링 때는 250ms였다) */
 export const REMOTE_RENDER_DELAY_MS = 100;
@@ -15,6 +17,16 @@ export const REMOTE_GONE_MS = 1_000;
 export const MAX_SNAPSHOTS = 8;
 /** 이보다 오래 같은 자리에 있다가 움직이면, 서 있던 시간에 걸쳐 느리게 오지 않고 한 틱 동안 걷게 한다 */
 export const SNAPSHOT_RESTART_MS = 500;
+
+/** 물가 낚시: 찌를 던지고 입질이 오기까지 걸리는 시간(ms) 범위 */
+export const FISH_BITE_MIN_MS = 1500;
+export const FISH_BITE_MAX_MS = 5000;
+/** 입질(찌가 쑥 들어감) 뒤 이 시간 안에 Space를 눌러야 낚인다 */
+export const FISH_BITE_WINDOW_MS = 900;
+/** 발에서 이 거리(px, 1.5타일) 안에 물이 있으면 낚시할 수 있다 */
+export const FISH_REACH = 72;
+/** 낚이는 것들 (남미 습지 테마). 똑같은 확률로 하나 */
+export const FISH_CATCHES = ["송사리", "붕어", "메기", "피라냐", "아로와나", "황금 잉어", "낡은 장화"] as const;
 
 /** 효과음 파일 없이 오실레이터(tone)·걸러낸 잡음(noise)을 겹쳐 합성하는 짧은 소리들 (주파수 Hz, 길이·시작 ms, 최대 크기 0~1) */
 export const SOUNDS: Record<LobbySound, readonly SoundLayer[]> = {
@@ -67,6 +79,23 @@ export const SOUNDS: Record<LobbySound, readonly SoundLayer[]> = {
     { kind: "tone", wave: "square", from: 320, to: 900, ms: 110, level: 0.1 },
     { at: 130, kind: "tone", wave: "sawtooth", from: 700, to: 140, ms: 480, level: 0.09 },
     { at: 130, kind: "noise", filter: "lowpass", q: 1, from: 600, to: 150, ms: 220, level: 0.25 },
+  ],
+  // 휙 → 퐁당: 낚싯줄을 던지고 찌가 물에 떨어진다
+  fishCast: [
+    { kind: "noise", filter: "bandpass", q: 1, from: 1800, to: 600, ms: 180, level: 0.12 },
+    { at: 260, kind: "tone", wave: "sine", from: 900, to: 300, ms: 90, level: 0.14 },
+    { at: 260, kind: "noise", filter: "lowpass", q: 1, from: 1200, to: 300, ms: 120, level: 0.18 },
+  ],
+  // 톡톡: 찌가 쑥 들어가는 입질
+  fishBite: [
+    { kind: "tone", wave: "sine", from: 600, to: 220, ms: 70, level: 0.2 },
+    { at: 110, kind: "tone", wave: "sine", from: 600, to: 220, ms: 70, level: 0.2 },
+  ],
+  // 첨벙 → 띠링: 물고기를 끌어올린다
+  fishCatch: [
+    { kind: "noise", filter: "lowpass", q: 1, from: 1500, to: 300, ms: 200, level: 0.25 },
+    { at: 150, kind: "tone", wave: "triangle", from: 660, to: 660, ms: 110, level: 0.14 },
+    { at: 260, kind: "tone", wave: "triangle", from: 990, to: 990, ms: 220, level: 0.14 },
   ],
 };
 

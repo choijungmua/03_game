@@ -29,6 +29,7 @@ function setVisibility(value: DocumentVisibilityState) {
 describe("GameControls", () => {
   afterEach(() => {
     setVisibility("visible");
+    window.localStorage.clear();
   });
 
   it("기본 뒤로 버튼은 로비(/)로 가는 링크다", () => {
@@ -142,6 +143,30 @@ describe("GameControls", () => {
 
     fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
     expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  it("효과음 버튼으로 로비와 같은 소리 설정을 켜고 끈다", () => {
+    window.localStorage.setItem("ggpli:lobby-settings", JSON.stringify({ muted: true, volume: 0.6, showHelp: true }));
+    render(<GameControls />);
+
+    const sound = screen.getByRole("button", { name: "효과음" });
+    expect(sound).toHaveAttribute("aria-pressed", "false");
+
+    fireEvent.click(sound);
+    expect(sound).toHaveAttribute("aria-pressed", "true");
+    expect(JSON.parse(window.localStorage.getItem("ggpli:lobby-settings") ?? "{}")).toMatchObject({ muted: false, volume: 0.6 });
+
+    fireEvent.click(sound);
+    expect(sound).toHaveAttribute("aria-pressed", "false");
+  });
+
+  it("멈춤 창의 효과음 크기를 바꾸면 저장되고, 음소거였으면 소리도 켜진다", () => {
+    window.localStorage.setItem("ggpli:lobby-settings", JSON.stringify({ muted: true, volume: 0.6, showHelp: true }));
+    render(<GameControls pause={pauseProps(true)} />);
+
+    fireEvent.change(screen.getByRole("slider", { name: /효과음 크기/ }), { target: { value: "30" } });
+    expect(JSON.parse(window.localStorage.getItem("ggpli:lobby-settings") ?? "{}")).toMatchObject({ muted: false, volume: 0.3 });
+    expect(screen.getByRole("button", { name: "효과음", hidden: true })).toHaveAttribute("aria-pressed", "true");
   });
 
   it("플레이 중 다른 열린 창(나가기 확인)을 Esc로 닫아도 게임이 멈추지 않는다", () => {
