@@ -83,6 +83,16 @@ export const FISH_LOOKS: Record<(typeof FISH_CATCHES)[number], { color: string; 
 };
 /** 낚이는 것들 (남미 습지 테마). 똑같은 확률로 하나 */
 export const FISH_CATCHES = ["송사리", "붕어", "메기", "피라냐", "아로와나", "황금 잉어", "낡은 장화"] as const;
+/** 낚은 것 그림 파일 이름 (public/assets/images/ui/lobby/fish-catches/<이름>.webp) */
+export const FISH_CATCH_SLUGS = {
+  송사리: "minnow",
+  붕어: "crucian-carp",
+  메기: "catfish",
+  피라냐: "piranha",
+  아로와나: "arowana",
+  "황금 잉어": "golden-carp",
+  "낡은 장화": "old-boot",
+} as const satisfies Record<(typeof FISH_CATCHES)[number], string>;
 
 /** 효과음 파일 없이 오실레이터(tone)·걸러낸 잡음(noise)을 겹쳐 합성하는 짧은 소리들 (주파수 Hz, 길이·시작 ms, 최대 크기 0~1) */
 export const SOUNDS: Record<LobbySound, readonly SoundLayer[]> = {
