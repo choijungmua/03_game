@@ -4,11 +4,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CapybaraSneak } from "./capybara-sneak";
 import {
   AWAY_MS_RANGE,
+  CAUGHT_REVEAL_MS,
   DECAY_GRACE_MS,
   DECAY_INTERVAL_MS,
   EAT_DELAY_MS,
   EAT_INTERVAL_MS,
   GLANCE_MS_RANGE,
+  SIDE_SWITCH_MS,
   WARNING_MS_RANGE,
 } from "./logic";
 
@@ -180,6 +182,21 @@ describe("CapybaraSneak", () => {
       expect(gaugeValue()).toBe(1);
     });
 
+    it("꾹 누르고 먹는 동안 접시 오른쪽과 왼쪽을 번갈아 오가며 먹는다", async () => {
+      // 주인이 가장 오래 등을 돌리게 해서 자리를 두 번 옮기는 동안 들키지 않게 한다
+      vi.spyOn(Math, "random").mockReturnValue(1);
+      render(<CapybaraSneak />);
+      const capybara = screen.getByTestId("capybara");
+      press();
+      expect(capybara).toHaveAttribute("data-side", "right");
+
+      await advance(SIDE_SWITCH_MS);
+      expect(capybara).toHaveAttribute("data-side", "left");
+
+      await advance(SIDE_SWITCH_MS);
+      expect(capybara).toHaveAttribute("data-side", "right");
+    });
+
     it("게이지가 절반이 되면 수박이 반쯤 먹은 모습이 된다", async () => {
       render(<CapybaraSneak />);
       await eatUntil(50);
@@ -261,14 +278,17 @@ describe("CapybaraSneak", () => {
       expect(ownerState()).toBe("away");
     });
 
-    it("주인이 돌아봤는데 손을 안 떼고 계속 먹으면 실패 팝업이 뜬다", async () => {
+    it("주인이 돌아봤는데 손을 안 떼고 계속 먹으면 화난 주인을 잠깐 보여준 뒤 실패 팝업이 뜬다", async () => {
       render(<CapybaraSneak />);
       press();
       await advance(LOOKING_AT + EAT_INTERVAL_MS);
 
-      expect(ownerState()).toBe("looking");
-      expect(screen.getByRole("dialog", { name: "들켰다!" })).toBeInTheDocument();
+      expect(screen.getByRole("img", { name: /화난 주인/ })).toBeInTheDocument();
       expect(capybaraPose()).toBe("caught");
+      expect(screen.queryByRole("dialog")).toBeNull();
+
+      await advance(CAUGHT_REVEAL_MS);
+      expect(screen.getByRole("dialog", { name: "들켰다!" })).toBeInTheDocument();
     });
 
     it("주인이 보고 있을 때 눌러서 게이지가 오르는 순간 실패한다", async () => {
@@ -280,7 +300,9 @@ describe("CapybaraSneak", () => {
       press();
       expect(screen.queryByRole("dialog")).toBeNull();
       await advance(EAT_DELAY_MS);
+      expect(capybaraPose()).toBe("caught");
 
+      await advance(CAUGHT_REVEAL_MS);
       expect(screen.getByRole("dialog", { name: "들켰다!" })).toBeInTheDocument();
     });
 
@@ -333,6 +355,7 @@ describe("CapybaraSneak", () => {
       press();
       await advance(LOOKING_AT + EAT_INTERVAL_MS);
       release();
+      await advance(CAUGHT_REVEAL_MS);
 
       fireEvent.click(screen.getByRole("button", { name: "다시 하기" }));
 

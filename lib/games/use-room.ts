@@ -3,7 +3,7 @@ import { useEffect, useEffectEvent, useRef, useState } from "react";
 
 import { API_URL } from "@/lib/api-url";
 
-import type { RoomAction, RoomResult, RoomState, Vector } from "./rooms";
+import type { OpenRoom, RoomAction, RoomResult, RoomState, Vector } from "./rooms";
 
 type RoomSuccess<S> = Extract<RoomResult<S>, { ok: true }>;
 
@@ -155,6 +155,7 @@ export function useRoom<S extends RoomState, A extends string>(slug: string) {
   }
 
   return {
+    slug,
     view,
     error: error || (room.error?.message ?? ""),
     pending: action.isPending,
@@ -169,6 +170,20 @@ export function useRoom<S extends RoomState, A extends string>(slug: string) {
     leave,
     setError,
   };
+}
+
+/** 참가할 수 있는 방 목록. 쓰는 화면이 떠 있는 동안 3초마다 새로 받는다 */
+export function useOpenRooms(slug: string) {
+  const rooms = useQuery({
+    queryKey: ["open-rooms", slug],
+    queryFn: async () => {
+      const response = await fetch(`${API_URL}/api/games/${slug}/rooms`, { cache: "no-store" });
+      const data: Partial<{ rooms: OpenRoom[] }> = await response.json().catch(() => ({}));
+      return Array.isArray(data.rooms) ? data.rooms : [];
+    },
+    refetchInterval: POLL_MS * 3,
+  });
+  return rooms.data ?? [];
 }
 
 /** 게임 공용 화면에 넘기는 방 핸들. 행동(act)은 게임마다 이름이 달라서 빼고 콜백으로 받는다 */

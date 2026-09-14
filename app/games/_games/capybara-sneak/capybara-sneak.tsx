@@ -15,6 +15,7 @@ import { useLockPageScroll } from "@/lib/games/use-lock-page-scroll";
 import {
   addBite,
   AWAY_MS_RANGE,
+  CAUGHT_REVEAL_MS,
   DECAY_GRACE_MS,
   DECAY_INTERVAL_MS,
   decayGauge,
@@ -25,6 +26,7 @@ import {
   pickDuration,
   pickLook,
   pickWarningMs,
+  SIDE_SWITCH_MS,
 } from "./logic";
 
 type GameStatus = "ready" | "playing" | "success" | "fail";
@@ -52,9 +54,10 @@ const CAPYBARA_BOXES: Record<CapybaraPose, SpriteBox> = {
   caught: { left: "59.66%", top: "52.81%", width: "22.21%" },
 };
 
-const OWNER_IMAGES: Record<"away" | "looking", { src: string; alt: string }> = {
+const OWNER_IMAGES: Record<"away" | "looking" | "angry", { src: string; alt: string }> = {
   away: { src: `${ASSET}/owner/owner-away.png`, alt: "등을 돌리고 설거지하는 주인" },
   looking: { src: `${ASSET}/owner/owner-looking.png`, alt: "이쪽을 돌아보는 주인" },
+  angry: { src: `${ASSET}/owner/owner-angry-front.png`, alt: "뒤돌아서 허리에 손을 얹고 화난 주인" },
 };
 const FOOD_IMAGES: Record<FoodStage, string> = {
   full: "수박이 가득 담긴 접시",
@@ -84,7 +87,13 @@ export function CapybaraSneak() {
   const [trend, setTrend] = useState<GaugeTrend>("up");
   const [pressing, setPressing] = useState(false);
   const [paused, setPaused] = useState(false);
+  // 먹는 동안 접시 오른쪽/왼쪽을 오가며 먹는다. "left"면 카피바라 층 전체를 좌우 반전한다
+  const [side, setSide] = useState<"right" | "left">("right");
+  // 들킨 뒤 화난 주인을 잠깐 보여준 다음에야 결과 팝업을 연다
+  const [caughtShown, setCaughtShown] = useState(false);
   useLockPageScroll(status === "playing");
+  // 게임 중 꾹 누르고 있으면 와구와구 씹고 접시가 들썩인다
+  const munching = status === "playing" && pressing;
 
   // 먹기·감소·주인 타이머는 화면이 다시 그려지기 전에도 여러 번 돌 수 있어서,
   // 판정은 렌더링 결과 대신 항상 최신 값을 담은 ref로 한다
@@ -212,6 +221,18 @@ export function CapybaraSneak() {
     };
   }, [pressing, status, paused]);
 
+  useEffect(() => {
+    if (!munching) return;
+    const id = setInterval(() => setSide((s) => (s === "right" ? "left" : "right")), SIDE_SWITCH_MS);
+    return () => clearInterval(id);
+  }, [munching]);
+
+  useEffect(() => {
+    if (status !== "fail") return;
+    const id = setTimeout(() => setCaughtShown(true), CAUGHT_REVEAL_MS);
+    return () => clearTimeout(id);
+  }, [status]);
+
   // 손을 떼고 잠깐 여유를 준 뒤, 다시 누를 때까지 일정 간격으로 게이지가 줄어든다
   useEffect(() => {
     if (pressing || status !== "playing" || paused) return;
@@ -286,6 +307,8 @@ export function CapybaraSneak() {
     setTrend("up");
     setPressing(false);
     setPaused(false);
+    setSide("right");
+    setCaughtShown(false);
     phaseEndsAtRef.current = 0;
     warningMsRef.current = 0;
     remainingRef.current = null;
@@ -305,13 +328,11 @@ export function CapybaraSneak() {
   }
 
   const foodStage = getFoodStage(gauge);
-  const ownerImage = ownerState === "looking" ? "looking" : "away";
-  const isOver = status === "success" || status === "fail";
+  const ownerImage = status === "fail" ? "angry" : ownerState === "looking" ? "looking" : "away";
+  const isOver = status === "success" || (status === "fail" && caughtShown);
   const isShrinking = trend === "down" && gauge > 0;
   const pose: CapybaraPose =
     status === "fail" ? "caught" : status === "success" || pressing ? "eating" : "idle";
-  // 게임 중 꾹 누르고 있으면 와구와구 씹고 접시가 들썩인다
-  const munching = status === "playing" && pressing;
 
   return (
     <div
@@ -322,7 +343,7 @@ export function CapybaraSneak() {
     >
       <h1 className="sr-only">{GAME_TITLES["capybara-sneak"]}</h1>
       <p aria-live="polite" className="sr-only">
-        {OWNER_STATUS_MESSAGE[ownerState]}
+        {status === "fail" ? "주인에게 들켰어요" : OWNER_STATUS_MESSAGE[ownerState]}
       </p>
 
       {/* 세로 화면에서 무대 위아래 빈 곳을 같은 배경을 흐리게 깔아 채운다 */}
@@ -349,7 +370,7 @@ export function CapybaraSneak() {
         />
 
         <div data-testid="owner" data-state={ownerState} className="absolute inset-0">
-          {(["away", "looking"] as const).map((key) => (
+          {(["away", "looking", "angry"] as const).map((key) => (
             <Image
               key={key}
               src={OWNER_IMAGES[key].src}
@@ -411,7 +432,13 @@ export function CapybaraSneak() {
           ))}
         </div>
 
-        <div data-testid="capybara" data-pose={pose} className="absolute inset-0">
+        {/* 접시가 무대 가로 중앙에 있으니 층 전체를 좌우 반전하면 접시 반대편에서 마주 보고 먹는다 */}
+        <div
+          data-testid="capybara"
+          data-pose={pose}
+          data-side={side}
+          className={cn("absolute inset-0", side === "left" && "-scale-x-100")}
+        >
           <span className="absolute top-[86.5%] left-[61.35%] h-[3.5%] w-[18%] rounded-full bg-black/15 blur-sm" />
           {(["idle", "eating", "caught"] as const).map((key) => (
             <Image
@@ -432,18 +459,19 @@ export function CapybaraSneak() {
               style={CAPYBARA_BOXES[key]}
             />
           ))}
-          {munching &&
-            (["와구", "와구", "냠"] as const).map((word, i) => (
-              <span
-                key={i}
-                aria-hidden="true"
-                className="absolute top-[52%] animate-munch-pop text-[2.6cqw] font-black text-white opacity-0 [paint-order:stroke] [-webkit-text-stroke:0.4cqw_rgb(0_0_0/0.55)]"
-                style={{ left: `${56 + i * 4}%`, animationDelay: `${i * 200}ms` }}
-              >
-                {word}
-              </span>
-            ))}
         </div>
+        {/* 글자는 반전되면 안 되니 카피바라 층 밖에 두고 자리만 입 쪽으로 옮긴다 */}
+        {munching &&
+          (["와구", "와구", "냠"] as const).map((word, i) => (
+            <span
+              key={`${side}-${i}`}
+              aria-hidden="true"
+              className="absolute top-[52%] animate-munch-pop text-[2.6cqw] font-black text-white opacity-0 [paint-order:stroke] [-webkit-text-stroke:0.4cqw_rgb(0_0_0/0.55)]"
+              style={{ left: `${side === "right" ? 56 + i * 4 : 39 - i * 4}%`, animationDelay: `${i * 200}ms` }}
+            >
+              {word}
+            </span>
+          ))}
       </div>
 
       <div
@@ -482,20 +510,12 @@ export function CapybaraSneak() {
       <Dialog open={isOver} onOpenChange={(open) => !open && restart()}>
         <Dialog.Content showCloseButton={false} closeOnOverlayClick={false} className="text-center">
           <div className="flex flex-col items-center gap-3">
-            {status === "success" ? (
+            {status === "success" && (
               <Image
                 src={`${ASSET}/capybara/capybara-eating.png`}
                 alt="수박을 먹는 카피바라"
                 width={1254}
                 height={1254}
-                className="h-40 w-auto"
-              />
-            ) : (
-              <Image
-                src={`${ASSET}/owner/owner-angry-front.png`}
-                alt="허리에 손을 얹고 화난 주인"
-                width={1086}
-                height={1448}
                 className="h-40 w-auto"
               />
             )}

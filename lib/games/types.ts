@@ -14,6 +14,8 @@ export interface GameEntry {
   component: ComponentType;
   /** 게임 폴더의 seo.ts. 서버(메타데이터·sitemap·가이드)에서만 필요할 때 불러온다 */
   seo: () => Promise<{ seo: GameSeo }>;
+  /** true면 게임 아래 스크롤 소개(하는 법·FAQ)를 붙이지 않는다. 가이드 페이지는 그대로 */
+  hideAbout?: boolean;
 }
 
 export interface GameFaq {

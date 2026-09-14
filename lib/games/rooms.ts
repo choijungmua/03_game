@@ -50,3 +50,6 @@ export interface RoomAction {
 export type RoomResult<S> =
   | { ok: true; view: RoomView<S>; token: string | null }
   | { ok: false; error: string; status: 400 | 403 | 404 | 409 };
+
+/** 방 목록에 보이는 참가 가능한 방 (백엔드 GET /api/games/<slug>/rooms) */
+export type OpenRoom = Pick<RoomView<RoomState>, "code">;
