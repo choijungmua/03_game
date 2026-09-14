@@ -1725,7 +1725,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
       </form>
 
       {/* 오른쪽 위 세로 줄: 카피바라 옷장 → 효과음. 설정 버튼은 나중에 이 줄에 다시 넣는다 */}
-      {/* 효과음 버튼의 헤드폰이 원 밖으로 삐져나오는 만큼 위(옷장)·오른쪽(화면 끝)을 띄운다. 두 버튼은 앉기·때리기와 같은 size-18 */}
+      {/* 효과음 버튼의 헤드폰이 원 밖으로 삐져나오는 만큼 위(옷장)·오른쪽(화면 끝)을 띄운다. 두 버튼은 앉기·때리기와 같은 크기(모바일 size-14, md 이상 size-18) */}
       <div className="absolute right-5 top-[max(0.75rem,env(safe-area-inset-top))] flex flex-col items-center gap-6">
         <Wardrobe
           onChange={(outfit) => {
@@ -1778,7 +1778,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
               className="group flex flex-col items-center gap-0.5 rounded-full focus-visible:outline-2 focus-visible:outline-primary"
             >
               {/* 누르면 그림과 아이콘이 같이 줄어들게 감싼 쪽에 scale을 준다 */}
-              <span className="relative block size-18 transition-transform duration-100 motion-safe:group-active:scale-90">
+              <span className="relative block size-14 transition-transform md:size-18 duration-100 motion-safe:group-active:scale-90">
                 <NextImage
                   src={`${UI_BASE}/sit.webp`}
                   alt=""
@@ -1786,7 +1786,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
                   height={256}
                   unoptimized
                   draggable={false}
-                  className={cn("size-18 drop-shadow-md", sitting && "brightness-90")}
+                  className={cn("size-full drop-shadow-md", sitting && "brightness-90")}
                 />
                 {/* 마우스를 올리거나 키보드 포커스면 나무 테 안쪽 판 위에 의자 아이콘 (프로필·효과음과 같은 방식) */}
                 <span
@@ -1812,7 +1812,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
               className="group flex flex-col items-center gap-0.5 rounded-full focus-visible:outline-2 focus-visible:outline-primary"
             >
               {/* 그림 버튼이 아직 없어서 옷장 버튼처럼 나무 테 안에 아이콘을 둔다 */}
-              <span className="relative flex size-18 items-center justify-center rounded-full bg-card/90 text-text-strong shadow-md transition-transform duration-100 motion-safe:group-active:scale-90 group-hover:text-primary group-data-flash:text-primary">
+              <span className="relative flex size-14 items-center md:size-18 justify-center rounded-full bg-card/90 text-text-strong shadow-md transition-transform duration-100 motion-safe:group-active:scale-90 group-hover:text-primary group-data-flash:text-primary">
                 <Fish className="size-8" aria-hidden />
                 <NextImage src={FRAME_SRC} alt="" fill unoptimized sizes="72px" draggable={false} />
               </span>
@@ -1831,7 +1831,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
             className="group flex flex-col items-center gap-0.5 rounded-full focus-visible:outline-2 focus-visible:outline-primary disabled:opacity-50"
           >
             {/* 누르면 그림과 아이콘이 같이 줄어들게 감싼 쪽에 scale을 준다 */}
-            <span className="relative block size-18 transition-transform duration-100 motion-safe:group-active:scale-90">
+            <span className="relative block size-14 transition-transform md:size-18 duration-100 motion-safe:group-active:scale-90">
               <NextImage
                 src={`${UI_BASE}/punch.webp`}
                 alt=""
@@ -1839,7 +1839,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
                 height={256}
                 unoptimized
                 draggable={false}
-                className="size-18 drop-shadow-md"
+                className="size-full drop-shadow-md"
               />
               {/* 마우스를 올리거나 키보드 포커스면 나무 테 안쪽 판 위에 주먹 아이콘 (프로필·효과음과 같은 방식) */}
               <span

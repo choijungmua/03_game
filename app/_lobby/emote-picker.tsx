@@ -56,7 +56,8 @@ export function EmotePicker({ onPick }: { onPick: (id: number) => void }) {
   }, [open]);
 
   return (
-    <div ref={rootRef} className="relative shrink-0">
+    // relative를 두지 않는다: 창이 채팅 알약(absolute) 왼쪽 끝 기준으로 열려야 좁은 화면에서 오른쪽 밖으로 안 나간다
+    <div ref={rootRef} className="shrink-0">
       <button
         type="button"
         onClick={() => setOpen((value) => !value)}
