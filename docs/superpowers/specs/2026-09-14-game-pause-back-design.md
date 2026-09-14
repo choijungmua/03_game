@@ -63,23 +63,28 @@ export interface GameControlsProps {
 - 일시정지 버튼(`pause` 있을 때): `<button aria-label="일시정지">` (lucide `Pause`) → `onPause()`
 - 멈춤 창: 기존 `components/overlay/dialog`, `open={pause.paused}`, 닫힘(창 밖·Esc) = `onResume`
 - `pause` 있을 때 document `visibilitychange`(hidden)와 `keydown` Esc 구독. 멈춘 상태의 Esc는 Dialog가 처리
-- 모든 버튼·창 내용에서 `pointerdown`/`click` 전파 차단
+- 전파 차단: 컴포넌트 전체를 `<div className="contents" onPointerDown={stop} onClick={stop}>`로 감싼다. Dialog는 포털이지만 React 트리상 이 div의 자식이라 창 내용·창 밖 오버레이 탭까지 한 곳에서 막힌다 (창 밖 탭이 sneak의 `startPress` 같은 루트 핸들러로 새지 않음)
 - 스타일: `ShareButton`과 같은 둥근 `size-11 bg-current/10` 버튼, 위치 `absolute left-4 / right-4 top-[max(1rem,env(safe-area-inset-top))]`. 색은 `currentColor` 기반이라 게임 배경색을 따라감. 포커스 링 `focus-visible:outline-current`
+- 겹침 규칙: 버튼 줄 높이는 `size-11`(2.75rem). 같은 높이에 있는 게임 자체의 상단 UI는 컨트롤이 있는 쪽에 **좌우 4rem**(`left-4` + `size-11` + 여유)을 비우거나, 버튼 줄 아래로 내린다. 게임별 적용은 아래 "게임별 변경"에 적는다
 
 ### 게임별 변경
 
 **capybara-plane-shooter / capybara-log-dodge (rAF)**
 - `const [paused, setPaused] = useState(false)` + `pausedRef`(루프에서 읽음)
-- 루프 프레임 시작에서 `if (pausedRef.current) { lastAt = now; schedule next; return; }` — step을 건너뛰고 기준 시각만 갱신 → 이어할 때 시간 점프 없음. `phase`는 바꾸지 않는다(playing effect가 `[phase]`로 상태를 새로 만들기 때문)
-- 멈춘 동안 포인터·키 입력 무시, 포인터 캡처 해제
+- 루프 프레임에서 `pausedRef.current`면 `step`만 건너뛰고 `lastAt = now`로 기준 시각을 갱신한 뒤 `draw`는 그대로 호출하고 다음 프레임을 예약 → 이어할 때 시간 점프 없음, 멈춘 동안 `resize`로 캔버스가 지워져도 다시 그려짐. `phase`는 바꾸지 않는다(playing effect가 `phase` 의존성으로 상태를 새로 만들기 때문 — plane-shooter `[phase]`, log-dodge `[phase, challenge]`)
+- 멈출 때 입력 상태 초기화: `keysRef.current = { left: false, right: false }`, `dragRef.current = null`, 포인터 캡처 해제. 멈춘 동안 새 입력은 무시 (키를 누른 채 멈추면 keyup을 놓쳐 이어할 때 한쪽으로 흘러가는 문제 방지)
+- 겹침: plane-shooter는 플레이 중 상단 HUD(왼쪽 하트, 오른쪽 점수, `capybara-plane-shooter.tsx` HUD 컨테이너 `px-4`)를 `px-16`으로 바꿔 컨트롤 옆에 둔다. log-dodge의 상단 HUD(가운데 정렬 시간·아슬아슬 알약, `capybara-log-dodge.tsx` HUD 컨테이너 `px-4`)도 `px-16`으로 바꾼다(친구 기록·아슬아슬 알약이 넓어져도 컨트롤과 안 겹치게). reaction-time·click-speed는 플레이 중 상단 UI가 없어 변경 없음
+- 카운트다운 중 탭이 숨겨지면 자동 멈춤이 없다(일시정지 버튼은 `playing`에만 있음). 숨은 탭에서는 rAF가 멈추고 `step`의 프레임 간격 상한이 있어 허용한다
 - log-dodge의 피격 `setTimeout(HIT_PAUSE_MS)`은 멈춤과 겹쳐도 짧아서 그대로 둔다
 - `onRestart` = 멈춤 해제 + 카운트다운부터 다시(`phase: "countdown"`)
 - 플레이가 끝나면(`result`) `paused` false로 리셋
 - 루트에 `data-paused` 속성
 
 **capybara-sneak (타이머)**
-- `paused` state. 기존 effect 게이트 `status !== "playing"`에 `|| paused` 추가 → 모든 타이머가 정리되고, 이어하면 주인 주기가 처음(`away`)부터 다시 시작
+- `paused` state. 기존 effect 게이트 `status !== "playing"`에 `|| paused` 추가 → 모든 타이머가 정리된다
+- 멈출 때 주인 상태를 `"away"`로 되돌린다: `ownerRef.current = "away"` + `setOwnerState("away")`. `scheduleAway()`는 주인이 등을 돌린 상태를 전제로 하므로, 안 되돌리면 `looking` 중에 멈췄다 이어할 때 첫 입에 바로 실패한다
 - 멈출 때 누르고 있던 입력 해제(기존 blur 처리 재사용)
+- 겹침: 상단 게이지 패널 폭 `w-[min(32rem,calc(100%-2rem))]`을 `w-[min(32rem,calc(100%-8rem))]`로 줄여 좌우 컨트롤 사이에 둔다
 - `onRestart` = `ready`로 리셋(기존 "다시 하기"와 같은 경로)
 
 **reaction-time / click-speed (판 취소)**
@@ -89,6 +94,8 @@ export interface GameControlsProps {
 **capybara-room(바둑·오목) / capybara-alkkagi**
 - 대국 중(상대 입장 완료 && 종료 전)에만 `leaveConfirm="나가면 상대가 기다리게 돼요"`
 - 루트에 클릭 핸들러가 없으므로 전파 문제는 없지만 컴포넌트 내부 차단은 동일하게 적용
+- 겹침: 상단 카드 컨테이너(`capybara-room.tsx`, `capybara-alkkagi.tsx`의 `pt-[max(1rem,…)]`)의 위쪽 여백을 버튼 줄 아래로 내린다: `pt-[calc(max(1rem,env(safe-area-inset-top))+3.5rem)]`. 넓은 화면에서도 같은 값(단순함 우선)
+- `<Link href="/">`로 나가면 `?code`가 사라져 다시 들어와도 방에 자동 재참가하지 않는다. 확인 창 문구가 이를 전제로 한다
 
 ## 테스트
 
@@ -100,9 +107,9 @@ export interface GameControlsProps {
   - `leaveConfirm` 있으면 확인 창 → "나가기"가 `/` 링크
   - 일시정지 버튼 → `onPause`, `paused`면 창 표시, "이어하기"/"처음부터" 호출
   - hidden `visibilitychange`와 `Esc` → `onPause`
-  - 버튼·창 조작이 부모 `onPointerDown`/`onClick`으로 전파되지 않음
+  - 버튼·창 내용·창 밖 오버레이 조작이 부모 `onPointerDown`/`onClick`으로 전파되지 않음
 - reaction-time / click-speed: 카운트다운 중 뒤로 → `data-phase="idle"`, 기록 저장 안 됨(localStorage 비어 있음)
-- capybara-sneak: 플레이 중 멈춤 → 타이머를 한참 진행해도 상태 변화 없음 → 이어하기 후 다시 진행
+- capybara-sneak: 플레이 중 멈춤 → 타이머를 한참 진행해도 상태 변화 없음 → 이어하기 후 다시 진행. 주인이 `looking`일 때 멈췄다 이어해도 바로 `fail`이 되지 않음
 - capybara-log-dodge: 플레이 중 일시정지 → `data-paused="true"`, 이어하기 → false (rAF는 기존처럼 구동하지 않음)
 - capybara-room: 대국 중 뒤로 → 확인 창 표시
 - 마지막에 `pnpm tsc --noEmit`, 관련 테스트 전체 실행
