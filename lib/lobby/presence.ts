@@ -45,7 +45,17 @@ export interface PresenceResponse {
   hit: string | null;
 }
 
+/** 로비 WebSocket(백엔드 /api/lobby/ws)이 틱마다 보내는 메시지. 보내는 쪽은 PresenceRequest 그대로 */
+export interface LobbyMessage extends PresenceResponse {
+  /** 걸어서 갈 수 없는 거리라 서버가 내 위치를 고쳤으면 true. 이때만 내 캐릭터를 you 위치로 옮긴다 */
+  corrected: boolean;
+}
+
 // 아래 값은 백엔드와 같아야 한다 (클라이언트가 쿨타임·말풍선을 미리 그린다)
+/** 서버가 근처 플레이어를 밀어 주는 간격. 클라이언트도 이 간격으로 내 상태를 보낸다 */
+export const LOBBY_TICK_MS = 50;
+/** 로비 정원이 차서 서버가 연결을 끊을 때의 코드 */
+export const LOBBY_FULL_CODE = 1013;
 export const ATTACK_MS = 320;
 export const ATTACK_COOLDOWN_MS = 600;
 /** 말풍선이 떠 있는 시간 */
