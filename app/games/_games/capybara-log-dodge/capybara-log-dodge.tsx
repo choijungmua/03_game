@@ -254,15 +254,17 @@ export function CapybaraLogDodge() {
   const { ref: recordsRef, inView: recordsVisible } = useInView<HTMLElement>(phase === "result");
   useLockPageScroll(phase === "countdown" || phase === "playing");
 
+  function clearInput() {
+    keysRef.current = { left: false, right: false };
+    actionRef.current = { jump: false, duckKey: false, duckButton: false, duckSwipe: false };
+    dragRef.current = null;
+  }
+
   // 멈출 때 입력을 비운다 — 방향키를 누른 채 멈추면 keyup을 놓쳐 이어할 때 한쪽으로 흘러간다
   function changePaused(next: boolean) {
     pausedRef.current = next;
     setPaused(next);
-    if (next) {
-      keysRef.current = { left: false, right: false };
-      actionRef.current = { jump: false, duckKey: false, duckButton: false, duckSwipe: false };
-      dragRef.current = null;
-    }
+    if (next) clearInput();
   }
 
   const course = mode === "daily" ? courseDate : null;
@@ -449,8 +451,7 @@ export function CapybaraLogDodge() {
 
   function startCountdown() {
     changePaused(false);
-    keysRef.current = { left: false, right: false };
-    actionRef.current = { jump: false, duckKey: false, duckButton: false, duckSwipe: false };
+    clearInput();
     setHud(null);
     setCountdownIndex(0);
     setPhase("countdown");
@@ -535,12 +536,17 @@ export function CapybaraLogDodge() {
     handleClick();
   });
 
+  // 키를 누른 채 다른 창으로 가면(Alt+Tab 등) 창은 보여서 멈추지 않는데 keyup을 놓친다 — 돌아와도 한쪽으로 계속 달리거나 숙인 채로 남지 않게 비운다
+  const handleBlur = useEffectEvent(() => clearInput());
+
   useEffect(() => {
     window.addEventListener("keydown", handleKey);
     window.addEventListener("keyup", handleKey);
+    window.addEventListener("blur", handleBlur);
     return () => {
       window.removeEventListener("keydown", handleKey);
       window.removeEventListener("keyup", handleKey);
+      window.removeEventListener("blur", handleBlur);
     };
   }, []);
 
