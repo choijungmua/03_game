@@ -1,8 +1,11 @@
-import { FISH_CATCHES, FISH_INVENTORY_STORAGE_KEY } from "./constants";
+import { FISH_CATCH_SLUGS, FISH_CATCHES, FISH_INVENTORY_STORAGE_KEY } from "./constants";
 
 export type FishCatch = (typeof FISH_CATCHES)[number];
 /** 낚은 것별 횟수. 한 번도 안 낚은 건 비어 있다. 이 기기(localStorage)에만 저장한다 */
 export type FishInventory = Partial<Record<FishCatch, number>>;
+
+/** 낚은 것의 펠트 그림 경로 */
+export const fishCatchSrc = (name: FishCatch) => `/assets/images/ui/lobby/fish-catches/${FISH_CATCH_SLUGS[name]}.webp`;
 
 /** 저장된 글 → 낚시 가방. 모르는 이름·0 이하·소수는 버린다 */
 export function parseFishInventory(raw: string | null): FishInventory {
