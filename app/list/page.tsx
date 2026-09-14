@@ -4,7 +4,7 @@ import Link from "next/link";
 import { GAMES } from "@/lib/games/registry";
 
 export const metadata: Metadata = {
-  title: "관리자 게임 목록",
+  title: "admin",
   robots: { index: false, follow: false },
 };
 

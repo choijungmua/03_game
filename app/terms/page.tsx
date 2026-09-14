@@ -3,7 +3,7 @@ import Link from "next/link";
 import { pageMetadata } from "@/lib/seo/site";
 
 export const metadata = pageMetadata({
-  title: "이용약관",
+  title: "terms",
   description: "ggpli 서비스 이용약관",
   path: "/terms",
 });

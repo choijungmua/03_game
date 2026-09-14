@@ -3,7 +3,7 @@ import Link from "next/link";
 import { pageMetadata } from "@/lib/seo/site";
 
 export const metadata = pageMetadata({
-  title: "문의",
+  title: "contact",
   description: "ggpli 게임 오류 제보, 광고·제휴, 개인정보 관련 문의",
   path: "/contact",
 });

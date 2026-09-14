@@ -13,7 +13,7 @@ export function generateStaticParams() {
 export default async function Image({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
   return renderOgImage({
-    title: `${getGame(slug)?.title ?? SITE_NAME} 공략 가이드`,
+    title: `${getGame(slug)?.title ?? SITE_NAME} guide`,
     subtitle: "하는 법·등급 기준·공략 팁 정리",
     icon: gameIconPath(slug),
   });
