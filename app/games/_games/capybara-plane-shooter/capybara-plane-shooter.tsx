@@ -8,6 +8,7 @@ import { AdSlot } from "@/components/ads/ad-slot";
 import { ShareButton } from "@/components/games/share-button";
 import { cn } from "@/lib";
 import { useInView } from "@/lib/games/use-in-view";
+import { useLockPageScroll } from "@/lib/games/use-lock-page-scroll";
 
 import { PlaneShooterLeaderboard } from "./leaderboard";
 import {
@@ -253,6 +254,7 @@ export function CapybaraPlaneShooter() {
   /** 게임 좌표 1px이 화면에서 몇 CSS px인지. 드래그 거리를 게임 좌표로 바꿀 때 쓴다 */
   const scaleRef = useRef(1);
   const { ref: recordsRef, inView: recordsVisible } = useInView<HTMLElement>(phase === "result");
+  useLockPageScroll(phase === "countdown" || phase === "playing");
 
   // 시작 화면에서 미리 불러와 카운트다운이 끝날 때쯤 준비되게 한다
   useEffect(() => {

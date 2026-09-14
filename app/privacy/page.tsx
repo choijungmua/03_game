@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 
 export const metadata: Metadata = {
-  title: "개인정보처리방침 · ggpli",
+  title: "개인정보처리방침",
   description: "ggpli 개인정보처리방침",
 };
 

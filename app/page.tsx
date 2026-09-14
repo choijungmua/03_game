@@ -2,12 +2,21 @@ import type { Metadata } from "next";
 import Link from "next/link";
 
 import { GAMES } from "@/lib/games/registry";
+import { pageMetadata, SITE_NAME, SITE_TAGLINE } from "@/lib/seo/site";
 
 import { Lobby } from "./_lobby/lobby";
 
+const title = `${SITE_NAME} - ${SITE_TAGLINE}`;
+
 export const metadata: Metadata = {
-  title: "ggpli 로비",
-  description: "카피바라를 걸어 다니며 온천 습지 마을의 오두막에 들어가 반응속도 테스트, 클릭 속도 테스트, 바둑, 오목, 알까기 등 무료 게임을 하는 오픈월드 로비",
+  ...pageMetadata({
+    title,
+    description:
+      "카피바라를 걸어 다니며 온천 습지 마을의 오두막에 들어가 반응속도 테스트, 클릭 속도 테스트, 바둑, 오목, 알까기 등 무료 게임을 하는 오픈월드 로비. 설치·로그인 없이 브라우저에서 바로 플레이",
+    path: "/",
+    keywords: ["무료 게임", "미니게임", "웹게임", "카피바라 게임", ...GAMES.map((game) => game.title)],
+  }),
+  title: { absolute: title },
 };
 
 export default function Home() {
@@ -31,6 +40,14 @@ export default function Home() {
               </Link>
             </li>
           ))}
+          <li>
+            <Link
+              href="/games"
+              className="block min-h-11 rounded-lg px-3 py-2.5 text-body-2 text-text-strong focus-visible:outline-2 focus-visible:outline-primary"
+            >
+              전체 게임 목록
+            </Link>
+          </li>
         </ul>
       </nav>
     </main>

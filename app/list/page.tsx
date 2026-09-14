@@ -4,7 +4,7 @@ import Link from "next/link";
 import { GAMES } from "@/lib/games/registry";
 
 export const metadata: Metadata = {
-  title: "게임 목록 · ggpli",
+  title: "게임 목록",
   robots: { index: false, follow: false },
 };
 

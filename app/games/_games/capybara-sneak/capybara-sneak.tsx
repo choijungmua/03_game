@@ -8,6 +8,7 @@ import { Progress } from "@/components/feedback/progress";
 import { Button } from "@/components/inputs/button";
 import { Dialog } from "@/components/overlay/dialog";
 import { cn } from "@/lib";
+import { useLockPageScroll } from "@/lib/games/use-lock-page-scroll";
 
 import {
   addBite,
@@ -80,6 +81,7 @@ export function CapybaraSneak() {
   const [gauge, setGauge] = useState(0);
   const [trend, setTrend] = useState<GaugeTrend>("up");
   const [pressing, setPressing] = useState(false);
+  useLockPageScroll(status === "playing");
 
   // 먹기·감소·주인 타이머는 화면이 다시 그려지기 전에도 여러 번 돌 수 있어서,
   // 판정은 렌더링 결과 대신 항상 최신 값을 담은 ref로 한다
