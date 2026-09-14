@@ -1,6 +1,7 @@
 // 로비 오픈월드 멀티: 각 플레이어가 자기 위치를 짧은 주기로 보내고, 응답으로 근처 플레이어를 받는다.
 // 맵은 하나라 모두 같은 공간에 있다. 때리기 판정도 서버가 한다 (앞쪽 가까운 한 명을 2초 기절)
 
+import { type Outfit, sanitizeOutfit } from "./wardrobe";
 import { type Facing, FACING_VECTORS, FACINGS, TILE, WALK_SPEED } from "./world";
 
 export interface PlayerState {
@@ -8,6 +9,8 @@ export interface PlayerState {
   y: number;
   facing: Facing;
   sitting: boolean;
+  /** 입은 옷. 모두에게 보인다 */
+  outfit: Outfit;
 }
 
 export interface PublicPlayer extends PlayerState {
@@ -66,13 +69,14 @@ function allPlayers() {
 /** 요청 본문 검증. 바깥 입력이라 필드마다 타입을 확인한다 */
 export function parsePresence(body: Partial<PresenceRequest> | null): PresenceRequest | null {
   if (!body) return null;
-  const { token, x, y, facing, sitting, attack } = body;
+  const { token, x, y, facing, sitting, attack, outfit } = body;
   if (typeof token !== "string" || token.length < 16 || token.length > 64) return null;
   if (typeof x !== "number" || typeof y !== "number" || !Number.isFinite(x) || !Number.isFinite(y)) return null;
   if (Math.abs(x) > 1e7 || Math.abs(y) > 1e7) return null;
   const direction = FACINGS.find((name) => name === facing);
   if (!direction || typeof sitting !== "boolean") return null;
-  return { token, x, y, facing: direction, sitting, attack: attack === true };
+  // 옷은 없거나 틀려도 요청을 거절하지 않고 아는 옷만 남긴다
+  return { token, x, y, facing: direction, sitting, attack: attack === true, outfit: sanitizeOutfit(outfit) };
 }
 
 const toPublic = (player: Player, now: number): PublicPlayer => ({
@@ -81,6 +85,7 @@ const toPublic = (player: Player, now: number): PublicPlayer => ({
   y: player.y,
   facing: player.facing,
   sitting: player.sitting,
+  outfit: player.outfit,
   stunMs: Math.max(0, player.stunnedUntil - now),
   attackMs: Math.max(0, player.attackUntil - now),
 });
@@ -118,6 +123,7 @@ export function updatePresence(request: PresenceRequest, now = Date.now()): Pres
       y: request.y,
       facing: request.facing,
       sitting: request.sitting,
+      outfit: request.outfit,
       id: crypto.randomUUID().slice(0, 6),
       token: request.token,
       updatedAt: now,
@@ -129,6 +135,7 @@ export function updatePresence(request: PresenceRequest, now = Date.now()): Pres
   } else if (now < me.stunnedUntil) {
     // 기절 중엔 움직임·앉기·방향 전환을 받지 않는다
     me.sitting = false;
+    me.outfit = request.outfit;
     me.updatedAt = now;
   } else {
     // 걸어서 갈 수 있는 거리보다 멀리 가면 그 방향으로 갈 수 있는 만큼만 인정한다
@@ -141,6 +148,7 @@ export function updatePresence(request: PresenceRequest, now = Date.now()): Pres
     me.y += dy * ratio;
     me.facing = request.facing;
     me.sitting = request.sitting;
+    me.outfit = request.outfit;
     me.updatedAt = now;
   }
 

@@ -5,6 +5,7 @@
 // 오두막 지붕 위 아이콘(게임기·비행기 등)으로 무슨 게임인지 알리고, 문 앞에 가면 그 게임에 들어간다
 
 import type { GameEntry } from "@/lib/games/types";
+import { BUILDING_ASSETS } from "@/lib/lobby/assets";
 
 export const TILE = 48;
 export const LOBBY_SEED = "ggpli";
@@ -56,7 +57,7 @@ const WALKABLE: ReadonlySet<Tile> = new Set<Tile>(["meadow", "grass", "mud", "de
 /** 오두막 한 채 폭·깊이(타일) */
 export const BUILDING_WIDTH = 6;
 export const BUILDING_DEPTH = 5;
-export const BUILDING_VARIANTS = 3;
+export const BUILDING_VARIANTS = BUILDING_ASSETS.length;
 export const SPRING_RADIUS = 2.6;
 /** 온천 가운데(타일) */
 const SPRING_TY = 2;

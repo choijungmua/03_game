@@ -8,6 +8,7 @@ import { AdSlot } from "@/components/ads/ad-slot";
 import { ShareButton } from "@/components/games/share-button";
 import { cn } from "@/lib";
 import { useInView } from "@/lib/games/use-in-view";
+import { lobbyAssetSrc } from "@/lib/lobby/assets";
 
 import { LogDodgeLeaderboard } from "./leaderboard";
 import {
@@ -45,7 +46,7 @@ const LEFT_KEYS = new Set(["ArrowLeft", "a", "A"]);
 const RIGHT_KEYS = new Set(["ArrowRight", "d", "D"]);
 
 const CHARACTER_BASE = "/assets/images/characters/capybara";
-const LOBBY_BASE = "/assets/images/lobby";
+const MEADOW_SRC = lobbyAssetSrc({ category: "ground", id: "meadow" });
 /** 로비 통나무 의자 그림에서 다리를 뺀 통나무 몸통 부분(원본 px) */
 const LOG_SOURCE = { width: 384, height: 98 };
 const RUN_FRAMES = ["walk1", "stand", "walk2", "stand"] as const;
@@ -83,9 +84,9 @@ function loadSprites(): Sprites {
     for (const facing of RUN_FACINGS) add(`${frame}-${facing}`, `${CHARACTER_BASE}/capybara-${frame}-${facing}.webp`);
   }
   add("stun", `${CHARACTER_BASE}/capybara-stun.webp`);
-  add("log", `${LOBBY_BASE}/log-seat.webp`);
-  add("meadow", `${LOBBY_BASE}/texture-meadow.webp`);
-  add("mud", `${LOBBY_BASE}/texture-mud.webp`);
+  add("log", lobbyAssetSrc({ category: "props", id: "log-seat" }));
+  add("meadow", MEADOW_SRC);
+  add("mud", lobbyAssetSrc({ category: "ground", id: "mud" }));
   return sprites;
 }
 
@@ -462,7 +463,7 @@ export function CapybaraLogDodge() {
         <div
           aria-hidden="true"
           className="pointer-events-none absolute inset-0 scale-110 bg-repeat opacity-40 blur-2xl"
-          style={{ backgroundImage: `url(${LOBBY_BASE}/texture-meadow.webp)` }}
+          style={{ backgroundImage: `url(${MEADOW_SRC})` }}
         />
       )}
 

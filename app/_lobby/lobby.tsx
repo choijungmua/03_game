@@ -7,7 +7,29 @@ import { useEffect, useEffectEvent, useRef, useState } from "react";
 
 import { cn } from "@/lib";
 
+import {
+  BUILDING_ASSETS,
+  GROUND_ASSETS,
+  type GroundId,
+  lobbyAssetSrc,
+  SPRITE_ASSETS,
+  type SpriteAsset,
+  type SpriteId,
+} from "@/lib/lobby/assets";
 import { ATTACK_COOLDOWN_MS, ATTACK_MS, type PresenceResponse } from "@/lib/lobby/presence";
+import {
+  BODY_LAYERS,
+  HEAD_ELLIPSE,
+  loadOutfit,
+  type Outfit,
+  OVER_HEAD_LAYERS,
+  SLOT_INFO,
+  type WardrobeAnchor,
+  type WardrobeSlot,
+  wardrobeSrc,
+  WORLD_GLASSES,
+  WORLD_HAT,
+} from "@/lib/lobby/wardrobe";
 import {
   type Building,
   BUILDING_WIDTH,
@@ -29,21 +51,11 @@ import {
   WALK_SPEED,
 } from "@/lib/lobby/world";
 
+import { Wardrobe } from "./wardrobe";
+
 type Pose = "stand" | "walk1" | "walk2";
 type SpriteKey = `${Pose}-${Facing}` |`sit-${Direction}` | `punch-${Direction}` | "stun" | `scratch-${1 | 2 | 3}`;
-type LobbyImage =
-  | "onsen"
-  | "log-seat"
-  | "lantern"
-  | "reeds"
-  | "grass-bush"
-  | "rocks"
-  | "tree-tropical"
-  | "palm"
-  | "fence"
-  | "lotus"
-  | "banana-bush";
-type Texture = "meadow" | "mud" | "water" | "deck";
+type Texture = GroundId;
 
 interface CapybaraLook {
   pose: Pose;
@@ -69,6 +81,7 @@ interface Remote {
   idleMs: number;
   stunUntil: number;
   attackUntil: number;
+  outfit: Outfit;
 }
 
 interface Chunk {
@@ -116,7 +129,6 @@ const SYNC_MS = 150;
 /** 텍스처 한 장이 덮는 월드 크기(px) — 타일의 배수여야 칸마다 이어진다 */
 const TEXTURE_SIZE = 192;
 const CHARACTER_BASE = "/assets/images/characters/capybara";
-const LOBBY_BASE = "/assets/images/lobby";
 
 const KEY_VECTORS: Partial<Record<string, [number, number]>> = {
   ArrowUp: [0, -1],
@@ -145,13 +157,7 @@ const TEXTURE_OF: Record<Tile, Texture> = {
   water: "water",
   deck: "deck",
 };
-/** 텍스처가 아직 없을 때 잠깐 쓰는 단색 */
-const TEXTURE_FALLBACK: Record<Texture, string> = {
-  meadow: "#8cbf3f",
-  mud: "#9a5a33",
-  water: "#79b59a",
-  deck: "#a8683f",
-};
+const GROUND_BY_ID = new Map(GROUND_ASSETS.map((asset) => [asset.id, asset]));
 
 function loadImage(src: string) {
   const image = new Image();
@@ -222,7 +228,7 @@ function drawChunk(
         TILE,
       );
     } else {
-      ctx.fillStyle = TEXTURE_FALLBACK[kind];
+      ctx.fillStyle = GROUND_BY_ID.get(kind)?.fallbackColor ?? "#8cbf3f";
       ctx.fillRect(x, y, TILE, TILE);
     }
     if (kind === "meadow") {
@@ -283,7 +289,7 @@ function drawBuilding(
   now: number,
   animate: boolean,
 ) {
-  const width = (BUILDING_WIDTH + 0.8) * TILE;
+  const width = BUILDING_ASSETS[building.variant].width * TILE;
   const centerX = (building.tx + BUILDING_WIDTH / 2) * TILE;
   const bottom = building.frontY + TILE * 0.5;
   if (!ready(image)) return;
@@ -350,6 +356,64 @@ function drawStar(ctx: CanvasRenderingContext2D, x: number, y: number, radius: n
   ctx.stroke();
 }
 
+/** 스프라이트 한 장(left, top, 정사각형 size) 위에 옷을 얹는다. 앉은 정면은 옷장 미리보기와 같은 그림이라 전부, 나머지는 모자(+정면이면 안경)만 */
+function drawOutfit(
+  ctx: CanvasRenderingContext2D,
+  base: HTMLImageElement,
+  outfit: Outfit,
+  view: Direction | "sit-down",
+  left: number,
+  top: number,
+  size: number,
+  outfitImage: (src: string) => HTMLImageElement,
+) {
+  const put = (slot: WardrobeSlot, anchor: WardrobeAnchor) => {
+    const id = outfit[slot];
+    const item = id ? outfitImage(wardrobeSrc(slot, id)) : undefined;
+    if (!ready(item)) return;
+    const width = (size * anchor.width) / 100;
+    const height = (width * item.naturalHeight) / item.naturalWidth;
+    const centerX = left + (size * anchor.x) / 100;
+    const itemTop = top + (size * anchor.bottom) / 100 - height;
+    if (!anchor.mirror) {
+      ctx.drawImage(item, centerX - width / 2, itemTop, width, height);
+      return;
+    }
+    ctx.save();
+    ctx.translate(centerX, 0);
+    ctx.scale(-1, 1);
+    ctx.drawImage(item, -width / 2, itemTop, width, height);
+    ctx.restore();
+  };
+  if (view !== "sit-down") {
+    put("hat", WORLD_HAT[view]);
+    if (view === "down") put("glasses", WORLD_GLASSES);
+    return;
+  }
+  const layer = (slots: readonly WardrobeSlot[]) => {
+    for (const slot of slots) for (const anchor of SLOT_INFO[slot].anchors) put(slot, anchor);
+  };
+  layer(BODY_LAYERS);
+  if (BODY_LAYERS.some((slot) => outfit[slot])) {
+    // 머리를 한 번 더 그려 옷이 턱 밑으로 들어가 보이게 한다 (옷장 미리보기와 같은 방식)
+    ctx.save();
+    ctx.beginPath();
+    ctx.ellipse(
+      left + (size * HEAD_ELLIPSE.x) / 100,
+      top + (size * HEAD_ELLIPSE.y) / 100,
+      (size * HEAD_ELLIPSE.rx) / 100,
+      (size * HEAD_ELLIPSE.ry) / 100,
+      0,
+      0,
+      Math.PI * 2,
+    );
+    ctx.clip();
+    ctx.drawImage(base, left, top, size, size);
+    ctx.restore();
+  }
+  layer(OVER_HEAD_LAYERS);
+}
+
 function drawCapybara(
   ctx: CanvasRenderingContext2D,
   sprites: Map<SpriteKey, HTMLImageElement>,
@@ -357,6 +421,8 @@ function drawCapybara(
   y: number,
   facing: Facing,
   look: CapybaraLook,
+  outfit: Outfit,
+  outfitImage: (src: string) => HTMLImageElement,
   now: number,
   animate: boolean,
 ) {
@@ -374,6 +440,7 @@ function drawCapybara(
       ctx.translate(x, y);
       ctx.rotate(animate ? Math.sin(now / 90) * 0.07 : 0); // 비틀비틀
       ctx.drawImage(image, -STAND_SIZE / 2, -STAND_SIZE * STAND_FOOT, STAND_SIZE, STAND_SIZE);
+      drawOutfit(ctx, image, outfit, "down", -STAND_SIZE / 2, -STAND_SIZE * STAND_FOOT, STAND_SIZE, outfitImage);
       ctx.restore();
     }
     for (let i = 0; i < 3; i++) {
@@ -403,6 +470,8 @@ function drawCapybara(
   if (!ready(image)) return;
   const size = look.sitting ? SIT_SIZE : STAND_SIZE;
   const foot = look.sitting ? SIT_FOOT : STAND_FOOT;
+  // 긁기는 뒷모습, 앉은 정면만 옷을 전부 입힌다
+  const view = look.sitting && direction === "down" ? "sit-down" : look.scratch ? "up" : direction;
   if (look.scratch > 1 && animate) {
     // 작게 그리면 앞발 움직임만으론 안 보여서, 긁는 박자에 맞춰 엉덩이를 좌우로 씰룩인다
     const wiggle = look.scratch === 2 ? -1 : 1;
@@ -410,6 +479,7 @@ function drawCapybara(
     ctx.translate(x + wiggle * 1.5, y);
     ctx.rotate(wiggle * 0.05);
     ctx.drawImage(image, -size / 2, -size * foot, size, size);
+    drawOutfit(ctx, image, outfit, view, -size / 2, -size * foot, size, outfitImage);
     ctx.restore();
     return;
   }
@@ -420,10 +490,12 @@ function drawCapybara(
     ctx.translate(x, y - Math.abs(step) * 3);
     ctx.rotate(step * 0.045);
     ctx.drawImage(image, -size / 2, -size * foot, size, size);
+    drawOutfit(ctx, image, outfit, view, -size / 2, -size * foot, size, outfitImage);
     ctx.restore();
     return;
   }
   ctx.drawImage(image, x + fx * lunge - size / 2, y + fy * lunge - size * foot, size, size);
+  drawOutfit(ctx, image, outfit, view, x + fx * lunge - size / 2, y + fy * lunge - size * foot, size, outfitImage);
 }
 
 /** 맞은 자리에 터지는 "퍽" 효과. progress 0 → 1 */
@@ -478,13 +550,14 @@ export function Lobby({ games }: { games: DoorGame[] }) {
   const attackRequest = useRef(false);
   const joystickRef = useRef<HTMLDivElement>(null);
   const knobRef = useRef<HTMLDivElement>(null);
+  /** 입은 옷. 게임 루프가 매 프레임 읽어서 그리고 서버에 보낸다 */
+  const outfitRef = useRef<Outfit>({});
   const [world] = useState(() => createWorld(LOBBY_SEED, games));
   const [activeDoor, setActiveDoor] = useState<Door | null>(null);
   const [sitting, setSitting] = useState(false);
   const [seatNearby, setSeatNearby] = useState(false);
   const [stunned, setStunned] = useState(false);
   const [notice, setNotice] = useState("");
-  const [online, setOnline] = useState<number | null>(null);
   const [offline, setOffline] = useState(false);
   // 게임 루프 effect가 router 변경으로 다시 실행되면 캐릭터·멀티 상태가 초기화되므로 이벤트로 감싼다
   const goToGame = useEffectEvent((slug: string) => router.push(`/games/${slug}`));
@@ -496,6 +569,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
     if (!canvas || !ctx) return;
 
     const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    outfitRef.current = loadOutfit();
 
     const sprites = new Map<SpriteKey, HTMLImageElement>();
     for (const facing of FACINGS) {
@@ -508,16 +582,23 @@ export function Lobby({ games }: { games: DoorGame[] }) {
     sprites.set("stun", loadImage(`${CHARACTER_BASE}/capybara-stun.webp`));
     for (const n of [1, 2, 3] as const) sprites.set(`scratch-${n}`, loadImage(`${CHARACTER_BASE}/capybara-scratch-${n}.webp`));
 
-    const images = new Map<LobbyImage, HTMLImageElement>(
-      (
-        ["onsen", "log-seat", "lantern", "reeds", "grass-bush", "rocks", "tree-tropical", "palm", "fence", "lotus", "banana-bush"] as const
-      ).map((name) => [name, loadImage(`${LOBBY_BASE}/${name}.webp`)]),
+    // 로비 에셋은 lib/lobby/assets 레지스트리에서 읽는다 (에셋 하나 = 폴더 하나)
+    const images = new Map<SpriteId, { asset: SpriteAsset; image: HTMLImageElement }>(
+      SPRITE_ASSETS.map((asset) => [asset.id, { asset, image: loadImage(lobbyAssetSrc(asset)) }]),
     );
-    const textures = new Map<Texture, HTMLImageElement>(
-      (["meadow", "mud", "water", "deck"] as const).map((name) => [name, loadImage(`${LOBBY_BASE}/texture-${name}.webp`)]),
-    );
-    const buildingImages = [1, 2, 3].map((n) => loadImage(`${LOBBY_BASE}/hut-${n}.webp`));
+    const textures = new Map<Texture, HTMLImageElement>(GROUND_ASSETS.map((asset) => [asset.id, loadImage(lobbyAssetSrc(asset))]));
+    const buildingImages = BUILDING_ASSETS.map((asset) => loadImage(lobbyAssetSrc(asset)));
     const icons = new Map(world.doors.map((door) => [door.slug, loadImage(`/assets/images/games/${door.slug}/icon.webp`)]));
+    // 옷 이미지는 누군가 입고 나타날 때 처음 불러온다
+    const outfitImages = new Map<string, HTMLImageElement>();
+    const outfitImage = (src: string) => {
+      let image = outfitImages.get(src);
+      if (!image) {
+        image = loadImage(src);
+        outfitImages.set(src, image);
+      }
+      return image;
+    };
 
     // 타일은 청크(16×16) 단위로 한 번만 계산하고, 바닥은 청크마다 캔버스 한 장으로 구워 둔다
     const chunks = new Map<string, Chunk>();
@@ -731,7 +812,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
       fetch("/api/lobby", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token, ...sent, facing: me.facing, sitting: me.sitting, attack }),
+        body: JSON.stringify({ token, ...sent, facing: me.facing, sitting: me.sitting, attack, outfit: outfitRef.current }),
       })
         .then(async (response) => {
           const data: Partial<PresenceResponse> = await response.json();
@@ -759,6 +840,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
               remote.targetY = player.y;
               remote.facing = player.facing;
               remote.sitting = player.sitting;
+              remote.outfit = player.outfit ?? {};
               remote.stunUntil = stunUntil;
               if (player.attackMs > 0) remote.attackUntil = received + player.attackMs;
             } else {
@@ -774,12 +856,12 @@ export function Lobby({ games }: { games: DoorGame[] }) {
                 idleMs: 0,
                 stunUntil,
                 attackUntil: player.attackMs > 0 ? received + player.attackMs : 0,
+                outfit: player.outfit ?? {},
               });
             }
           }
           for (const id of remotes.keys()) if (!seen.has(id)) remotes.delete(id);
           if (data.hit) hitEffects.set(data.hit, received + 450);
-          setOnline(data.online ?? null);
           setOffline(false);
         })
         .catch(() => setOffline(true))
@@ -960,8 +1042,12 @@ export function Lobby({ games }: { games: DoorGame[] }) {
 
       const inView = (x: number, y: number, margin: number) =>
         x > left - margin && x < left + view.width + margin && y > top - margin && y < top + view.height + margin * 3;
-      const sprite = (image: HTMLImageElement | undefined, x: number, bottom: number, width: number) => {
-        if (ready(image)) drawImageBottom(ctx, image, x, bottom, width);
+      /** 에셋 정의의 폭·바닥 보정대로 그린다. scale은 같은 에셋을 크기만 조금씩 다르게 흩뿌릴 때 */
+      const sprite = (id: SpriteId, x: number, bottom: number, scale = 1) => {
+        const entry = images.get(id);
+        if (entry && ready(entry.image)) {
+          drawImageBottom(ctx, entry.image, x, bottom + (entry.asset.offsetY ?? 0), entry.asset.width * TILE * scale);
+        }
       };
 
       // 발 위치(y) 순서로 그려서 오두막·나무·통나무 뒤로 걸어가면 가려진다
@@ -974,18 +1060,17 @@ export function Lobby({ games }: { games: DoorGame[] }) {
           const noise = hash2(9, tx, ty);
           if (tile === "tree") {
             const kind = noise < 0.55 ? "tree-tropical" : "palm";
-            const width = TILE * (kind === "palm" ? 1.7 : 2.1) * (0.9 + noise * 0.25);
-            drawables.push({ y: bottom - TILE * 0.2, draw: () => sprite(images.get(kind), x, bottom, width) });
+            drawables.push({ y: bottom - TILE * 0.2, draw: () => sprite(kind, x, bottom, 0.9 + noise * 0.25) });
           } else if (tile === "fence") {
-            drawables.push({ y: bottom, draw: () => sprite(images.get("fence"), x, bottom + 2, TILE * 1.12) });
+            drawables.push({ y: bottom, draw: () => sprite("fence", x, bottom) });
           } else if (tile === "rock") {
-            drawables.push({ y: bottom, draw: () => sprite(images.get("rocks"), x, bottom + 2, TILE * 1.2) });
+            drawables.push({ y: bottom, draw: () => sprite("rocks", x, bottom) });
           } else if (tile === "water" && noise < 0.1) {
             // 수련은 물 위에 납작하게 떠 있어서 바닥처럼 먼저 그린다
-            sprite(images.get("lotus"), x, bottom - 6, TILE * 1.1);
+            sprite("lotus", x, bottom);
           } else if (tile === "grass" && noise < 0.035) {
             const kind = noise < 0.015 ? "banana-bush" : "grass-bush";
-            drawables.push({ y: bottom - 8, draw: () => sprite(images.get(kind), x, bottom - 6, TILE * (kind === "banana-bush" ? 1.3 : 0.9)) });
+            drawables.push({ y: bottom - 8, draw: () => sprite(kind, x, bottom) });
           }
         }
       }
@@ -1009,7 +1094,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
         drawables.push({
           y: spring.y + SPRING_RADIUS * TILE * 0.6,
           draw: () => {
-            sprite(images.get("onsen"), spring.x, spring.y + SPRING_RADIUS * TILE, (SPRING_RADIUS * 2 + 1.2) * TILE);
+            sprite("onsen", spring.x, spring.y + SPRING_RADIUS * TILE);
             drawSteam(ctx, spring.x, spring.y, now, !reducedMotion);
           },
         });
@@ -1017,13 +1102,13 @@ export function Lobby({ games }: { games: DoorGame[] }) {
       for (const seat of world.seats) {
         if (!inView(seat.seatX, seat.seatY, TILE * 3)) continue;
         const bottom = seat.seatY + TILE * 0.38;
-        drawables.push({ y: bottom, draw: () => sprite(images.get("log-seat"), seat.seatX, bottom + 4, TILE * 2.2) });
+        drawables.push({ y: bottom, draw: () => sprite("log-seat", seat.seatX, bottom) });
       }
       for (const prop of world.props) {
         const x = (prop.tx + 0.5) * TILE;
         if (!inView(x, prop.ty * TILE, TILE * 4)) continue;
         const bottom = (prop.ty + 0.9) * TILE;
-        drawables.push({ y: bottom, draw: () => sprite(images.get(prop.kind), x, bottom, prop.kind === "lantern" ? TILE : TILE * 1.1) });
+        drawables.push({ y: bottom, draw: () => sprite(prop.kind, x, bottom) });
       }
       for (const remote of remotes.values()) {
         const look: CapybaraLook = {
@@ -1037,7 +1122,8 @@ export function Lobby({ games }: { games: DoorGame[] }) {
         // 통나무에 앉으면 통나무 그림보다 앞에 그린다
         drawables.push({
           y: remote.y + (remote.sitting ? TILE * 0.5 : 0),
-          draw: () => drawCapybara(ctx, sprites, remote.x, remote.y, remote.facing, look, now, !reducedMotion),
+          draw: () =>
+            drawCapybara(ctx, sprites, remote.x, remote.y, remote.facing, look, remote.outfit, outfitImage, now, !reducedMotion),
         });
       }
       const myLook: CapybaraLook = {
@@ -1055,7 +1141,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
       const drawnY = me.hop.fromY + (me.y - me.hop.fromY) * hopEase - Math.sin(hop * Math.PI) * 12;
       drawables.push({
         y: me.y + (me.sitting ? TILE * 0.5 : 0),
-        draw: () => drawCapybara(ctx, sprites, drawnX, drawnY, me.facing, myLook, now, !reducedMotion),
+        draw: () => drawCapybara(ctx, sprites, drawnX, drawnY, me.facing, myLook, outfitRef.current, outfitImage, now, !reducedMotion),
       });
       drawables.sort((a, b) => a.y - b.y);
       for (const item of drawables) item.draw();
@@ -1114,7 +1200,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
     };
   }, [world]);
 
-  const status = stunned ? "기절! 2초 동안 못 움직여요" : notice || (activeDoor ? `${activeDoor.title} 들어가는 중… (Enter로 바로)` : "");
+  const status = stunned ? "기절! 2초 동안 못 움직여요" : notice || (activeDoor ? `${activeDoor.title} 들어가는 중… (Enter로 바로)` : offline ? "혼자 모드 (연결 끊김)" : "");
 
   return (
     <>
@@ -1126,12 +1212,11 @@ export function Lobby({ games }: { games: DoorGame[] }) {
         className="absolute inset-0 size-full touch-none select-none"
       />
 
-      <p
-        className="pointer-events-none absolute right-4 top-[max(1rem,env(safe-area-inset-top))] rounded-xl bg-card/85 px-3 py-2 text-caption-1 tabular-nums text-text-caption shadow-sm backdrop-blur"
-        aria-live="polite"
-      >
-        {offline ? "혼자 모드 (연결 끊김)" : online === null ? "연결 중…" : `접속 ${online}명`}
-      </p>
+      <Wardrobe
+        onChange={(outfit) => {
+          outfitRef.current = outfit;
+        }}
+      />
 
       <div className="pointer-events-none absolute inset-x-0 bottom-0 flex flex-col items-center gap-2 px-4 pb-[max(1.25rem,env(safe-area-inset-bottom))]">
         <p

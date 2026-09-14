@@ -6,11 +6,12 @@
 |---|---|---|
 | seed 기반 무한 오픈월드 | `lib/lobby/world.ts` | 맵은 하나로 고정(`LOBBY_SEED`), 사용자가 바꾸는 UI 없음. 저장 데이터 없이 seed로 결정적 생성 |
 | 테마: 카피바라 온천 습지 마을 | 같은 파일 + `public/assets/images/lobby/` | 카피바라가 사는 남미 강가 습지 + 일본 동물원의 카피바라 유자 온천. 모든 에셋을 카피바라 인형과 같은 털·펠트 질감으로 통일 |
+| 에셋 폴더 구조 | `lib/lobby/assets/<분류>/<id>/` + `public/assets/images/lobby/<분류>/<id>/image.webp` + `assets-src/lobby/<분류>/<id>/source.png` | 에셋 하나 = 폴더 하나, `lib/lobby/assets/index.ts` 레지스트리에 한 줄 추가하면 로비가 읽는다 (크기·바닥 보정은 정의에). 나중에 유저가 만든 에셋도 같은 정의 한 건으로 넣을 수 있게 한 구조 |
 | 좌우로 넓은 마을 | 같은 파일 | 가운데 유자 온천·통나무 의자·나무 등불, 온천 앞을 가로지르는 나무 데크 산책로와 오두막 문마다 이어진 데크 갈래길, 갈대 울타리(동·서·남 입구), 부들 |
-| 게임 오두막 | 같은 파일 + `hut-{1,2,3}.webp` | 초가 원두막(나무 아케이드 간판), 카피바라 귀 풀 굴집(나무 휴대용 게임기 간판), 바나나잎 대나무 원두막(나무 TV 간판). 첫 게임은 온천 북쪽 가운데, 나머지는 좌우 날개에 대칭, 앞줄·뒷줄 지그재그라 한 줄로 늘어서지 않는다 |
+| 게임 오두막 | 같은 파일 + `buildings/hut-{1,2,3}` | 초가 원두막(나무 아케이드 간판), 카피바라 귀 풀 굴집(나무 휴대용 게임기 간판), 바나나잎 대나무 원두막(나무 TV 간판). 첫 게임은 온천 북쪽 가운데, 나머지는 좌우 날개에 대칭, 앞줄·뒷줄 지그재그라 한 줄로 늘어서지 않는다 |
 | 지붕 아이콘 + 문 입장 | `public/assets/images/games/<slug>/icon.webp` + `app/_lobby/lobby.tsx` `drawBuilding`·`drawDoorLight` | 포털 없음. 게임 표시는 오두막 지붕 위에 둥실 떠 있는 테마 아이콘 하나뿐(나무·잎·조약돌 소재 펠트 소품: 스톱워치·마우스·수박·비행기 등, 간판 화면에는 로고를 넣지 않음). 문 앞에 가면 따뜻한 빛이 켜지며 0.9초 뒤 또는 Enter로 입장 |
-| 바닥·자연 | `texture-{meadow,mud,water,deck}.webp`, `tree-tropical`, `palm`, `fence`, `rocks`, `lotus`, `banana-bush`, `grass-bush` | 풀밭(얼룩·들꽃 섞음)·진흙길·습지 물·나무 데크 텍스처, 경계에 데크 테두리·진흙 둑. 바깥 습지는 열대 나무·야자수·이끼 바위 줄·수련·바나나잎 |
-| 통나무 앉기 | `log-seat.webp`, `ui/lobby/sit.webp` | 통나무 앞에서 Space 또는 앉기 버튼 → 통나무로 폴짝 뛰어 앉고, 일어날 때도 폴짝 |
+| 바닥·자연 | `ground/{meadow,mud,water,deck}`, `nature/{tree-tropical,palm,rocks,lotus,banana-bush,grass-bush,reeds}`, `props/fence` | 풀밭(얼룩·들꽃 섞음)·진흙길·습지 물·나무 데크 텍스처, 경계에 데크 테두리·진흙 둑. 바깥 습지는 열대 나무·야자수·이끼 바위 줄·수련·바나나잎 |
+| 통나무 앉기 | `props/log-seat`, `ui/lobby/sit.webp` | 통나무 앞에서 Space 또는 앉기 버튼 → 통나무로 폴짝 뛰어 앉고, 일어날 때도 폴짝 |
 | 8방향 걷기 | `capybara-*-{up-left,…}.webp` + `app/_lobby/lobby.tsx` | 대각선 전용 걷기 스프라이트(없으면 옆모습). 걸음 프레임을 시간이 아니라 걸은 거리로 넘기고, 걸음마다 몸이 살짝 뜨고 기울어 뒤뚱뒤뚱 |
 | 모바일 조이스틱 | `ui/lobby/joystick-{base,knob}.webp` | 터치한 자리가 조이스틱 중심, 끈 방향으로 걷고 끈 거리만큼 빨라짐(40~100%). 마우스는 누른 곳으로 걷기 그대로 |
 | 때리기 버튼 | `ui/lobby/punch.webp` | 누르면 눌림 애니메이션, 주먹은 빠르게 뻗고 천천히 거둬들임 |
