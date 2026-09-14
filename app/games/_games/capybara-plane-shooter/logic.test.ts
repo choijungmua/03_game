@@ -29,10 +29,13 @@ import {
   isLaserActive,
   isShieldUp,
   LASER_WINDUP_MS,
+  LOW_LEVEL_FIRE_SLOWDOWN,
   MAX_BULLETS,
   MAX_SHOTS,
   MAX_HP,
   MAX_WEAPON_LEVEL,
+  MIN_ENEMY_FIRE_INTERVAL_MS,
+  MIN_SPAWN_INTERVAL_MS,
   PEAK_STAGE,
   pickDrop,
   PITY_KILLS,
@@ -77,7 +80,7 @@ describe("이동", () => {
     const state = createState(400, 800);
     step(state, -30, IDLE);
     expect(state.bannerMs).toBe(STAGE_BANNER_MS);
-    expect(state.fireInMs).toBeLessThanOrEqual(FIRE_INTERVAL_MS.basic);
+    expect(state.fireInMs).toBeLessThanOrEqual(getWeaponSpec("basic", 1).intervalMs);
   });
 });
 
@@ -92,7 +95,7 @@ describe("자동 사격", () => {
 
   it("연사 간격마다 계속 쏜다", () => {
     const state = playing({ fireInMs: 0 });
-    for (let t = 0; t <= FIRE_INTERVAL_MS.basic * 3; t += 16) step(state, 16, IDLE);
+    for (let t = 0; t <= getWeaponSpec("basic", 1).intervalMs * 3; t += 16) step(state, 16, IDLE);
     expect(state.bullets.length).toBeGreaterThanOrEqual(3);
   });
 });
@@ -170,10 +173,10 @@ describe("아이템", () => {
     expect(double).toBeGreaterThan(spread);
     expect(spread).toBeGreaterThan(rapid);
     expect(rapid).toBeGreaterThan(pierce);
-    // 레벨을 10까지 쌓을 수 있게 넉넉히(10% 안팎) 떨어진다
+    // 천천히 강해지도록 드물게(5% 안팎) 떨어진다
     const total = Object.values(DROP_CHANCES).reduce((sum, chance) => sum + chance, 0);
-    expect(total).toBeGreaterThan(0.08);
-    expect(total).toBeLessThan(0.15);
+    expect(total).toBeGreaterThan(0.04);
+    expect(total).toBeLessThan(0.08);
 
     // 한 번 굴린 값이 어느 구간에 들어가느냐로 아이템이 정해지고, 합계를 넘으면 아무것도 없다
     expect(pickDrop(() => 0)).toBe("double");
@@ -226,6 +229,12 @@ describe("무기 레벨", () => {
     }
     expect(getWeaponSpec("spread", MAX_WEAPON_LEVEL).pattern).toHaveLength(11);
     expect(getWeaponSpec("basic", MAX_WEAPON_LEVEL).pattern).toHaveLength(5);
+  });
+
+  it("시작 총(1레벨)은 살살 쏘고, 10레벨은 원래 연사 속도 그대로다", () => {
+    expect(getWeaponSpec("basic", 1).intervalMs).toBeCloseTo(FIRE_INTERVAL_MS.basic * LOW_LEVEL_FIRE_SLOWDOWN);
+    expect(getWeaponSpec("basic", 1).intervalMs).toBeGreaterThanOrEqual(300);
+    expect(getWeaponSpec("basic", MAX_WEAPON_LEVEL).intervalMs).toBeCloseTo(FIRE_INTERVAL_MS.basic * (1 - 0.03 * (MAX_WEAPON_LEVEL - 1)));
   });
 
   it("레벨 피해만큼 적 체력을 깎는다", () => {
@@ -414,7 +423,7 @@ describe("스테이지", () => {
     expect(getStageConfig(10).boss).toBe(true);
   });
 
-  it("초반은 쉽고 갈수록 어려워지며, 최고 난이도 뒤로는 그대로 유지된다", () => {
+  it("초반은 쉽고 갈수록 어려워지며, 최고 난이도 뒤로도 계속 빨라진다", () => {
     const first = getStageConfig(1);
     expect(first.enemyHp).toBe(2);
     expect(first.shooterChance).toBe(0);
@@ -428,15 +437,18 @@ describe("스테이지", () => {
     // 제곱 곡선: 전반부(1→13)보다 후반부(13→25)에 훨씬 많이 오른다
     const mid = Math.ceil(PEAK_STAGE / 2);
     expect(getDifficulty(PEAK_STAGE) - getDifficulty(mid)).toBeGreaterThan(getDifficulty(mid) * 2);
-    expect(getStageConfig(PEAK_STAGE * 4).enemySpeed).toBe(getStageConfig(PEAK_STAGE).enemySpeed);
+    // 러시: 최고 난이도 뒤로도 스테이지마다 적·탄이 더 빨라진다 (65스테이지면 2.5배)
+    for (let stage = PEAK_STAGE + 1; stage <= PEAK_STAGE * 4; stage += 1) {
+      expect(getStageConfig(stage).enemySpeed).toBeGreaterThan(getStageConfig(stage - 1).enemySpeed);
+      expect(getStageConfig(stage).shotSpeed).toBeGreaterThan(getStageConfig(stage - 1).shotSpeed);
+    }
+    expect(getStageConfig(PEAK_STAGE + 25).enemySpeed).toBeCloseTo(getStageConfig(PEAK_STAGE).enemySpeed * 2.5);
   });
 
-  it("아무리 높은 스테이지도 피할 수 있는 한계(속도·밀도 상한)를 넘지 않는다", () => {
-    const late = getStageConfig(200);
-    expect(late.shotSpeed).toBeLessThanOrEqual(420);
-    expect(late.enemySpeed).toBeLessThanOrEqual(360);
-    expect(late.spawnIntervalMs).toBeGreaterThanOrEqual(200);
-    expect(late.enemyFireIntervalMs).toBeGreaterThanOrEqual(380);
+  it("아무리 높은 스테이지도 출현·사격 간격은 하한 아래로 내려가지 않고, 적 체력·탄 수는 상한을 넘지 않는다", () => {
+    const late = getStageConfig(201);
+    expect(late.spawnIntervalMs).toBe(MIN_SPAWN_INTERVAL_MS);
+    expect(late.enemyFireIntervalMs).toBe(MIN_ENEMY_FIRE_INTERVAL_MS);
     expect(late.enemyHp).toBeLessThanOrEqual(60);
     expect(late.enemyShotCount).toBeLessThanOrEqual(5);
   });

@@ -262,6 +262,8 @@ export const BULLET_RADIUS: Record<WeaponKind, number> = {
 };
 
 export const MAX_WEAPON_LEVEL = 10;
+/** 1레벨 발사 간격 배수. 레벨이 오를수록 1로 줄어 10레벨은 원래 연사 — 시작 총은 살살 쏘고 간식을 먹어 가며 강해진다 */
+export const LOW_LEVEL_FIRE_SLOWDOWN = 2.5;
 /** 화면에 내 총알이 이보다 많으면 이번 발사는 건너뛴다 — 고레벨 연사로 프레임이 무너지지 않게 */
 export const MAX_BULLETS = 240;
 /** 화면에 적 탄이 이보다 많으면 적·보스가 이번 발사를 건너뛴다 — 후반 탄막으로 프레임이 무너지지 않게 */
@@ -271,7 +273,7 @@ export const ENEMY_SHOT_SPREAD = 0.18;
 /** 화면에 적이 이만큼 있으면 보스가 부하를 더 부르지 않는다 */
 export const MAX_ENEMIES = 30;
 /** 아이템 없이 이만큼 격추하면 다음 격추에서 무기 간식을 반드시 떨어뜨린다 (운이 나빠도 레벨을 쌓을 수 있게) */
-export const PITY_KILLS = 12;
+export const PITY_KILLS = 20;
 /** 반드시 떨어뜨릴 때 고르는 무기 간식 */
 export const WEAPON_DROPS: readonly Exclude<DropKind, "heal">[] = ["double", "spread", "rapid", "pierce"];
 
@@ -291,7 +293,8 @@ function fan(count: number, gap: number) {
 /** 무기 레벨(1~MAX_WEAPON_LEVEL) → 한 번 발사하는 모양. 레벨이 오를수록 탄 줄·피해·연사가 늘어 10레벨이면 화면을 덮을 만큼 쏜다 */
 export function getWeaponSpec(weapon: WeaponKind, level: number): WeaponSpec {
   const step = Math.min(MAX_WEAPON_LEVEL, Math.max(1, Math.round(level))) - 1;
-  const faster = (perLevel: number) => FIRE_INTERVAL_MS[weapon] * (1 - perLevel * step);
+  const slowdown = 1 + (LOW_LEVEL_FIRE_SLOWDOWN - 1) * (1 - step / (MAX_WEAPON_LEVEL - 1));
+  const faster = (perLevel: number) => FIRE_INTERVAL_MS[weapon] * (1 - perLevel * step) * slowdown;
   const straight = (count: number, gap: number) => fan(count, gap).map((dx) => ({ dx, angle: 0 }));
 
   switch (weapon) {
@@ -329,15 +332,15 @@ export function getWeaponSpec(weapon: WeaponKind, level: number): WeaponSpec {
 }
 
 /**
- * 적 한 마리를 격추할 때 아이템 종류별로 떨어질 확률 (합계 11%).
- * 무기 간식은 먹을 때마다 레벨이 쌓이므로 넉넉히 떨어뜨리되, 쌍발 < 산탄 < 연사 < 관통 순으로 강한 무기일수록 드물다
+ * 적 한 마리를 격추할 때 아이템 종류별로 떨어질 확률 (합계 5.5%).
+ * 무기 간식은 먹을 때마다 레벨이 쌓이므로 드물게 떨어뜨려 천천히 강해지게 하고, 쌍발 < 산탄 < 연사 < 관통 순으로 강한 무기일수록 더 드물다
  */
 export const DROP_CHANCES: Record<DropKind, number> = {
-  double: 0.03,
-  heal: 0.02,
-  spread: 0.025,
-  rapid: 0.02,
-  pierce: 0.015,
+  double: 0.015,
+  heal: 0.01,
+  spread: 0.0125,
+  rapid: 0.01,
+  pierce: 0.0075,
 };
 
 /** 한 번만 굴려서 아이템 하나를 고르거나, 아무것도 떨어뜨리지 않는다(null) */
@@ -354,8 +357,18 @@ export function isBossStage(stage: number) {
   return stage % BOSS_STAGE_EVERY === 0;
 }
 
-/** 이 스테이지에서 최고 난이도에 도달하고, 그 뒤로는 유지된다 */
+/** 이 스테이지에서 적 구성·체력 곡선이 끝나고, 그 뒤로는 러시 — 속도가 끝없이 오른다 */
 export const PEAK_STAGE = 40;
+/** 러시 구간에서 스테이지마다 적·탄 속도에 더해지는 배율 (65스테이지면 2.5배) */
+export const RUSH_PER_STAGE = 0.06;
+/** 러시로 간격이 줄어도 이 아래로는 안 내려간다 (화면이 탄으로 뒤덮여 버벅이지 않게, 적 탄은 MAX_SHOTS 상한도 있다) */
+export const MIN_SPAWN_INTERVAL_MS = 120;
+export const MIN_ENEMY_FIRE_INTERVAL_MS = 250;
+
+/** PEAK_STAGE까지 1, 그 뒤로 스테이지마다 RUSH_PER_STAGE씩 커진다 */
+export function getRush(stage: number) {
+  return 1 + Math.max(0, stage - PEAK_STAGE) * RUSH_PER_STAGE;
+}
 
 function lerp(easy: number, hard: number, difficulty: number) {
   return easy + (hard - easy) * difficulty;
@@ -369,19 +382,20 @@ export function getDifficulty(stage: number) {
 
 /**
  * 스테이지는 끝이 없고, 쉬운 값에서 어려운 값으로 난이도 곡선을 따라 옮겨간다.
- * 어려운 쪽 값이 곧 상한이라 최고 난이도도 눈으로 보고 피할 수 있는 한계를 넘지 않는다
+ * PEAK_STAGE 뒤로는 러시 배율만큼 적·탄이 계속 빨라지고 출현·사격 간격이 짧아진다 (간격은 하한까지만)
  */
 export function getStageConfig(stage: number) {
   const boss = isBossStage(stage);
   const d = getDifficulty(stage);
+  const rush = getRush(stage);
   return {
     boss,
     killGoal: Math.round(lerp(10, 50, d)),
     bossHp: Math.round(BOSS_BASE_HP * (stage / BOSS_STAGE_EVERY) ** 1.3),
-    spawnIntervalMs: lerp(750, 200, d) * (boss ? 2.5 : 1),
+    spawnIntervalMs: Math.max(MIN_SPAWN_INTERVAL_MS, lerp(750, 200, d) / rush) * (boss ? 2.5 : 1),
     // 무기 레벨·스킬로 내가 강해지는 만큼 적도 훨씬 단단해진다 (10스테이지 ≈5, 20 ≈16, 30 ≈35, 40 이후 60)
     enemyHp: Math.round(lerp(2, 60, d)),
-    enemySpeed: lerp(100, 360, d),
+    enemySpeed: lerp(100, 360, d) * rush,
     // 새 천적은 스테이지가 오를 때마다 하나씩 합류한다. 확률 합은 최고 난이도에서도 0.9를 넘지 않아 하피독수리가 늘 섞인다
     zigzagChance: stage >= 2 ? 0.2 : 0,
     shooterChance: stage >= 3 ? lerp(0.1, 0.25, d) : 0,
@@ -389,9 +403,9 @@ export function getStageConfig(stage: number) {
     shieldChance: stage >= 6 ? lerp(0.06, 0.12, d) : 0,
     splitterChance: stage >= 7 ? lerp(0.06, 0.1, d) : 0,
     homingChance: stage >= 8 ? lerp(0.05, 0.1, d) : 0,
-    enemyFireIntervalMs: lerp(2000, 380, d),
-    // 탄 속도 상한은 그대로 두고, 대신 한 번에 쏘는 탄 수를 늘려 탄막을 두껍게 한다
-    shotSpeed: lerp(160, 420, d),
+    enemyFireIntervalMs: Math.max(MIN_ENEMY_FIRE_INTERVAL_MS, lerp(2000, 380, d) / rush),
+    // 최고 난이도까지는 탄 수를 늘려 탄막을 두껍게 하고, 그 뒤로는 러시 배율만큼 탄도 빨라진다
+    shotSpeed: lerp(160, 420, d) * rush,
     enemyShotCount: Math.round(lerp(1, 5, d)),
   };
 }
