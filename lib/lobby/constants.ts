@@ -43,6 +43,8 @@ export const MINIMAP_COLORS: Record<Tile, readonly [number, number, number]> = {
   log: [110, 63, 34],
   lantern: [140, 191, 63],
   reeds: [90, 130, 50],
+  // 방명록 게시판은 미니맵에서도 찾기 쉽게 밝은 나무색
+  guestbook: [255, 222, 140],
 };
 /** 유저마다 들고 있는 과거 위치 개수 */
 export const MAX_SNAPSHOTS = 8;

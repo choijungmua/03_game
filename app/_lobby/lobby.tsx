@@ -8,7 +8,7 @@ import { type FormEvent, useEffect, useEffectEvent, useRef, useState } from "rea
 
 import { pretendard } from "@/config";
 import { cn } from "@/lib";
-import { Armchair, Fish, HandFist } from "lucide-react";
+import { Armchair, Fish, HandFist, NotebookPen } from "lucide-react";
 import { API_URL } from "@/lib/api-url";
 
 import { Loading } from "@/components/feedback/loading";
@@ -77,9 +77,10 @@ import { markLobbyExit } from "@/components/navigation/lobby-link";
 
 import { CAPYBARA_EMOTES, emoteChat, emoteImage, parseEmoteChat } from "@/lib/games/emotes";
 
-import { BUBBLE_DEPTH, BUBBLE_LINE, BUBBLE_TEXT_WIDTH, EMOTE_SIZE, FISH_BUTTON_SRC, SITE_LINKS } from "./constants";
+import { BUBBLE_DEPTH, BUBBLE_LINE, BUBBLE_TEXT_WIDTH, EMOTE_SIZE, FISH_BUTTON_SRC, FRAME_SRC, SITE_LINKS } from "./constants";
 import { EmotePicker } from "./emote-picker";
 import { FishBag } from "./fish-bag";
+import { GuestbookPanel } from "./guestbook-panel";
 import { KeyboardGuide } from "./keyboard-guide";
 import { SoundToggle } from "./lobby-settings";
 import {
@@ -235,6 +236,8 @@ const DOOR_RADIUS = TILE * 0.9;
 const ENTER_CHARGE_MS = 900;
 /** 통나무 의자 앞 이 거리 안에서 앉을 수 있다 */
 const SEAT_REACH = TILE * 1.4;
+/** 방명록 게시판 앞 이 거리 안에서 Space로 방명록을 연다 */
+const GUESTBOOK_REACH = TILE * 1.5;
 /** 로비 WebSocket 주소 (http→ws, https→wss) */
 const LOBBY_WS_URL = `${API_URL.replace(/^http/, "ws")}/api/lobby/ws`;
 /**
@@ -273,6 +276,7 @@ const TEXTURE_OF: Record<Tile, Texture> = {
   log: "meadow",
   lantern: "meadow",
   reeds: "meadow",
+  guestbook: "meadow",
   mud: "mud",
   water: "water",
   deck: "deck",
@@ -1118,6 +1122,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
   const attackButtonRef = useRef<HTMLButtonElement>(null);
   const sitButtonRef = useRef<HTMLButtonElement>(null);
   const fishButtonRef = useRef<HTMLButtonElement>(null);
+  const guestbookButtonRef = useRef<HTMLButtonElement>(null);
   const lastChatAt = useRef(-Infinity);
   /** 화면(소리 버튼)은 저장값을 구독하고(다른 탭·게임 화면에서 바꿔도 따라간다), 게임 루프는 ref로 같은 설정을 읽는다 */
   const settings = useLobbySettings();
@@ -1132,6 +1137,9 @@ export function Lobby({ games }: { games: DoorGame[] }) {
   const [sitting, setSitting] = useState(false);
   const [seatNearby, setSeatNearby] = useState(false);
   const [waterNearby, setWaterNearby] = useState(false);
+  /** 방명록 게시판 앞에 서 있음 / 방명록 창이 열려 있음 (게시판 앞에서 Space로 연다) */
+  const [guestbookNearby, setGuestbookNearby] = useState(false);
+  const [guestbookOpen, setGuestbookOpen] = useState(false);
   const [fishing, setFishing] = useState(false);
   /** 계속 낚기: 물가에서 Space로 던지면 켜져서 입질마다 알아서 당기고 다시 던진다. Space를 다시 누르거나 걷기·때리기·기절이면 꺼진다. 게임 루프는 ref로 읽는다 */
   const [autoFishing, setAutoFishing] = useState(false);
@@ -1324,6 +1332,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
 
     const nearestDoor = () => world.doors.find((door) => Math.hypot(door.x - me.x, door.y - me.y) < DOOR_RADIUS) ?? null;
     const nearestSeat = () => world.seats.findIndex((seat) => Math.hypot(seat.seatX - me.x, seat.standY - me.y) < SEAT_REACH);
+    const nearGuestbook = () => Math.hypot(world.guestbook.x - me.x, world.guestbook.y - me.y) < GUESTBOOK_REACH;
     const seatTaken = (index: number) => {
       const seat = world.seats[index];
       return [...remotes.values()].some((remote) => remote.sitting && Math.hypot(remote.x - seat.seatX, remote.y - seat.seatY) < 16);
@@ -1352,6 +1361,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
     let shownSitting = false;
     let shownSeat = false;
     let shownWater = false;
+    let shownGuestbook = false;
     let shownFishing = false;
     let shownStunned = false;
     // 내 캐릭터 동작 프레임이 바뀌는 순간에만 효과음을 내려고 지난 프레임을 기억한다
@@ -1467,8 +1477,8 @@ export function Lobby({ games }: { games: DoorGame[] }) {
     resize();
 
     const onKeyDown = (event: KeyboardEvent) => {
-      // 채팅 입력 중엔 WASD·F·Space가 글자로 들어가야 한다
-      if (event.target instanceof HTMLInputElement) return;
+      // 채팅·방명록 입력 중엔 WASD·F·Space가 글자로 들어가야 한다
+      if (event.target instanceof HTMLElement && event.target.closest("input, textarea, [contenteditable]")) return;
       // \ 키 조작법 창은 KeyboardGuide가 연다. 여는 순간 처음 안내 글은 치운다
       if (isShortcutKey(event, "Backslash")) {
         setNotice("");
@@ -1492,7 +1502,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
         event.preventDefault();
         if (!event.repeat) {
           spaceRequest.current = true;
-          flashButton(sitButtonRef.current ?? fishButtonRef.current);
+          flashButton(sitButtonRef.current ?? fishButtonRef.current ?? guestbookButtonRef.current);
         }
       } else if (event.code === "Enter") {
         const door = nearestDoor();
@@ -1784,6 +1794,8 @@ export function Lobby({ games }: { games: DoorGame[] }) {
           stopAuto();
         } else if (me.sitting) {
           standUp();
+        } else if (nearGuestbook()) {
+          setGuestbookOpen(true);
         } else if (nearestSeat() < 0 && water) {
           // 한 번 던지면 멈출 때까지 입질마다 알아서 당기고 다시 던진다 (아래 게임 루프)
           castLine(water, now);
@@ -1801,7 +1813,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
             me.seatIndex = index;
             playSound("sit", settingsRef.current);
           } else {
-            showNotice(index >= 0 ? "누가 이미 앉아 있어요" : "통나무 의자 앞에서 앉고, 물가에서 낚시할 수 있어요");
+            showNotice(index >= 0 ? "누가 이미 앉아 있어요" : "통나무 의자 앞에서 앉고, 물가에서 낚시하고, 게시판 앞에서 방명록을 쓸 수 있어요");
           }
         }
       }
@@ -1939,6 +1951,8 @@ export function Lobby({ games }: { games: DoorGame[] }) {
       const fishingActive = me.fishing !== null && me.fishing.reelAt === Infinity;
       const waterHere = !fishingActive && !me.sitting && !seatHere && nearestWater(tileAt, me.x, me.y, FISH_REACH) !== null;
       if (waterHere !== shownWater) setWaterNearby((shownWater = waterHere));
+      const guestbookHere = !me.sitting && !fishingActive && nearGuestbook();
+      if (guestbookHere !== shownGuestbook) setGuestbookNearby((shownGuestbook = guestbookHere));
       if (fishingActive !== shownFishing) setFishing((shownFishing = fishingActive));
       if (isStunned !== shownStunned) setStunned((shownStunned = isStunned));
 
@@ -2270,7 +2284,10 @@ export function Lobby({ games }: { games: DoorGame[] }) {
     };
   }, [world]);
 
-  const status = stunned ? "기절! 2초 동안 못 움직여요" : notice || (activeDoor ? `${activeDoor.title} 들어가는 중… (Enter로 바로)` : "");
+  const status = stunned
+    ? "기절! 2초 동안 못 움직여요"
+    : notice ||
+      (activeDoor ? `${activeDoor.title} 들어가는 중… (Enter로 바로)` : guestbookNearby && !guestbookOpen ? "Space로 방명록 보기" : "");
 
   const sendChat = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -2378,6 +2395,8 @@ export function Lobby({ games }: { games: DoorGame[] }) {
 
       <KeyboardGuide />
 
+      <GuestbookPanel open={guestbookOpen} onClose={() => setGuestbookOpen(false)} />
+
       {/* 터치 조이스틱: 누른 자리에 나타난다. 위치는 게임 루프가 DOM에 직접 쓴다 */}
       <div ref={joystickRef} hidden aria-hidden="true" className="pointer-events-none fixed left-0 top-0 size-32">
         <NextImage src={`${UI_BASE}/joystick-base.webp`} alt="" width={256} height={256} unoptimized draggable={false} className="absolute inset-0 size-full opacity-90" />
@@ -2421,6 +2440,28 @@ export function Lobby({ games }: { games: DoorGame[] }) {
                 </span>
               </span>
               <span className="rounded-full bg-card/85 px-2 py-0.5 text-caption-3 font-semibold text-text-strong">{sitting ? "일어나기" : "앉기"}</span>
+            </button>
+          )}
+          {guestbookNearby && (
+            <button
+              ref={guestbookButtonRef}
+              type="button"
+              onClick={() => {
+                spaceRequest.current = true;
+              }}
+              aria-expanded={guestbookOpen}
+              aria-label="방명록 보기"
+              aria-keyshortcuts="Space"
+              className="group flex flex-col items-center gap-0.5 rounded-full focus-visible:outline-2 focus-visible:outline-primary"
+            >
+              {/* 나무 테(옷장·효과음과 같은 그림) 안 펠트 판 위에 공책 아이콘 */}
+              <span className="relative block size-14 transition-transform md:size-18 duration-100 motion-safe:group-active:scale-90">
+                <span aria-hidden className="absolute inset-[16%] flex items-center justify-center rounded-full bg-capybara-light text-capybara-dark">
+                  <NotebookPen className="size-6 md:size-7" />
+                </span>
+                <NextImage src={FRAME_SRC} alt="" fill unoptimized sizes="72px" draggable={false} className="drop-shadow-md" />
+              </span>
+              <span className="rounded-full bg-card/85 px-2 py-0.5 text-caption-3 font-semibold text-text-strong">방명록</span>
             </button>
           )}
           {(waterNearby || fishing || autoFishing) && (
