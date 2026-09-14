@@ -40,6 +40,11 @@ function fakeServer() {
 
   const server = {
     holdReads: false,
+    /** 켜면 요청이 서버에 닿지 못한다(서버 꺼짐) */
+    down: false,
+    /** 켜면 방이 사라진다(404) */
+    gone: false,
+    reads: 0,
     release() {
       held.splice(0).forEach((deliver) => deliver());
     },
@@ -47,8 +52,9 @@ function fakeServer() {
       tokens.black = "black-token";
       return ok(tokens.black, tokens.black);
     },
-    join(token?: string) {
+    join(token?: string): RoomResult<GomokuState> {
       if (seatOf(token)) return ok(token, token ?? null);
+      if (tokens.white) return { ok: false, error: "이미 두 명이 들어간 방이에요", status: 409 };
       tokens.white = "white-token";
       version += 1;
       return ok(tokens.white, tokens.white);
@@ -65,6 +71,7 @@ function fakeServer() {
   };
 
   vi.stubGlobal("fetch", (input: string, init?: RequestInit) => {
+    if (server.down) return Promise.reject(new TypeError("Failed to fetch"));
     const url = new URL(input);
     const code = url.pathname.split("/")[5];
     let result: RoomResult<GomokuState>;
@@ -74,7 +81,8 @@ function fakeServer() {
       if (!code) result = server.create();
       else result = body.type === "join" ? server.join(body.token) : server.move(body.token, body.index ?? -1);
     } else {
-      result = ok(url.searchParams.get("token"));
+      server.reads += 1;
+      result = server.gone ? { ok: false, error: "없는 초대 코드예요", status: 404 } : ok(url.searchParams.get("token"));
     }
     const response = { ok: result.ok, json: () => Promise.resolve(result) };
     if (init?.method !== "POST" && server.holdReads) {
@@ -120,7 +128,7 @@ describe("useRoom", () => {
   beforeEach(() => {
     vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
     window.history.replaceState(null, "", "/games/capybara-gomoku");
-    sessionStorage.clear();
+    localStorage.clear();
   });
 
   afterEach(() => {
@@ -177,5 +185,51 @@ describe("useRoom", () => {
       document.dispatchEvent(new Event("visibilitychange", { bubbles: true }));
     });
     await until(() => hook.result.current.view?.state.turn === "white");
+  });
+
+  it("게임 서버에 연결되지 않으면 한국어로 알리고 판을 막았다가, 다시 연결되면 저절로 이어진다", async () => {
+    const { server } = fakeServer();
+    const { result } = renderRoom();
+    act(() => result.current.create());
+    await until(() => result.current.view !== null);
+
+    server.down = true;
+    await tickPoll();
+    await until(() => result.current.reconnecting);
+    expect(result.current.error).toContain("게임 서버에 연결할 수 없어요");
+
+    server.down = false;
+    await act(() => vi.advanceTimersByTimeAsync(2000)); // 한 번 실패한 뒤에는 2초 뒤에 다시 받는다
+    await until(() => !result.current.reconnecting);
+    expect(result.current.error).toBe("");
+  });
+
+  it("대국 중에 방이 사라지면 폴링을 멈추고 사라졌다고 알린다", async () => {
+    const { server } = fakeServer();
+    const { result } = renderRoom();
+    act(() => result.current.create());
+    await until(() => result.current.view !== null);
+
+    server.gone = true;
+    await tickPoll();
+    await until(() => result.current.gone);
+    const reads = server.reads;
+
+    await act(() => vi.advanceTimersByTimeAsync(20_000));
+    expect(server.reads).toBe(reads);
+    expect(result.current.error).toBe("");
+  });
+
+  it("두 명이 이미 들어간 방이면 관전으로 볼 수 있다", async () => {
+    const { server } = fakeServer();
+    server.create();
+    server.join();
+    const { result } = renderRoom();
+
+    act(() => result.current.join(CODE));
+    await until(() => result.current.spectateCode === CODE);
+    act(() => result.current.watch());
+    await until(() => result.current.view?.code === CODE);
+    expect(result.current.view?.you).toBeNull();
   });
 });

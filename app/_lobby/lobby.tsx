@@ -2,15 +2,16 @@
 
 // 캔버스용 new Image()와 이름이 겹치지 않게 NextImage로 가져온다
 import NextImage from "next/image";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { type FormEvent, useEffect, useEffectEvent, useRef, useState } from "react";
 
 import { pretendard } from "@/config";
 import { cn } from "@/lib";
 import { Armchair, HandFist } from "lucide-react";
+import { fetchApi } from "@/lib/api-url";
 
 import { flashButton } from "./shortcut";
-import { API_URL } from "@/lib/api-url";
 
 /** 캔버스는 CSS 폰트를 물려받지 않으니 사이트 폰트(Pretendard) 이름을 직접 쓴다 */
 const CANVAS_FONT = pretendard.style.fontFamily;
@@ -25,13 +26,13 @@ import {
   type SpriteId,
 } from "@/lib/lobby/assets";
 import { Input } from "@/components/inputs/input";
-import { DEFAULT_LOBBY_SETTINGS } from "@/lib/lobby/constants";
+import { DEFAULT_LOBBY_SETTINGS, REMOTE_GONE_MS, REMOTE_RENDER_DELAY_MS } from "@/lib/lobby/constants";
+import { pushSnapshot, sampleSnapshots, type Snapshot } from "@/lib/lobby/interpolation";
 import { type LobbySettings, loadLobbySettings, playSound, saveLobbySettings } from "@/lib/lobby/settings";
 
 import { CAPYBARA_EMOTES, emoteChat, emoteImage, parseEmoteChat } from "@/lib/games/emotes";
 
-import { BUBBLE_LINE, BUBBLE_TEXT_WIDTH, EMOTE_SIZE } from "./constants";
-import { SiteLinks } from "./site-sheet";
+import { BUBBLE_LINE, BUBBLE_TEXT_WIDTH, EMOTE_SIZE, SITE_LINKS } from "./constants";
 import { EmotePicker } from "./emote-picker";
 import { SoundToggle } from "./lobby-settings";
 import {
@@ -112,13 +113,10 @@ interface Remote {
   name: string;
   x: number;
   y: number;
-  /** 마지막으로 받은 위치까지 fromX,Y에서 segMs 동안 일정한 속도로 옮겨 간다 */
-  fromX: number;
-  fromY: number;
-  toX: number;
-  toY: number;
-  receivedAt: number;
-  segMs: number;
+  /** 받은 위치들. 매 프레임 조금 과거(REMOTE_RENDER_DELAY_MS)를 보간해 그린다 (lib/lobby/interpolation.ts) */
+  snapshots: Snapshot[];
+  /** 마지막으로 응답에 들어 있던 시각 */
+  seenAt: number;
   /** 마지막으로 실제로 움직인 시각. 다음 위치를 기다리는 짧은 멈춤에도 걷기 모습을 유지한다 */
   movedAt: number;
   facing: Facing;
@@ -176,6 +174,12 @@ const ENTER_CHARGE_MS = 900;
 /** 통나무 의자 앞 이 거리 안에서 앉을 수 있다 */
 const SEAT_REACH = TILE * 1.4;
 const SYNC_MS = 150;
+/** 동기화 한 번을 기다리는 최대 시간. 넘으면 끊긴 것으로 보고 다음에 다시 보낸다 */
+const SYNC_TIMEOUT_MS = 3000;
+/** 연속 실패 횟수별 다시 보내기까지 쉬는 시간 — 서버가 꺼져 있을 때 150ms마다 두드리지 않는다 */
+const SYNC_BACKOFF_MS = [1000, 2000, 5000, 10_000];
+/** 이만큼 연달아 실패하면 화면에 남은 다른 플레이어를 지운다 */
+const STALE_AFTER_FAILURES = 3;
 /** 텍스처 한 장이 덮는 월드 크기(px) — 타일의 배수여야 칸마다 이어진다 */
 const TEXTURE_SIZE = 192;
 const CHARACTER_BASE = "/assets/images/characters/capybara";
@@ -933,6 +937,9 @@ export function Lobby({ games }: { games: DoorGame[] }) {
     let shownSitting = false;
     let shownSeat = false;
     let shownStunned = false;
+    // 내 캐릭터 동작 프레임이 바뀌는 순간에만 효과음을 내려고 지난 프레임을 기억한다
+    let soundPose: Pose = "stand";
+    let soundIdle: IdleFrame | null = null;
     let noticeTimer = 0;
 
     const showNotice = (text: string) => {
@@ -979,8 +986,8 @@ export function Lobby({ games }: { games: DoorGame[] }) {
     resize();
 
     const onKeyDown = (event: KeyboardEvent) => {
-      // 채팅 입력 중엔 WASD·F·Space가 글자로 들어가야 한다. 약관 패널이 열려 있을 땐 방향키·Space로 글을 스크롤한다
-      if (event.target instanceof HTMLInputElement || (event.target instanceof Element && event.target.closest("dialog[open]"))) return;
+      // 채팅 입력 중엔 WASD·F·Space가 글자로 들어가야 한다
+      if (event.target instanceof HTMLInputElement) return;
       if (KEY_VECTORS[event.code]) {
         event.preventDefault(); // 방향키 스크롤 방지
         pressed.add(event.code);
@@ -1056,8 +1063,11 @@ export function Lobby({ games }: { games: DoorGame[] }) {
 
     // --- 멀티: 내 상태를 보내고 근처 플레이어를 받는다 ---
     let inFlight = false;
+    let failures = 0;
+    let retryAt = 0;
     const sync = () => {
-      if (inFlight) return;
+      // 탭이 가려져 있으면 보내지 않는다(돌아오면 다음 주기에 바로 보낸다). 실패 뒤에는 쉬는 시간이 지나야 다시 보낸다
+      if (inFlight || document.hidden || performance.now() < retryAt) return;
       inFlight = true;
       const sent = { x: me.x, y: me.y };
       const attack = attackQueued;
@@ -1065,11 +1075,15 @@ export function Lobby({ games }: { games: DoorGame[] }) {
       const chat = chatQueued ?? undefined;
       chatQueued = null;
       // ponytail: 150ms 게임 루프라 React Query 없이 직접 보낸다(렌더 없이 캔버스만 갱신)
-      fetch(`${API_URL}/api/lobby`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token, ...sent, facing: me.facing, sitting: me.sitting, attack, outfit: outfitRef.current, chat }),
-      })
+      fetchApi(
+        "/api/lobby",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ token, ...sent, facing: me.facing, sitting: me.sitting, attack, outfit: outfitRef.current, chat }),
+        },
+        SYNC_TIMEOUT_MS,
+      )
         .then(async (response) => {
           const data: Partial<PresenceResponse> = await response.json();
           if (!response.ok || !data.you || !Array.isArray(data.players)) throw new Error("sync failed");
@@ -1102,13 +1116,8 @@ export function Lobby({ games }: { games: DoorGame[] }) {
               heard = `${player.name}: ${emote === null ? player.chat : `${CAPYBARA_EMOTES[emote]} (이모티콘)`}`;
             }
             if (remote) {
-              // 다음 위치가 올 때까지(=지난 수신 간격) 걸쳐 옮긴다. 지수 감속으로 따라가면 받을 때마다 빨라졌다 느려져서 끊겨 보인다
-              remote.fromX = remote.x;
-              remote.fromY = remote.y;
-              remote.toX = player.x;
-              remote.toY = player.y;
-              remote.segMs = Math.min(500, Math.max(SYNC_MS, received - remote.receivedAt));
-              remote.receivedAt = received;
+              pushSnapshot(remote.snapshots, player.x, player.y, received, SYNC_MS);
+              remote.seenAt = received;
               remote.facing = player.facing;
               remote.sitting = player.sitting;
               remote.outfit = player.outfit ?? {};
@@ -1122,12 +1131,8 @@ export function Lobby({ games }: { games: DoorGame[] }) {
                 name: player.name,
                 x: player.x,
                 y: player.y,
-                fromX: player.x,
-                fromY: player.y,
-                toX: player.x,
-                toY: player.y,
-                receivedAt: received,
-                segMs: SYNC_MS,
+                snapshots: [{ x: player.x, y: player.y, at: received }],
+                seenAt: received,
                 movedAt: -Infinity,
                 facing: player.facing,
                 sitting: player.sitting,
@@ -1141,7 +1146,8 @@ export function Lobby({ games }: { games: DoorGame[] }) {
               });
             }
           }
-          for (const id of remotes.keys()) if (!seen.has(id)) remotes.delete(id);
+          // 한 번 응답에서 빠졌다고 바로 지우면 사라졌다 다시 나타나 깜빡인다
+          for (const [id, remote] of remotes) if (!seen.has(id) && received - remote.seenAt > REMOTE_GONE_MS) remotes.delete(id);
           if (heard) {
             setHeardChat(heard);
             playSound("chat", settingsRef.current);
@@ -1150,9 +1156,18 @@ export function Lobby({ games }: { games: DoorGame[] }) {
             hitEffects.set(data.hit, received + 450);
             playSound("hit", settingsRef.current);
           }
+          failures = 0;
+          retryAt = 0;
         })
         // 연결이 끊겨도 따로 알리지 않는다. 다음 동기화에서 다시 붙으면 다른 유저가 그대로 보인다
-        .catch(() => {})
+        .catch(() => {
+          // 보내지 못한 채팅은 다음 동기화에 다시 싣는다 (때리기는 지난 입력이라 버린다)
+          if (chat && chatQueued === null) chatQueued = chat;
+          failures += 1;
+          retryAt = performance.now() + SYNC_BACKOFF_MS[Math.min(failures, SYNC_BACKOFF_MS.length) - 1];
+          // 연달아 끊기면 멈춘 다른 플레이어가 그 자리에 서 있지 않게 지운다 (한 번 튀는 끊김에는 그대로 둔다)
+          if (failures >= STALE_AFTER_FAILURES) remotes.clear();
+        })
         .finally(() => {
           inFlight = false;
         });
@@ -1215,6 +1230,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
             me.facing = "down";
             me.sitting = true;
             me.seatIndex = index;
+            playSound("sit", settingsRef.current);
           } else {
             showNotice(index >= 0 ? "누가 이미 앉아 있어요" : "통나무 의자 앞에서 앉을 수 있어요");
           }
@@ -1273,6 +1289,15 @@ export function Lobby({ games }: { games: DoorGame[] }) {
       me.pose = moved ? walkPose(me.walkDist) : "stand";
       const attacking = now < me.attackUntil;
       me.idleMs = moved || wantsMove || me.sitting || isStunned || attacking ? 0 : nextIdle(me.idleMs, dt);
+      // 발을 내딛는 프레임마다 톡, 긁는 박자마다 슥슥, 하품을 시작할 때 하아암
+      if (me.pose !== soundPose && me.pose !== "stand") playSound("step", settingsRef.current);
+      soundPose = me.pose;
+      const idleFrame = idleSprite(me.idleMs);
+      if (idleFrame !== soundIdle) {
+        if (idleFrame === "scratch-2" || idleFrame === "scratch-3") playSound("scratch", settingsRef.current);
+        if (idleFrame === "yawn-1") playSound("yawn", settingsRef.current);
+        soundIdle = idleFrame;
+      }
 
       const follow = reducedMotion ? 1 : Math.min(1, dt / 120);
       camera.x += (me.x - camera.x) * follow;
@@ -1293,10 +1318,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
       if (isStunned !== shownStunned) setStunned((shownStunned = isStunned));
 
       for (const remote of remotes.values()) {
-        // rAF 시각이 수신 시각보다 살짝 이를 수 있어서 0 아래로 내려가지 않게 한다
-        const t = Math.max(0, Math.min(1, (now - remote.receivedAt) / remote.segMs));
-        const nextX = remote.fromX + (remote.toX - remote.fromX) * t;
-        const nextY = remote.fromY + (remote.toY - remote.fromY) * t;
+        const { x: nextX, y: nextY } = sampleSnapshots(remote.snapshots, now - REMOTE_RENDER_DELAY_MS);
         const step = Math.hypot(nextX - remote.x, nextY - remote.y);
         remote.x = nextX;
         remote.y = nextY;
@@ -1681,7 +1703,21 @@ export function Lobby({ games }: { games: DoorGame[] }) {
             <span className="rounded-full bg-card/85 px-2 py-0.5 text-caption-3 font-semibold text-text-strong">때리기</span>
           </button>
         </div>
-        <SiteLinks />
+        <nav aria-label="사이트 정보" className="flex items-center gap-3 text-caption-3 drop-shadow-md">
+          {SITE_LINKS.map(({ href, label }) => (
+            <Link
+              key={href}
+              href={href}
+              className={cn(
+                "flex min-h-6 items-center rounded-sm transition-colors focus-visible:outline-2 focus-visible:outline-primary",
+                // 문의는 있는 듯 없는 듯 옅게
+                href === "/contact" ? "text-white/45 hover:text-white/80" : "text-white/85 hover:text-white",
+              )}
+            >
+              {label}
+            </Link>
+          ))}
+        </nav>
       </div>
     </>
   );

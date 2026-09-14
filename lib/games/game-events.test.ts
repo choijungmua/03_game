@@ -21,12 +21,17 @@ describe("게임 이벤트 → 백엔드", () => {
 
     const sessionId = sessionStorage.getItem("game-session-id");
     expect(sessionId).toMatch(/^[0-9a-f-]{36}$/);
-    expect(fetchMock).toHaveBeenNthCalledWith(1, `${API}/visits`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ sessionId }),
-      keepalive: true,
-    });
+    // 서버가 꺼져 있어도 오래 매달리지 않게 제한 시간 signal도 같이 넘긴다
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      `${API}/visits`,
+      expect.objectContaining({
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId }),
+        keepalive: true,
+      }),
+    );
     expect(fetchMock.mock.calls[1][0]).toBe(`${API}/records`);
     expect(fetchMock.mock.calls[1][1].body).toBe(JSON.stringify({ sessionId, score: 231, data: record }));
     expect(fetchMock.mock.calls[2][0]).toBe(`${API}/shares`);
