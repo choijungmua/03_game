@@ -8,6 +8,8 @@ export const EMOTE_SIZE = 60;
 export const EMOTE_PICKER_ICON = 3;
 /** 앉기·때리기 버튼과 같은 나무 테두리 (punch.webp에서 테두리만 오려낸 그림). 프로필·효과음 원 위에 덮는다 */
 export const FRAME_SRC = "/assets/images/ui/lobby/frame.webp";
+/** 단축키(F·Space·P·M)로 누른 버튼에 hover 아이콘을 잠깐 띄우는 시간(ms) */
+export const SHORTCUT_FLASH_MS = 300;
 
 /** 로비 하단에 늘 보이는 사이트 정보 링크 (애드센스 심사에서 찾을 수 있어야 한다) */
 export const SITE_LINKS = [

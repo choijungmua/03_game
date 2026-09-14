@@ -8,6 +8,8 @@ import { type FormEvent, useEffect, useEffectEvent, useRef, useState } from "rea
 import { pretendard } from "@/config";
 import { cn } from "@/lib";
 import { Armchair, HandFist } from "lucide-react";
+
+import { flashButton } from "./shortcut";
 import { API_URL } from "@/lib/api-url";
 
 /** 캔버스는 CSS 폰트를 물려받지 않으니 사이트 폰트(Pretendard) 이름을 직접 쓴다 */
@@ -721,6 +723,9 @@ export function Lobby({ games }: { games: DoorGame[] }) {
   /** 보낼 채팅. 게임 루프가 가져가 말풍선을 띄우고 다음 동기화에 실어 보낸다 */
   const chatRequest = useRef<string | null>(null);
   const chatInputRef = useRef<HTMLInputElement>(null);
+  /** F·Space로 때리기·앉기를 누르면 버튼에 hover 아이콘을 잠깐 띄우려고 둔다 */
+  const attackButtonRef = useRef<HTMLButtonElement>(null);
+  const sitButtonRef = useRef<HTMLButtonElement>(null);
   const lastChatAt = useRef(-Infinity);
   /** 화면(설정 창·소리 버튼)은 state, 게임 루프는 ref로 같은 설정을 읽는다 */
   const [settings, setSettings] = useState<LobbySettings>(DEFAULT_LOBBY_SETTINGS);
@@ -982,14 +987,20 @@ export function Lobby({ games }: { games: DoorGame[] }) {
         return;
       }
       if (ATTACK_KEYS.has(event.code)) {
-        if (!event.repeat) attackRequest.current = true;
+        if (!event.repeat) {
+          attackRequest.current = true;
+          flashButton(attackButtonRef.current);
+        }
         return;
       }
       // 버튼·링크에 포커스가 있으면 Space/Enter는 그 요소의 기본 동작(누르기)에 맡긴다
       if (event.target instanceof HTMLElement && event.target.closest("a, button")) return;
       if (event.code === "Space") {
         event.preventDefault();
-        if (!event.repeat) sitRequest.current = true;
+        if (!event.repeat) {
+          sitRequest.current = true;
+          flashButton(sitButtonRef.current);
+        }
       } else if (event.code === "Enter") {
         const door = nearestDoor();
         if (door) {
@@ -1605,6 +1616,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
         <div className="flex flex-col items-center gap-2">
           {(seatNearby || sitting) && (
             <button
+              ref={sitButtonRef}
               type="button"
               onClick={() => {
                 sitRequest.current = true;
@@ -1628,7 +1640,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
                 {/* 마우스를 올리거나 키보드 포커스면 나무 테 안쪽 판 위에 의자 아이콘 (프로필·효과음과 같은 방식) */}
                 <span
                   aria-hidden
-                  className="absolute inset-[16%] flex items-center justify-center rounded-full bg-overlay text-white opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-visible:opacity-100 motion-reduce:transition-none"
+                  className="absolute inset-[16%] flex items-center justify-center rounded-full bg-overlay text-white opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-visible:opacity-100 group-data-flash:opacity-100 motion-reduce:transition-none"
                 >
                   <Armchair className="size-7" />
                 </span>
@@ -1637,6 +1649,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
             </button>
           )}
           <button
+            ref={attackButtonRef}
             type="button"
             onClick={() => {
               attackRequest.current = true;
@@ -1660,7 +1673,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
               {/* 마우스를 올리거나 키보드 포커스면 나무 테 안쪽 판 위에 주먹 아이콘 (프로필·효과음과 같은 방식) */}
               <span
                 aria-hidden
-                className="absolute inset-[16%] flex items-center justify-center rounded-full bg-overlay text-white opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-visible:opacity-100 motion-reduce:transition-none"
+                className="absolute inset-[16%] flex items-center justify-center rounded-full bg-overlay text-white opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-visible:opacity-100 group-data-flash:opacity-100 motion-reduce:transition-none"
               >
                 <HandFist className="size-7" />
               </span>

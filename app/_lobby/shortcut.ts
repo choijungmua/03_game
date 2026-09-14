@@ -1,5 +1,25 @@
+import { SHORTCUT_FLASH_MS } from "./constants";
+
 /** 로비 단축키(P 프로필·M 소리·, 이모티콘)로 처리할 키인지. 채팅 입력 중·약관 패널이 열린 중·조합키(Ctrl·Cmd·Alt)·꾹 눌러 반복되는 입력은 무시한다 */
 export function isShortcutKey(event: KeyboardEvent, code: string) {
   if (event.code !== code || event.repeat || event.ctrlKey || event.metaKey || event.altKey) return false;
   return !(event.target instanceof HTMLElement && event.target.closest("input, textarea, [contenteditable], dialog[open]"));
+}
+
+const flashTimers = new WeakMap<HTMLElement, ReturnType<typeof setTimeout>>();
+
+/**
+ * 단축키로 누른 버튼에 hover와 같은 아이콘을 잠깐 띄운다. 요소에 data-flash를 붙였다 떼고, 아이콘은 group-data-flash로 보인다.
+ * 연달아 누르면 마지막 입력부터 다시 센다. 게임 루프에서도 부르니 state 대신 DOM에 직접 쓴다
+ */
+export function flashButton(element: HTMLElement | null) {
+  if (!element) return;
+  clearTimeout(flashTimers.get(element));
+  element.dataset.flash = "";
+  flashTimers.set(
+    element,
+    setTimeout(() => {
+      delete element.dataset.flash;
+    }, SHORTCUT_FLASH_MS),
+  );
 }
