@@ -11,7 +11,7 @@ import { fishCatchSrc, type FishInventory } from "@/lib/lobby/fishing";
 import { FISH_BAG_SRC } from "./constants";
 import { flashButton, isShortcutKey } from "./shortcut";
 
-/** 오른쪽 위 잎 바구니 버튼. 누르면 그 자리에서 커지며 지금까지 낚은 것들이 보인다 (옷장과 같은 방식) */
+/** 오른쪽 위 카피바라 백팩 버튼. 누르면 그 자리에서 커지며 지금까지 낚은 것들이 보인다 (옷장과 같은 방식) */
 export function FishBag({ inventory }: { inventory: FishInventory }) {
   const [open, setOpen] = useState(false);
   const openButtonRef = useRef<HTMLButtonElement>(null);
