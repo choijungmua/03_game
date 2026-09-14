@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { recordGameVisit, submitGameRecord } from "./supabase";
+import { recordGameShare, recordGameVisit, submitGameRecord } from "./supabase";
 
 const RPC = "https://example.supabase.co/rest/v1/rpc";
 
@@ -35,6 +35,12 @@ describe("Supabase RPC", () => {
     expect(fetchMock.mock.calls[1][0]).toBe(`${RPC}/submit_game_record`);
     expect(fetchMock.mock.calls[1][1].body).toBe(
       JSON.stringify({ p_slug: "reaction-time", p_session_id: sessionId, p_score: 231, p_data: record }),
+    );
+
+    await recordGameShare("reaction-time", "clipboard");
+    expect(fetchMock.mock.calls[2][0]).toBe(`${RPC}/record_game_share`);
+    expect(fetchMock.mock.calls[2][1].body).toBe(
+      JSON.stringify({ p_slug: "reaction-time", p_session_id: sessionId, p_method: "clipboard" }),
     );
   });
 

@@ -35,6 +35,11 @@ export function recordGameVisit(slug: string) {
   return callRpc("record_game_visit", { p_slug: slug, p_session_id: getSessionId() });
 }
 
+/** 공유 완료 1회 기록. native = 기기 공유 창, clipboard = 링크 복사 */
+export function recordGameShare(slug: string, method: "native" | "clipboard") {
+  return callRpc("record_game_share", { p_slug: slug, p_session_id: getSessionId(), p_method: method });
+}
+
 /** 한 판 기록 적재. score는 그 게임의 순위 기준 값, data는 기록 객체 전체 */
 export function submitGameRecord(slug: string, score: number, data: object) {
   return callRpc("submit_game_record", {
