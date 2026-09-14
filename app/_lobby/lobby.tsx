@@ -8,7 +8,7 @@ import { type FormEvent, useEffect, useEffectEvent, useRef, useState } from "rea
 
 import { pretendard } from "@/config";
 import { cn } from "@/lib";
-import { Armchair, HandFist } from "lucide-react";
+import { Armchair, Fish, HandFist } from "lucide-react";
 import { API_URL } from "@/lib/api-url";
 
 import { flashButton } from "./shortcut";
@@ -26,13 +26,22 @@ import {
   type SpriteId,
 } from "@/lib/lobby/assets";
 import { Input } from "@/components/inputs/input";
-import { DEFAULT_LOBBY_SETTINGS, REMOTE_GONE_MS, REMOTE_RENDER_DELAY_MS } from "@/lib/lobby/constants";
+import {
+  DEFAULT_LOBBY_SETTINGS,
+  FISH_BITE_MAX_MS,
+  FISH_BITE_MIN_MS,
+  FISH_BITE_WINDOW_MS,
+  FISH_CATCHES,
+  FISH_REACH,
+  REMOTE_GONE_MS,
+  REMOTE_RENDER_DELAY_MS,
+} from "@/lib/lobby/constants";
 import { pushSnapshot, sampleSnapshots, type Snapshot } from "@/lib/lobby/interpolation";
 import { type LobbySettings, loadLobbySettings, playSound, saveLobbySettings } from "@/lib/lobby/settings";
 
 import { CAPYBARA_EMOTES, emoteChat, emoteImage, parseEmoteChat } from "@/lib/games/emotes";
 
-import { BUBBLE_LINE, BUBBLE_TEXT_WIDTH, EMOTE_SIZE, SITE_LINKS } from "./constants";
+import { BUBBLE_LINE, BUBBLE_TEXT_WIDTH, EMOTE_SIZE, FRAME_SRC, SITE_LINKS } from "./constants";
 import { EmotePicker } from "./emote-picker";
 import { SoundToggle } from "./lobby-settings";
 import {
@@ -77,6 +86,7 @@ import {
   hash2,
   isBlockingTile,
   LOBBY_SEED,
+  nearestWater,
   SPRING_RADIUS,
   TILE,
   type Tile,
@@ -722,7 +732,8 @@ function facingOf(dx: number, dy: number): Facing {
 export function Lobby({ games }: { games: DoorGame[] }) {
   const router = useRouter();
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const sitRequest = useRef(false);
+  /** Space(앉기·낚시 버튼): 통나무 앞이면 앉기·일어나기, 물가면 찌 던지기·당기기 */
+  const spaceRequest = useRef(false);
   const attackRequest = useRef(false);
   const joystickRef = useRef<HTMLDivElement>(null);
   const knobRef = useRef<HTMLDivElement>(null);
@@ -734,6 +745,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
   /** F·Space로 때리기·앉기를 누르면 버튼에 hover 아이콘을 잠깐 띄우려고 둔다 */
   const attackButtonRef = useRef<HTMLButtonElement>(null);
   const sitButtonRef = useRef<HTMLButtonElement>(null);
+  const fishButtonRef = useRef<HTMLButtonElement>(null);
   const lastChatAt = useRef(-Infinity);
   /** 화면(설정 창·소리 버튼)은 state, 게임 루프는 ref로 같은 설정을 읽는다 */
   const [settings, setSettings] = useState<LobbySettings>(DEFAULT_LOBBY_SETTINGS);
@@ -744,6 +756,8 @@ export function Lobby({ games }: { games: DoorGame[] }) {
   const [activeDoor, setActiveDoor] = useState<Door | null>(null);
   const [sitting, setSitting] = useState(false);
   const [seatNearby, setSeatNearby] = useState(false);
+  const [waterNearby, setWaterNearby] = useState(false);
+  const [fishing, setFishing] = useState(false);
   const [stunned, setStunned] = useState(false);
   const [notice, setNotice] = useState("");
   // 게임 루프 effect가 router 변경으로 다시 실행되면 캐릭터·멀티 상태가 초기화되므로 이벤트로 감싼다
@@ -895,6 +909,8 @@ export function Lobby({ games }: { games: DoorGame[] }) {
       facingSince: 0,
       chat: "",
       chatUntil: 0,
+      /** 낚시 중이면 찌 위치(물 타일 가운데, px)와 입질 시각. 내 화면에만 보인다 */
+      fishing: null as { x: number; y: number; biteAt: number; bit: boolean } | null,
       /** 서버가 정해 준 이름표. 첫 동기화 전엔 비어 있다 */
       name: "",
     };
@@ -940,6 +956,8 @@ export function Lobby({ games }: { games: DoorGame[] }) {
     let shownDoor: Door | null = null;
     let shownSitting = false;
     let shownSeat = false;
+    let shownWater = false;
+    let shownFishing = false;
     let shownStunned = false;
     // 내 캐릭터 동작 프레임이 바뀌는 순간에만 효과음을 내려고 지난 프레임을 기억한다
     let soundPose: Pose = "stand";
@@ -1009,8 +1027,8 @@ export function Lobby({ games }: { games: DoorGame[] }) {
       if (event.code === "Space") {
         event.preventDefault();
         if (!event.repeat) {
-          sitRequest.current = true;
-          flashButton(sitButtonRef.current);
+          spaceRequest.current = true;
+          flashButton(sitButtonRef.current ?? fishButtonRef.current);
         }
       } else if (event.code === "Enter") {
         const door = nearestDoor();
@@ -1111,6 +1129,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
         }
         me.stunUntil = received + data.you.stunMs;
         if (me.sitting) standUp();
+        me.fishing = null;
       } else if (data.corrected && !blocked(data.you.x, data.you.y)) {
         // 서버가 순간이동으로 판단해 위치를 고쳤을 때만 따른다 (you는 조금 전에 보낸 위치라 매번 따르면 뒤로 튄다)
         me.x = data.you.x;
@@ -1245,12 +1264,30 @@ export function Lobby({ games }: { games: DoorGame[] }) {
       }
       const wantsMove = dx !== 0 || dy !== 0;
 
-      if (sitRequest.current) {
-        sitRequest.current = false;
+      if (spaceRequest.current) {
+        spaceRequest.current = false;
+        const water = me.fishing || me.sitting ? null : nearestWater(tileAt, me.x, me.y, FISH_REACH);
         if (isStunned) {
           // 기절 중엔 무시
+        } else if (me.fishing) {
+          // 당기기: 찌가 쑥 들어간 뒤(입질)에 당겨야 낚인다. 늦으면 아래에서 먼저 놓친다
+          const bit = now >= me.fishing.biteAt;
+          me.fishing = null;
+          if (bit) {
+            const catchName = FISH_CATCHES[Math.floor(Math.random() * FISH_CATCHES.length)];
+            me.chat = `🎣 ${catchName}!`;
+            me.chatUntil = now + CHAT_MS;
+            showNotice(`${catchName} 낚았어요!`);
+            playSound("fishCatch", settingsRef.current);
+          } else {
+            showNotice("너무 빨리 당겼어요. 찌가 쑥 들어가면 당겨요");
+          }
         } else if (me.sitting) {
           standUp();
+        } else if (nearestSeat() < 0 && water) {
+          me.fishing = { x: water.x, y: water.y, biteAt: now + FISH_BITE_MIN_MS + Math.random() * (FISH_BITE_MAX_MS - FISH_BITE_MIN_MS), bit: false };
+          me.facing = facingOf(water.x - me.x, water.y - me.y);
+          playSound("fishCast", settingsRef.current);
         } else {
           const index = nearestSeat();
           if (index >= 0 && !seatTaken(index)) {
@@ -1263,7 +1300,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
             me.seatIndex = index;
             playSound("sit", settingsRef.current);
           } else {
-            showNotice(index >= 0 ? "누가 이미 앉아 있어요" : "통나무 의자 앞에서 앉을 수 있어요");
+            showNotice(index >= 0 ? "누가 이미 앉아 있어요" : "통나무 의자 앞에서 앉고, 물가에서 낚시할 수 있어요");
           }
         }
       }
@@ -1271,6 +1308,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
         attackRequest.current = false;
         if (!isStunned && now - me.lastAttackAt >= ATTACK_COOLDOWN_MS) {
           if (me.sitting) standUp();
+          me.fishing = null;
           me.attackUntil = now + ATTACK_MS;
           me.lastAttackAt = now;
           attackQueued = true;
@@ -1285,6 +1323,14 @@ export function Lobby({ games }: { games: DoorGame[] }) {
         chatRequest.current = null;
       }
       if (wantsMove && me.sitting) standUp(); // 움직이면 일어난다
+      if (wantsMove) me.fishing = null; // 움직이면 낚싯대를 거둔다
+      if (me.fishing && !me.fishing.bit && now >= me.fishing.biteAt) {
+        me.fishing.bit = true;
+        playSound("fishBite", settingsRef.current);
+      } else if (me.fishing && now > me.fishing.biteAt + FISH_BITE_WINDOW_MS) {
+        me.fishing = null;
+        showNotice("물고기가 도망갔어요");
+      }
 
       const startX = me.x;
       const startY = me.y;
@@ -1319,7 +1365,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
       me.walkDist = moved ? me.walkDist + Math.hypot(me.x - startX, me.y - startY) : 0;
       me.pose = moved ? walkPose(me.walkDist) : "stand";
       const attacking = now < me.attackUntil;
-      me.idleMs = moved || wantsMove || me.sitting || isStunned || attacking ? 0 : nextIdle(me.idleMs, dt);
+      me.idleMs = moved || wantsMove || me.sitting || me.fishing || isStunned || attacking ? 0 : nextIdle(me.idleMs, dt);
       // 발을 내딛는 프레임마다 톡, 긁는 박자마다 슥슥, 하품을 시작할 때 하아암
       if (me.pose !== soundPose && me.pose !== "stand") {
         // 발 밑 타일에 따라 풀밭 사각, 나무 데크 통, 진흙 철퍽
@@ -1350,6 +1396,9 @@ export function Lobby({ games }: { games: DoorGame[] }) {
       if (me.sitting !== shownSitting) setSitting((shownSitting = me.sitting));
       const seatHere = !me.sitting && nearestSeat() >= 0;
       if (seatHere !== shownSeat) setSeatNearby((shownSeat = seatHere));
+      const waterHere = !me.fishing && !me.sitting && !seatHere && nearestWater(tileAt, me.x, me.y, FISH_REACH) !== null;
+      if (waterHere !== shownWater) setWaterNearby((shownWater = waterHere));
+      if ((me.fishing !== null) !== shownFishing) setFishing((shownFishing = me.fishing !== null));
       if (isStunned !== shownStunned) setStunned((shownStunned = isStunned));
 
       for (const remote of remotes.values()) {
@@ -1430,6 +1479,24 @@ export function Lobby({ games }: { games: DoorGame[] }) {
           }
         }
       }
+      // 낚시 찌: 물 위에 떠 있어서 수련처럼 바닥 다음에 그린다. 입질이 오면 물결이 커지며 쑥 가라앉는다
+      const fishing = me.fishing;
+      const biting = fishing !== null && now >= fishing.biteAt;
+      const bobberY = fishing ? fishing.y + (biting ? 4 : reducedMotion ? 0 : Math.sin(now / 300) * 1.5) : 0;
+      if (fishing) {
+        ctx.fillStyle = "rgba(255,255,255,0.35)";
+        ctx.beginPath();
+        ctx.ellipse(fishing.x, fishing.y + 3, biting ? 11 : 7, biting ? 4.5 : 3, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = "#e5484d";
+        ctx.beginPath();
+        ctx.arc(fishing.x, bobberY - 2, 4, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = "#fff";
+        ctx.beginPath();
+        ctx.arc(fishing.x, bobberY - 5, 2.2, 0, Math.PI * 2);
+        ctx.fill();
+      }
       world.buildings.forEach((building) => {
         const centerX = (building.tx + BUILDING_WIDTH / 2) * TILE;
         if (!inView(centerX, building.frontY, TILE * 8)) return;
@@ -1502,6 +1569,28 @@ export function Lobby({ games }: { games: DoorGame[] }) {
       drawables.sort((a, b) => a.y - b.y);
       for (const item of drawables) item.draw();
 
+      // 낚싯대(앞발 → 바라보는 쪽 위로)와 끝에서 찌까지 늘어진 줄
+      if (fishing) {
+        const [vx, vy] = FACING_VECTORS[me.facing];
+        const handX = drawnX + vx * 14;
+        const handY = drawnY - 26 + vy * 6;
+        const tipX = handX + vx * 26;
+        const tipY = handY - 28 + vy * 8;
+        ctx.lineCap = "round";
+        ctx.strokeStyle = "#7a4a22";
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.moveTo(handX, handY);
+        ctx.lineTo(tipX, tipY);
+        ctx.stroke();
+        ctx.strokeStyle = "rgba(255,255,255,0.8)";
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(tipX, tipY);
+        ctx.quadraticCurveTo((tipX + fishing.x) / 2, Math.max(tipY, bobberY) + (biting ? 0 : 12), fishing.x, bobberY - 4);
+        ctx.stroke();
+      }
+
       for (const item of world.doors) {
         if (inView(item.x, item.y, TILE * 4)) drawLabel(ctx, item.title, item.x, item.y + TILE * 0.85, true);
       }
@@ -1512,7 +1601,9 @@ export function Lobby({ games }: { games: DoorGame[] }) {
       }
       const myLabelY = drawnY - (me.sitting ? SIT_SIZE : STAND_SIZE) - 8;
       if (me.name) drawLabel(ctx, me.name, drawnX, myLabelY);
-      if (now < me.chatUntil) drawSpeech(me.chat, drawnX, me.name ? myLabelY - 10 : myLabelY + 4);
+      const mySpeechY = me.name ? myLabelY - 10 : myLabelY + 4;
+      if (biting) drawBubble(ctx, "!", drawnX, mySpeechY);
+      else if (now < me.chatUntil) drawSpeech(me.chat, drawnX, mySpeechY);
       for (const [id, until] of hitEffects) {
         const target = remotes.get(id);
         const progress = 1 - (until - now) / 450;
@@ -1656,7 +1747,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
         {settings.showHelp && (
           <p className="max-w-full text-balance rounded-lg bg-card/80 px-3 py-1.5 text-center text-caption-3 text-text-caption backdrop-blur">
             <span className="[@media(pointer:coarse)]:hidden">
-              방향키·WASD 걷기 · F 때리기 · 통나무 앞에서 Space 앉기 · Enter 채팅 · , 이모티콘 · P 프로필 · M 소리 · 오두막 문 앞에 가면 입장
+              방향키·WASD 걷기 · F 때리기 · 통나무 앞 Space 앉기 · 물가 Space 낚시 · Enter 채팅 · , 이모티콘 · P 프로필 · M 소리 · 오두막 문 앞에 가면 입장
             </span>
             <span className="hidden [@media(pointer:coarse)]:inline">화면을 누른 채 끌면 그쪽으로 걸어요 · 오두막 문 앞에 가면 입장</span>
           </p>
@@ -1679,7 +1770,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
               ref={sitButtonRef}
               type="button"
               onClick={() => {
-                sitRequest.current = true;
+                spaceRequest.current = true;
               }}
               aria-pressed={sitting}
               aria-label={sitting ? "일어나기" : "통나무에 앉기"}
@@ -1706,6 +1797,26 @@ export function Lobby({ games }: { games: DoorGame[] }) {
                 </span>
               </span>
               <span className="rounded-full bg-card/85 px-2 py-0.5 text-caption-3 font-semibold text-text-strong">{sitting ? "일어나기" : "앉기"}</span>
+            </button>
+          )}
+          {(waterNearby || fishing) && (
+            <button
+              ref={fishButtonRef}
+              type="button"
+              onClick={() => {
+                spaceRequest.current = true;
+              }}
+              aria-pressed={fishing}
+              aria-label={fishing ? "낚싯대 당기기" : "낚시하기"}
+              aria-keyshortcuts="Space"
+              className="group flex flex-col items-center gap-0.5 rounded-full focus-visible:outline-2 focus-visible:outline-primary"
+            >
+              {/* 그림 버튼이 아직 없어서 옷장 버튼처럼 나무 테 안에 아이콘을 둔다 */}
+              <span className="relative flex size-18 items-center justify-center rounded-full bg-card/90 text-text-strong shadow-md transition-transform duration-100 motion-safe:group-active:scale-90 group-hover:text-primary group-data-flash:text-primary">
+                <Fish className="size-8" aria-hidden />
+                <NextImage src={FRAME_SRC} alt="" fill unoptimized sizes="72px" draggable={false} />
+              </span>
+              <span className="rounded-full bg-card/85 px-2 py-0.5 text-caption-3 font-semibold text-text-strong">{fishing ? "당기기" : "낚시"}</span>
             </button>
           )}
           <button
