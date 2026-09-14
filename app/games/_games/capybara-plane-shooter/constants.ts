@@ -26,6 +26,7 @@ export const SOUND_GAP_MS = {
   bossShot: 220,
   shieldBlock: 90,
   dasherWarn: 250,
+  summon: 400,
 } as const;
 
 export const PLANE_SHOOTER_SOUNDS = {
@@ -131,6 +132,24 @@ export const PLANE_SHOOTER_SOUNDS = {
   bossPattern: [
     { kind: "tone", wave: "square", from: 520, to: 520, ms: 60, level: 0.05 },
     { at: 70, kind: "tone", wave: "square", from: 780, to: 780, ms: 60, level: 0.05 },
+  ],
+  /** 뿅뿅뿅: 보스가 돌격을 마치고 어지러워 기절 */
+  bossStun: [
+    { kind: "tone", wave: "sine", from: 900, to: 600, ms: 90, level: 0.08 },
+    { at: 110, kind: "tone", wave: "sine", from: 1000, to: 700, ms: 90, level: 0.08 },
+    { at: 220, kind: "tone", wave: "sine", from: 1100, to: 800, ms: 120, level: 0.08 },
+  ],
+  /** 위이잉: 레이저 충전 예고 */
+  laserWarn: [{ kind: "tone", wave: "sawtooth", from: 200, to: 900, ms: 850, level: 0.05, attack: 200 }],
+  /** 지이이잉: 레이저 발사 */
+  laserBeam: [
+    { kind: "tone", wave: "square", from: 140, to: 130, ms: 1500, level: 0.05, attack: 20 },
+    { kind: "noise", filter: "bandpass", q: 2, from: 1800, to: 1400, ms: 1500, level: 0.12, attack: 20 },
+  ],
+  /** 붕붕: 보스가 말벌 부하를 부름 */
+  summon: [
+    { kind: "tone", wave: "sawtooth", from: 180, to: 220, ms: 160, level: 0.05 },
+    { at: 140, kind: "tone", wave: "sawtooth", from: 200, to: 250, ms: 160, level: 0.05 },
   ],
   /** 삐삐: 돌격 예고 */
   chargeWindup: GAME_SOUNDS.warning,

@@ -4,7 +4,7 @@ export type EnemyKind = "straight" | "zigzag" | "shooter" | "shield" | "dasher" 
 /** 적이 떨어뜨리는 아이템 (기본총은 시작할 때만 쓴다) */
 export type DropKind = Exclude<ItemKind, "basic">;
 /** 보스 공격 패턴: 원형 확산 · 돌격 · 격자 · 조준 부채꼴 · 나선 */
-export type BossPattern = "ring" | "charge" | "grid" | "fan" | "spiral";
+export type BossPattern = "ring" | "charge" | "grid" | "fan" | "spiral" | "summon" | "laser" | "guard";
 /** 스킬: 방어막(잠깐 무적) · 폭주(무기 레벨 잠깐 +3) · 폭탄(적 탄 제거 + 큰 피해) */
 export type SkillKind = "barrier" | "overdrive" | "bomb";
 
@@ -98,6 +98,11 @@ export interface GameState {
   bossChargeX: number;
   /** 격자 패턴에서 줄마다 반 칸씩 어긋나게 하려고 센다 */
   bossGridRow: number;
+  /** 돌격을 마친 보스가 기절한 남은 시간. 이 동안은 움직이지도 쏘지도 않고 피해를 BOSS_STUN_DAMAGE배로 받는다 */
+  bossStunMs: number;
+  /** 레이저가 지나가는 x와 휩쓰는 방향 */
+  bossLaserX: number;
+  bossLaserDir: -1 | 1;
   bullets: Bullet[];
   enemies: Enemy[];
   shots: Shot[];
@@ -134,14 +139,17 @@ export const BOSS_RADIUS = 44;
 /** 보스가 내려와 멈추는 높이 */
 export const BOSS_Y_RATIO = 0.18;
 /** 보스전 한 번에 패턴이 이 순서로 돌아간다. 보스마다 시작 패턴이 한 칸씩 밀린다 */
-export const BOSS_PATTERNS: readonly BossPattern[] = ["ring", "charge", "grid", "fan", "spiral"];
-/** 패턴 하나를 유지하는 시간 */
+export const BOSS_PATTERNS: readonly BossPattern[] = ["ring", "charge", "grid", "fan", "spiral", "summon", "laser", "guard"];
+/** 패턴 하나를 유지하는 시간 (돌격은 내리꽂고 돌아올 만큼, 레이저는 예고와 휩쓸기가 끝날 만큼) */
 export const BOSS_PATTERN_MS: Record<BossPattern, number> = {
   ring: 4000,
-  charge: 2800,
+  charge: 4200,
   grid: 4500,
   fan: 3500,
   spiral: 4000,
+  summon: 4000,
+  laser: 3200,
+  guard: 4500,
 };
 export const BOSS_PATTERN_LABELS: Record<BossPattern, string> = {
   ring: "원형 확산",
@@ -149,7 +157,21 @@ export const BOSS_PATTERN_LABELS: Record<BossPattern, string> = {
   grid: "격자 탄",
   fan: "조준 부채꼴",
   spiral: "나선 탄",
+  summon: "부하 소환",
+  laser: "레이저",
+  guard: "앞 방패",
 };
+/** 돌격을 마치고 제자리로 돌아온 보스가 기절하는 시간과, 그동안 받는 피해 배수 */
+export const BOSS_STUN_MS = 2000;
+export const BOSS_STUN_DAMAGE = 3;
+export const BOSS_STUN_LABEL = "기절 · 약점 3배";
+/** 레이저: 경고선만 긋는 예고 시간, 쏘며 휩쓰는 시간, 빔 반폭(px), 휩쓰는 속도(px/초) */
+export const LASER_WINDUP_MS = 900;
+export const LASER_BEAM_MS = 1600;
+export const LASER_HALF_WIDTH = 13;
+export const LASER_SWEEP_SPEED = 220;
+/** 앞 방패: 보스 반경 대비 이 비율 안쪽(정면)으로 들어온 총알은 튕겨 나간다 — 옆으로 돌아가 쏴야 한다 */
+export const BOSS_GUARD_WIDTH = 0.55;
 /** 돌격 전에 경로를 붉게 예고하는 시간 (옆으로 비켜날 여유) */
 export const CHARGE_WINDUP_MS = 700;
 /** 예고 뒤 비행기 높이까지 내리꽂는 시간 */
@@ -248,6 +270,8 @@ export const MAX_BULLETS = 240;
 export const MAX_SHOTS = 500;
 /** 쏘는 적이 여러 발을 부채꼴로 쏠 때 탄 사이 각(라디안) */
 export const ENEMY_SHOT_SPREAD = 0.18;
+/** 화면에 적이 이만큼 있으면 보스가 부하를 더 부르지 않는다 */
+export const MAX_ENEMIES = 30;
 /** 아이템 없이 이만큼 격추하면 다음 격추에서 무기 간식을 반드시 떨어뜨린다 (운이 나빠도 레벨을 쌓을 수 있게) */
 export const PITY_KILLS = 20;
 /** 반드시 떨어뜨릴 때 고르는 무기 간식 */
@@ -416,6 +440,9 @@ export function createState(width: number, height: number): GameState {
     bossPatternMs: 0,
     bossChargeX: width / 2,
     bossGridRow: 0,
+    bossStunMs: 0,
+    bossLaserX: width / 2,
+    bossLaserDir: 1,
     bullets: [],
     enemies: [],
     shots: [],
@@ -554,6 +581,7 @@ function spawnBoss(state: GameState): Enemy {
   state.bossPatternIndex = state.stage / BOSS_STAGE_EVERY - 1;
   state.bossPatternMs = 0;
   state.bossGridRow = 0;
+  state.bossStunMs = 0;
   return {
     id: state.nextId++,
     kind: "boss",
@@ -575,6 +603,23 @@ export function getBossPattern(state: Pick<GameState, "bossPatternIndex">): Boss
   return BOSS_PATTERNS[state.bossPatternIndex % BOSS_PATTERNS.length];
 }
 
+/** 레이저 빔이 지금 켜져 있는지 (예고가 끝나고 휩쓰는 동안) */
+export function isLaserActive(state: GameState) {
+  const t = state.bossPatternMs;
+  return (
+    getBossPattern(state) === "laser" &&
+    state.bossStunMs <= 0 &&
+    t >= LASER_WINDUP_MS &&
+    t < LASER_WINDUP_MS + LASER_BEAM_MS &&
+    state.enemies.some((enemy) => enemy.kind === "boss")
+  );
+}
+
+/** 보스가 앞 방패를 들고 정면 총알을 튕겨내는 중인지 */
+export function isBossGuarding(state: GameState) {
+  return getBossPattern(state) === "guard" && state.bossStunMs <= 0 && state.enemies.some((enemy) => enemy.kind === "boss");
+}
+
 export function getBossHomeY(state: Pick<GameState, "height">) {
   return state.height * BOSS_Y_RATIO;
 }
@@ -583,7 +628,7 @@ export function getBossHomeY(state: Pick<GameState, "height">) {
 function fireBoss(
   state: GameState,
   boss: Enemy,
-  pattern: Exclude<BossPattern, "charge">,
+  pattern: Exclude<BossPattern, "charge" | "laser">,
   random: () => number,
 ): number {
   const d = getDifficulty(state.stage);
@@ -630,6 +675,36 @@ function fireBoss(
       state.bossAngle += 0.35;
       return lerp(170, 80, d);
     }
+    case "summon": {
+      // 보스 좌우에서 말벌 부하를 하나씩 내보낸다. 적이 이미 많으면 이번에는 쉰다
+      if (state.enemies.length < MAX_ENEMIES) {
+        const config = getStageConfig(state.stage);
+        for (const side of [-1, 1] as const) {
+          state.enemies.push({
+            id: state.nextId++,
+            kind: "zigzag",
+            x: Math.min(state.width - 15, Math.max(15, boss.x + side * boss.r)),
+            y: boss.y + boss.r * 0.5,
+            r: 15,
+            vx: side * config.enemySpeed * 0.7,
+            vy: config.enemySpeed * 0.8,
+            hp: config.enemyHp,
+            maxHp: config.enemyHp,
+            fireInMs: 0,
+            flashMs: 0,
+            timerMs: 0,
+            split: false,
+          });
+        }
+      }
+      return lerp(1600, 900, d);
+    }
+    case "guard":
+      // 앞 방패를 든 채 비행기를 겨눈 세 발을 느리게 쏜다
+      for (const offset of fan(3, 0.25)) {
+        state.shots.push(aimedShot(state, boss.x, boss.y + boss.r * 0.6, speed * 0.9, offset));
+      }
+      return lerp(1500, 800, d);
   }
 }
 
@@ -640,6 +715,12 @@ function updateBoss(state: GameState, boss: Enemy, dt: number, random: () => num
 
   if (boss.y < homeY && state.bossPatternMs === 0) {
     boss.y = Math.min(homeY, boss.y + boss.vy * seconds);
+    return;
+  }
+
+  // 돌격 뒤 기절: 제자리에 멈춰 움직이지도 쏘지도 않는다 (이때 맞으면 피해가 커진다)
+  if (state.bossStunMs > 0) {
+    state.bossStunMs = Math.max(0, state.bossStunMs - dt);
     return;
   }
 
@@ -658,6 +739,16 @@ function updateBoss(state: GameState, boss: Enemy, dt: number, random: () => num
     } else {
       boss.y = Math.max(homeY, boss.y - 420 * seconds);
     }
+  } else if (pattern === "laser") {
+    const t = state.bossPatternMs;
+    if (t < LASER_WINDUP_MS) {
+      // 예고하는 동안 보스 앞에 경고선을 긋고, 비행기가 있는 쪽으로 휩쓸 방향을 정한다
+      state.bossLaserX = boss.x;
+      state.bossLaserDir = state.planeX >= boss.x ? 1 : -1;
+    } else if (t < LASER_WINDUP_MS + LASER_BEAM_MS) {
+      const next = state.bossLaserX + state.bossLaserDir * LASER_SWEEP_SPEED * seconds;
+      state.bossLaserX = Math.min(state.width - LASER_HALF_WIDTH, Math.max(LASER_HALF_WIDTH, next));
+    }
   } else {
     // 좌우로 오가며 쏜다. 페이즈가 오를수록 빨리 움직인다
     boss.x += (boss.vx * seconds) / tempo;
@@ -670,10 +761,14 @@ function updateBoss(state: GameState, boss: Enemy, dt: number, random: () => num
   }
 
   // 돌격에서 제자리로 돌아온 뒤에야 다음 패턴으로 넘어간다
-  if (state.bossPatternMs >= BOSS_PATTERN_MS[pattern] * tempo && boss.y <= homeY) {
+  // 페이즈가 올라 빨라져도 레이저는 예고와 휩쓸기를 끝까지 보여준다
+  const patternMs = Math.max(BOSS_PATTERN_MS[pattern] * tempo, pattern === "laser" ? LASER_WINDUP_MS + LASER_BEAM_MS : 0);
+  if (state.bossPatternMs >= patternMs && boss.y <= homeY) {
     state.bossPatternIndex += 1;
     state.bossPatternMs = 0;
     boss.fireInMs = 500;
+    // 돌격을 마치고 제자리로 돌아오면 어지러워 잠깐 기절한다 — 약점을 노릴 기회
+    if (pattern === "charge") state.bossStunMs = BOSS_STUN_MS;
   }
 }
 
@@ -760,8 +855,10 @@ function destroyEnemy(state: GameState, enemy: Enemy, random: () => number): Ene
 
 /** 보스에게 피해를 주고 준 만큼 스킬 게이지를 채운다. 체력이 0이 되면 격파 */
 function damageBoss(state: GameState, boss: Enemy, damage: number) {
-  boss.hp -= damage;
-  addSkillGauge(state, (damage / boss.maxHp) * SKILL_PER_BOSS_FILL);
+  // 기절한 동안은 약점이 드러나 피해가 BOSS_STUN_DAMAGE배
+  const dealt = state.bossStunMs > 0 ? damage * BOSS_STUN_DAMAGE : damage;
+  boss.hp -= dealt;
+  addSkillGauge(state, (dealt / boss.maxHp) * SKILL_PER_BOSS_FILL);
   if (boss.hp <= 0) defeatBoss(state, boss);
 }
 
@@ -895,6 +992,7 @@ export function step(
 
   // 내 총알 → 적. 보스도 맞으면 체력이 깎이고 0이 되면 격파된다
   const spent = new Set<Bullet>();
+  const guarding = isBossGuarding(state);
   /** 독화살개구리가 갈라져 생긴 적. 도는 중인 목록에 바로 넣으면 같은 총알에 곧바로 맞으므로 다 돈 뒤에 넣는다 */
   const spawned: Enemy[] = [];
   for (const bullet of state.bullets) {
@@ -908,8 +1006,12 @@ export function step(
       }
       enemy.flashMs = 80;
       if (enemy.kind === "boss") {
-        // 보스는 관통탄도 뚫지 못한다
+        // 보스는 관통탄도 뚫지 못한다. 앞 방패를 든 동안 정면으로 온 총알은 튕겨 나가고 옆에서 맞힌 것만 들어간다
         spent.add(bullet);
+        if (guarding && Math.abs(bullet.x - enemy.x) < enemy.r * BOSS_GUARD_WIDTH) {
+          state.shieldBlocks += 1;
+          break;
+        }
         damageBoss(state, enemy, bullet.damage);
         break;
       }
@@ -937,7 +1039,8 @@ export function step(
   } else if (state.invincibleMs <= 0) {
     const rammed = state.enemies.find((enemy) => enemy.hp > 0 && overlaps(enemy, plane));
     const shot = state.shots.find((candidate) => overlaps(candidate, plane));
-    if (rammed || shot) {
+    const lasered = isLaserActive(state) && Math.abs(state.planeX - state.bossLaserX) < LASER_HALF_WIDTH + PLANE_HIT_RADIUS;
+    if (rammed || shot || lasered) {
       damagePlane(state);
       // 부딪힌 일반 적은 같이 부서진다
       if (rammed && rammed.kind !== "boss") {

@@ -42,6 +42,7 @@ import {
   BOSS_CLEAR_SCORE,
   BOSS_PATTERN_LABELS,
   BOSS_REWARD_LEVELS,
+  BOSS_STUN_LABEL,
   CHARGE_WINDUP_MS,
   createState,
   DASHER_WINDUP_MS,
@@ -53,11 +54,15 @@ import {
   getBossPhase,
   getPlaneY,
   getStageConfig,
+  isBossGuarding,
   isBossStage,
+  isLaserActive,
   isShieldUp,
   ITEMS,
   KILL_SCORE,
   BULLET_RADIUS,
+  LASER_HALF_WIDTH,
+  LASER_WINDUP_MS,
   MAX_FRAME_MS,
   MAX_HP,
   MAX_WEAPON_LEVEL,
@@ -181,7 +186,7 @@ function readHud(state: GameState): Hud {
     overdrive: state.overdriveMs > 0,
     // 체력바는 2% 단위로만 바꿔 맞을 때마다 HUD 전체를 다시 그리지 않게 한다
     bossHp: boss ? Math.max(0, Math.ceil((boss.hp / boss.maxHp) * 50) * 2) : null,
-    bossPattern: boss ? BOSS_PATTERN_LABELS[getBossPattern(state)] : null,
+    bossPattern: boss ? (state.bossStunMs > 0 ? BOSS_STUN_LABEL : BOSS_PATTERN_LABELS[getBossPattern(state)]) : null,
     killsLeft: Math.max(0, getStageConfig(state.stage).killGoal - state.stageKills),
   };
 }
@@ -202,8 +207,11 @@ type FrameSnapshot = Pick<
   | "bombMs"
   | "bossPatternIndex"
   | "bossPatternMs"
+  | "bossStunMs"
   | "items"
 > & {
+  /** 보스가 부하를 불렀는지 보려고 적 수를 센다 */
+  enemyCount: number;
   hasBoss: boolean;
   /** 보스가 격파되면 이번 프레임에 사라지므로 터질 자리를 미리 떠 둔다 */
   bossX: number;
@@ -229,6 +237,8 @@ function takeFrameSnapshot(state: GameState): FrameSnapshot {
     bombMs: state.bombMs,
     bossPatternIndex: state.bossPatternIndex,
     bossPatternMs: state.bossPatternMs,
+    bossStunMs: state.bossStunMs,
+    enemyCount: state.enemies.length,
     items: [...state.items],
     hasBoss: boss !== undefined,
     bossX: boss?.x ?? 0,
@@ -310,6 +320,14 @@ function playStepSounds(
     return;
   }
   if (getBossPhase(boss) > prev.bossPhase) playGameSound(PLANE_SHOOTER_SOUNDS.bossPhase);
+  if (state.bossStunMs > 0 && prev.bossStunMs === 0) playGameSound(PLANE_SHOOTER_SOUNDS.bossStun);
+  if (getBossPattern(state) === "laser") {
+    if (prev.bossPatternMs === 0 && state.bossPatternMs > 0) playGameSound(PLANE_SHOOTER_SOUNDS.laserWarn);
+    if (prev.bossPatternMs < LASER_WINDUP_MS && state.bossPatternMs >= LASER_WINDUP_MS) playGameSound(PLANE_SHOOTER_SOUNDS.laserBeam);
+  }
+  if (getBossPattern(state) === "summon" && state.enemies.length > prev.enemyCount) {
+    throttled("summon", PLANE_SHOOTER_SOUNDS.summon);
+  }
   if (state.bossPatternIndex !== prev.bossPatternIndex) playGameSound(PLANE_SHOOTER_SOUNDS.bossPattern);
   if (getBossPattern(state) !== "charge") return;
   if (prev.bossPatternMs === 0 && state.bossPatternMs > 0) playGameSound(PLANE_SHOOTER_SOUNDS.chargeWindup);
@@ -397,6 +415,9 @@ function applyStepEffects(prev: FrameSnapshot, state: GameState, effects: Effect
   }
 
   const boss = state.enemies.find((enemy) => enemy.kind === "boss");
+  if (boss && prev.bossStunMs === 0 && state.bossStunMs > 0) {
+    popup(effects, state.width / 2, state.height * 0.32, "기절! 약점 3배", "warning", true);
+  }
   if (boss && prev.hasBoss && getBossPhase(boss) > prev.bossPhase) {
     popup(effects, state.width / 2, state.height * 0.4, getBossPhase(boss) === 3 ? "보스 분노!" : "보스 2페이즈", "danger", true);
     if (motion) shake(effects, EFFECTS.shake.chargeDash.power, EFFECTS.shake.chargeDash.ms);
@@ -465,6 +486,25 @@ function draw(
     ctx.globalAlpha = 1;
   }
 
+  if (boss && getBossPattern(state) === "laser" && state.bossStunMs <= 0) {
+    const top = boss.y + boss.r * 0.6;
+    if (state.bossPatternMs > 0 && state.bossPatternMs < LASER_WINDUP_MS) {
+      // 레이저 예고: 쏘기 시작할 자리에 가는 붉은 선
+      ctx.fillStyle = palette.danger;
+      ctx.globalAlpha = reducedMotion ? 0.5 : 0.35 + 0.25 * Math.sin(clockMs / 60);
+      ctx.fillRect(state.bossLaserX - 2, top, 4, state.height - top);
+    } else if (isLaserActive(state)) {
+      // 레이저: 붉은 테두리에 밝은 노란 심지
+      ctx.globalAlpha = 0.55;
+      ctx.fillStyle = palette.danger;
+      ctx.fillRect(state.bossLaserX - LASER_HALF_WIDTH, top, LASER_HALF_WIDTH * 2, state.height - top);
+      ctx.globalAlpha = 0.9;
+      ctx.fillStyle = palette.warning;
+      ctx.fillRect(state.bossLaserX - LASER_HALF_WIDTH / 3, top, (LASER_HALF_WIDTH * 2) / 3, state.height - top);
+    }
+    ctx.globalAlpha = 1;
+  }
+
   for (const item of state.items) {
     const pulse = reducedMotion ? 1 : 1 + 0.08 * Math.sin(clockMs / 180 + item.x);
     drawSprite(ctx, sprites[ITEM_SPRITES[item.kind]], item.x, item.y, item.r * ITEM_SIZE_RATIO * pulse);
@@ -491,6 +531,27 @@ function draw(
       ctx.arc(enemy.x, enemy.y, enemy.r * 1.3, Math.PI * 0.15, Math.PI * 0.85);
       ctx.stroke();
       ctx.globalAlpha = 1;
+    }
+    if (enemy.kind !== "boss") continue;
+    if (isBossGuarding(state)) {
+      // 보스 앞 방패: 정면을 넓게 가린 굵은 반원 (옆은 비어 있다)
+      ctx.strokeStyle = palette.text;
+      ctx.globalAlpha = 0.8;
+      ctx.lineWidth = 6;
+      ctx.beginPath();
+      ctx.arc(enemy.x, enemy.y, enemy.r * 1.15, Math.PI * 0.3, Math.PI * 0.7);
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+    }
+    if (state.bossStunMs > 0) {
+      // 기절: 머리 위를 도는 별 세 개
+      ctx.fillStyle = palette.warning;
+      for (let index = 0; index < 3; index += 1) {
+        const angle = (reducedMotion ? 0 : clockMs / 300) + (index * Math.PI * 2) / 3;
+        ctx.beginPath();
+        ctx.arc(enemy.x + Math.cos(angle) * enemy.r * 0.55, enemy.y - enemy.r * 0.9 + Math.sin(angle) * 8, 4, 0, Math.PI * 2);
+        ctx.fill();
+      }
     }
   }
 
@@ -932,7 +993,7 @@ export function CapybaraPlaneShooter() {
             {/* 좌우 여백: 좁은 폰에서 제목이 오른쪽 위 공유 버튼 밑으로 들어가지 않게 */}
             <h1 className="px-12 text-title-1 font-bold text-text-strong">{TITLE}</h1>
             <p className="text-caption-1 text-balance text-text-caption">
-              카피바라 조종사가 풀잎탄을 자동으로 쏴요. 화면을 좌우로 드래그하거나 방향키로 움직여 하피독수리·말벌·재규어를 격추하세요. 스테이지가 오르면 방패로 막는 아르마딜로, 경고선 뒤 내리꽂는 칼새, 둘로 갈라지는 독화살개구리, 따라오는 흡혈박쥐도 나와요. 떨어진 간식을 먹으면 무기가 바뀌고 무기 레벨이 {MAX_WEAPON_LEVEL}레벨까지 올라 탄이 점점 많아져요. 맞으면 레벨이 하나 내려가요. 격추할수록 스킬 게이지가 차서 방어막(Z)·폭주(X)·폭탄(C)을 오른쪽 아래 버튼으로 쓸 수 있어요. 5스테이지마다 나오는 카이만 보스는 체력이 줄수록 거세지니, 격파해서 무기 레벨을 {BOSS_REWARD_LEVELS} 올리세요. 체력은 {MAX_HP}칸이에요.
+              카피바라 조종사가 풀잎탄을 자동으로 쏴요. 화면을 좌우로 드래그하거나 방향키로 움직여 하피독수리·말벌·재규어를 격추하세요. 스테이지가 오르면 방패로 막는 아르마딜로, 경고선 뒤 내리꽂는 칼새, 둘로 갈라지는 독화살개구리, 따라오는 흡혈박쥐도 나와요. 떨어진 간식을 먹으면 무기가 바뀌고 무기 레벨이 {MAX_WEAPON_LEVEL}레벨까지 올라 탄이 점점 많아져요. 맞으면 레벨이 하나 내려가요. 격추할수록 스킬 게이지가 차서 방어막(Z)·폭주(X)·폭탄(C)을 오른쪽 아래 버튼으로 쓸 수 있어요. 5스테이지마다 나오는 카이만 보스는 체력이 줄수록 거세지고 레이저·부하 소환·앞 방패도 써요. 돌격 뒤 기절했을 때 쏘면 피해가 3배예요. 격파해서 무기 레벨을 {BOSS_REWARD_LEVELS} 올리세요. 체력은 {MAX_HP}칸이에요.
             </p>
           </header>
 
