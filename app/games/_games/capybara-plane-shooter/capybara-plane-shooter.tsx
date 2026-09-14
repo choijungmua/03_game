@@ -7,6 +7,7 @@ import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { AdSlot } from "@/components/ads/ad-slot";
 import { ShareButton } from "@/components/games/share-button";
 import { cn } from "@/lib";
+import { GAME_TITLES } from "@/lib/games/constants";
 import { useInView } from "@/lib/games/use-in-view";
 
 import { PlaneShooterLeaderboard } from "./leaderboard";
@@ -49,7 +50,7 @@ import { getPlaneShooterTier, PLANE_SHOOTER_TIERS } from "./tiers";
 export const COUNTDOWN_VALUES = [3, 2, 1] as const;
 export const COUNTDOWN_STEP_MS = 800;
 
-const TITLE = "카피바라 비행기 슈팅";
+const TITLE = GAME_TITLES["capybara-plane-shooter"];
 const LEFT_KEYS = new Set(["ArrowLeft", "a", "A"]);
 const RIGHT_KEYS = new Set(["ArrowRight", "d", "D"]);
 
@@ -426,7 +427,7 @@ export function CapybaraPlaneShooter() {
   const shareText =
     phase === "result" && result && tier
       ? `${TITLE}에서 스테이지 ${result.stage}까지 가서 ${formatScore(result.score)}점, ${tier.label} 등급이 나왔어요. 나보다 멀리 갈 수 있나요?`
-      : "간식으로 무기를 바꿔 가며 천적들을 격추하고 카이만 보스를 버티는 카피바라 비행기 슈팅, 같이 해 봐요";
+      : `간식으로 무기를 바꿔 가며 천적들을 격추하고 카이만 보스를 버티는 ${TITLE}, 같이 해 봐요`;
 
   const liveMessage =
     phase === "countdown"

@@ -2,6 +2,7 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import { createGame, type GomokuState } from "@/app/games/_games/capybara-gomoku/logic";
+import { GAME_TITLES } from "@/lib/games/constants";
 import type { RoomView, Stone } from "@/lib/games/rooms";
 
 import { CapybaraRoom } from "./capybara-room";
@@ -26,7 +27,7 @@ function renderRoom(view: RoomView<GomokuState>, sendEmote = vi.fn()) {
   };
   render(
     <CapybaraRoom
-      title="카피바라 오목"
+      title={GAME_TITLES["capybara-gomoku"]}
       guide=""
       room={room}
       starPoints={[]}
