@@ -81,6 +81,14 @@ assets-src/lobby/<분류>/<id>/source.png            # 생성 원본
 - 크기·정렬은 stand와 같음. 배율은 첫 프레임(보통 자세) 기준으로 모든 프레임 같게 — 기지개처럼 키가 커지는 프레임도 발바닥 높이 유지
 - 로비는 3.5초 쉬고 긁기(2.2초) → 3.5초 쉬고 하품(2초) → 3.5초 쉬고 졸기(3초)를 반복 (`IDLE_ACTIONS`)
 
+## 옷장 방향별 옷 그림
+
+- 옷장 정면 그림: `public/assets/images/characters/capybara/wardrobe/<slot>/<id>.webp` (시트 3칸 → `scripts/split_wardrobe.py`)
+- 상의·하의·한벌옷·신발·장갑은 로비 맵 방향마다 따로 그린 그림을 쓴다: `<id>-{back,side,front3q,back3q}.webp`. 옆·대각선은 오른쪽을 향한 그림(왼쪽은 코드가 반전), 신발·장갑은 한 짝만
+- 새 옷을 추가하면 `python scripts/wardrobe_views.py gen slot/id` (정면 그림 + 서기 스프라이트 4방향을 참고로 가로 4칸 시트 생성) → `python scripts/wardrobe_views.py split`. 원본 시트는 `assets-src/characters/capybara/wardrobe/views/`
+- 자리는 `lib/lobby/wardrobe.ts`의 `WORLD_ANCHORS` (폭·높이 상자에 비율 유지로 넣음). `lib/lobby/wardrobe.test.ts`가 방향별 그림 누락을 잡는다
+- 동시 생성은 2개까지 (많이 돌리면 PC 메모리 부족으로 죽는다). Codex 사용량 한도에 걸리면 안내된 시각 이후 `gen`을 다시 돌리면 이미 만든 시트는 건너뛴다
+
 ## 먹이 먹기 이미지
 
 - `capybara-eating-{1,2}`: 정면, 두 앞발을 턱 아래에 모으고 1 입 크게 벌려 베어 묾 → 2 입 다물고 눈 감고 오물오물. 앞발 사이 먹이(낚은 것 그림)와 머리 위 하트는 로비 코드가 그린다 (`app/_lobby/lobby.tsx` `drawFood`·`drawHearts`, 먹이 높이 `FOOD_Y`)

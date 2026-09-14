@@ -106,6 +106,8 @@ import {
   type WardrobeSlot,
   WARDROBE_SLOTS,
   wardrobeSrc,
+  wardrobeViewSrc,
+  VIEW_ART,
   VIEW_OF,
   WORLD_ANCHORS,
   WORLD_HEAD_ELLIPSE,
@@ -562,11 +564,16 @@ function drawOutfit(
   const anchorsOf = (slot: WardrobeSlot) => (sitting ? SLOT_INFO[slot].anchors : (WORLD_ANCHORS[wardrobeView][slot] ?? []));
   const put = (slot: WardrobeSlot, anchor: WardrobeAnchor) => {
     const id = outfit[slot];
-    const item = id ? outfitImage(wardrobeSrc(slot, id)) : undefined;
+    const item = id ? outfitImage(wardrobeViewSrc(slot, id, wardrobeView)) : undefined;
     if (!ready(item)) return;
-    const fullWidth = (size * anchor.width) / 100;
-    const height = (fullWidth * item.naturalHeight) / item.naturalWidth;
-    // 옆모습은 앞모습 옷을 가로로만 좁혀 쓴다
+    // 폭에 맞추되, 높이 상자가 있으면 넘지 않게 줄인다
+    const scale = Math.min(
+      (size * anchor.width) / 100 / item.naturalWidth,
+      anchor.height === undefined ? Infinity : (size * anchor.height) / 100 / item.naturalHeight,
+    );
+    const fullWidth = item.naturalWidth * scale;
+    const height = item.naturalHeight * scale;
+    // 방향별 그림이 없는 모자·안경은 옆모습에서 앞모습 그림을 가로로만 좁혀 쓴다
     const width = fullWidth * (anchor.squeeze ?? 1);
     const centerX = left + (size * (flip ? 100 - anchor.x : anchor.x)) / 100;
     const itemTop = top + (size * anchor.bottom) / 100 - height;
@@ -1183,9 +1190,10 @@ export function Lobby({ games }: { games: DoorGame[] }) {
         const cached = dressedCache.get(key);
         if (cached) return cached;
         // 옷 이미지를 다 불러온 뒤에만 굽는다 (덜 불러온 채 구우면 빠진 옷이 그대로 굳는다)
+        const artView = view === "sit-down" ? "front" : VIEW_OF[view];
         const loaded = WARDROBE_SLOTS.every((slot) => {
           const id = outfit[slot];
-          return !id || ready(outfitImage(wardrobeSrc(slot, id)));
+          return !id || ready(outfitImage(wardrobeViewSrc(slot, id, artView)));
         });
         if (!loaded) return null;
         const canvas = document.createElement("canvas");
@@ -2170,7 +2178,8 @@ export function Lobby({ games }: { games: DoorGame[] }) {
       ...icons.values(),
       ...WARDROBE_SLOTS.flatMap((slot) => {
         const id = outfitRef.current[slot];
-        return id ? [outfitImage(wardrobeSrc(slot, id))] : [];
+        // 정면 + 뒤·옆·대각선 그림까지 받아 둬야 방향을 틀 때 옷이 늦게 나타나지 않는다
+        return id ? [wardrobeSrc(slot, id), ...VIEW_ART.map((view) => wardrobeViewSrc(slot, id, view))].map(outfitImage) : [];
       }),
     ];
     let loadedCount = 0;
