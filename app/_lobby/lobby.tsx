@@ -23,7 +23,9 @@ import {
 import { Input } from "@/components/inputs/input";
 import { DEFAULT_LOBBY_SETTINGS, type LobbySettings, loadLobbySettings, playSound, saveLobbySettings } from "@/lib/lobby/settings";
 
-import { EmojiPicker } from "./emoji-picker";
+import { CAPYBARA_EMOTES, emoteChat, emoteImage, parseEmoteChat } from "@/lib/games/emotes";
+
+import { EmotePicker } from "./emote-picker";
 import { SettingsMenu, SoundToggle } from "./lobby-settings";
 import {
   ATTACK_COOLDOWN_MS,
@@ -389,6 +391,34 @@ function drawLabel(ctx: CanvasRenderingContext2D, text: string, x: number, y: nu
 
 const BUBBLE_TEXT_WIDTH = 160;
 const BUBBLE_LINE = 16;
+const EMOTE_SIZE = 60;
+
+/** 꼬리 끝이 (x, bottom)에 오는 흰 말풍선 몸통을 칠하고 몸통 top을 돌려준다. 꼬리는 몸통과 한 번에 채워 이음새가 안 보이게 */
+function fillBubble(ctx: CanvasRenderingContext2D, x: number, bottom: number, width: number, height: number, radius: number) {
+  const left = Math.round(x - width / 2);
+  const top = Math.round(bottom - 5 - height);
+  ctx.beginPath();
+  ctx.roundRect(left, top, width, height, radius);
+  ctx.moveTo(x - 4, top + height - 1);
+  ctx.lineTo(x, bottom);
+  ctx.lineTo(x + 4, top + height - 1);
+  ctx.closePath();
+  ctx.save();
+  ctx.shadowColor = "rgba(40,28,16,0.25)";
+  ctx.shadowBlur = 6;
+  ctx.shadowOffsetY = 1;
+  ctx.fillStyle = "#fff";
+  ctx.fill();
+  ctx.restore();
+  return top;
+}
+
+/** 카피바라 이모티콘 그림 하나를 담은 말풍선 */
+function drawEmoteBubble(ctx: CanvasRenderingContext2D, image: HTMLImageElement, x: number, bottom: number) {
+  const size = EMOTE_SIZE + 8;
+  const top = fillBubble(ctx, x, bottom, size, size, 14);
+  ctx.drawImage(image, Math.round(x - EMOTE_SIZE / 2), top + 4, EMOTE_SIZE, EMOTE_SIZE);
+}
 
 /** 꼬리 끝이 (x, bottom)에 오는 말풍선. 한글은 띄어쓰기 없이 길게 쓰기도 해서 글자 단위로 줄을 바꾼다 */
 function drawBubble(ctx: CanvasRenderingContext2D, text: string, x: number, bottom: number) {
@@ -406,22 +436,8 @@ function drawBubble(ctx: CanvasRenderingContext2D, text: string, x: number, bott
   if (line) lines.push(line);
   const width = Math.round(Math.max(...lines.map((item) => ctx.measureText(item).width)) + 20);
   const height = lines.length * BUBBLE_LINE + 10;
-  const left = Math.round(x - width / 2);
-  const top = Math.round(bottom - 5 - height);
-  // 한 줄이면 알약, 여러 줄이면 둥근 카드. 꼬리는 몸통과 한 번에 채워 이음새가 안 보이게
-  ctx.beginPath();
-  ctx.roundRect(left, top, width, height, Math.min(height / 2, 10));
-  ctx.moveTo(x - 4, top + height - 1);
-  ctx.lineTo(x, bottom);
-  ctx.lineTo(x + 4, top + height - 1);
-  ctx.closePath();
-  ctx.save();
-  ctx.shadowColor = "rgba(40,28,16,0.25)";
-  ctx.shadowBlur = 6;
-  ctx.shadowOffsetY = 1;
-  ctx.fillStyle = "#fff";
-  ctx.fill();
-  ctx.restore();
+  // 한 줄이면 알약, 여러 줄이면 둥근 카드
+  const top = fillBubble(ctx, x, bottom, width, height, Math.min(height / 2, 10));
   ctx.fillStyle = "#1f1a14";
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
@@ -767,6 +783,14 @@ export function Lobby({ games }: { games: DoorGame[] }) {
       }
       return image;
     };
+    /** 머리 위 말풍선. 카피바라 이모티콘이면 그림으로, 그림이 아직 안 받아졌으면 그 이모티콘 글로 */
+    const drawSpeech = (text: string, x: number, bottom: number) => {
+      const emote = parseEmoteChat(text);
+      if (emote === null) return drawBubble(ctx, text, x, bottom);
+      const image = outfitImage(emoteImage(emote));
+      if (ready(image)) drawEmoteBubble(ctx, image, x, bottom);
+      else drawBubble(ctx, CAPYBARA_EMOTES[emote], x, bottom);
+    };
     // 옷 입은 스프라이트는 (스프라이트·방향·옷 조합)마다 한 번만 캔버스에 구워 두고, 매 프레임엔 그 한 장만 그린다
     const dressedCache = new Map<string, HTMLCanvasElement>();
     /** 캔버스의 기기 픽셀 비율 (resize에서 갱신). 옷 입은 스프라이트를 화면 크기에 딱 맞게 굽는 데 쓴다 */
@@ -1058,7 +1082,8 @@ export function Lobby({ games }: { games: DoorGame[] }) {
             const chatUntil = player.chatMs > 0 ? received + player.chatMs : 0;
             const remote = remotes.get(player.id);
             if (chatUntil > 0 && (!remote || remote.chat !== player.chat || remote.chatUntil < received)) {
-              heard = `카피바라 ${player.id.slice(0, 4)}: ${player.chat}`;
+              const emote = parseEmoteChat(player.chat);
+              heard = `카피바라 ${player.id.slice(0, 4)}: ${emote === null ? player.chat : `${CAPYBARA_EMOTES[emote]} (이모티콘)`}`;
             }
             if (remote) {
               // 다음 위치가 올 때까지(=지난 수신 간격) 걸쳐 옮긴다. 지수 감속으로 따라가면 받을 때마다 빨라졌다 느려져서 끊겨 보인다
@@ -1409,9 +1434,9 @@ export function Lobby({ games }: { games: DoorGame[] }) {
       for (const remote of remotes.values()) {
         const labelY = remote.y - (remote.sitting ? SIT_SIZE : STAND_SIZE) - 8;
         drawLabel(ctx, `카피바라 ${remote.id.slice(0, 4)}`, remote.x, labelY);
-        if (now < remote.chatUntil) drawBubble(ctx, remote.chat, remote.x, labelY - 10);
+        if (now < remote.chatUntil) drawSpeech(remote.chat, remote.x, labelY - 10);
       }
-      if (now < me.chatUntil) drawBubble(ctx, me.chat, drawnX, drawnY - (me.sitting ? SIT_SIZE : STAND_SIZE) - 4);
+      if (now < me.chatUntil) drawSpeech(me.chat, drawnX, drawnY - (me.sitting ? SIT_SIZE : STAND_SIZE) - 4);
       for (const [id, until] of hitEffects) {
         const target = remotes.get(id);
         const progress = 1 - (until - now) / 450;
@@ -1481,12 +1506,11 @@ export function Lobby({ games }: { games: DoorGame[] }) {
     input.value = "";
   };
 
-  const insertEmoji = (emoji: string) => {
-    const input = chatInputRef.current;
-    if (!input) return;
-    const start = input.selectionStart ?? input.value.length;
-    input.setRangeText(emoji, start, input.selectionEnd ?? start, "end");
-    input.focus();
+  const sendEmote = (id: number) => {
+    const now = performance.now();
+    if (now - lastChatAt.current < CHAT_COOLDOWN_MS) return;
+    lastChatAt.current = now;
+    chatRequest.current = emoteChat(id);
   };
 
   const updateSettings = (next: LobbySettings) => {
@@ -1524,7 +1548,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
           shape="pill"
           className="h-8 min-w-0 flex-1 border-transparent bg-transparent pl-3 pr-1 text-base text-white shadow-none placeholder:text-white/60 focus-visible:ring-0 group-focus-within:text-text-strong group-focus-within:placeholder:text-text-placeholder md:text-caption-1"
         />
-        <EmojiPicker onPick={insertEmoji} />
+        <EmotePicker onPick={sendEmote} />
         <p aria-live="polite" className="sr-only">
           {heardChat}
         </p>
