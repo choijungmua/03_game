@@ -3,7 +3,7 @@
 // 캔버스용 new Image()와 이름이 겹치지 않게 NextImage로 가져온다
 import NextImage from "next/image";
 import { useRouter } from "next/navigation";
-import { useEffect, useEffectEvent, useRef, useState } from "react";
+import { type FormEvent, useEffect, useEffectEvent, useRef, useState } from "react";
 
 import { cn } from "@/lib";
 
@@ -16,7 +16,17 @@ import {
   type SpriteAsset,
   type SpriteId,
 } from "@/lib/lobby/assets";
-import { ATTACK_COOLDOWN_MS, ATTACK_MS, type PresenceResponse } from "@/lib/lobby/presence";
+import { Button } from "@/components/inputs/button";
+import { Input } from "@/components/inputs/input";
+import {
+  ATTACK_COOLDOWN_MS,
+  ATTACK_MS,
+  CHAT_COOLDOWN_MS,
+  CHAT_MAX,
+  CHAT_MS,
+  cleanChat,
+  type PresenceResponse,
+} from "@/lib/lobby/presence";
 import {
   BODY_LAYERS,
   HEAD_ELLIPSE,
@@ -99,6 +109,8 @@ interface Remote {
   stunUntil: number;
   attackUntil: number;
   outfit: Outfit;
+  chat: string;
+  chatUntil: number;
 }
 
 interface Chunk {
@@ -362,6 +374,39 @@ function drawLabel(ctx: CanvasRenderingContext2D, text: string, x: number, y: nu
   ctx.fillText(text, x, y);
 }
 
+const BUBBLE_TEXT_WIDTH = 180;
+const BUBBLE_LINE = 17;
+
+/** 꼬리 끝이 (x, bottom)에 오는 말풍선. 한글은 띄어쓰기 없이 길게 쓰기도 해서 글자 단위로 줄을 바꾼다 */
+function drawBubble(ctx: CanvasRenderingContext2D, text: string, x: number, bottom: number) {
+  ctx.font = "13px system-ui, sans-serif";
+  const lines: string[] = [];
+  let line = "";
+  for (const char of text) {
+    if (line && ctx.measureText(line + char).width > BUBBLE_TEXT_WIDTH) {
+      lines.push(line);
+      line = char.trimStart();
+    } else {
+      line += char;
+    }
+  }
+  if (line) lines.push(line);
+  const width = Math.max(...lines.map((item) => ctx.measureText(item).width)) + 16;
+  const height = lines.length * BUBBLE_LINE + 10;
+  const top = bottom - 6 - height;
+  ctx.beginPath();
+  ctx.roundRect(x - width / 2, top, width, height, 8);
+  ctx.moveTo(x - 5, top + height);
+  ctx.lineTo(x, bottom);
+  ctx.lineTo(x + 5, top + height);
+  ctx.fillStyle = "rgba(255,250,238,0.95)";
+  ctx.fill();
+  ctx.fillStyle = "#2a1f14";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  lines.forEach((item, index) => ctx.fillText(item, x, top + 5 + BUBBLE_LINE * (index + 0.5)));
+}
+
 function drawStar(ctx: CanvasRenderingContext2D, x: number, y: number, radius: number) {
   ctx.beginPath();
   for (let i = 0; i < 10; i++) {
@@ -617,6 +662,12 @@ export function Lobby({ games }: { games: DoorGame[] }) {
   const knobRef = useRef<HTMLDivElement>(null);
   /** 입은 옷. 게임 루프가 매 프레임 읽어서 그리고 서버에 보낸다 */
   const outfitRef = useRef<Outfit>({});
+  /** 보낼 채팅. 게임 루프가 가져가 말풍선을 띄우고 다음 동기화에 실어 보낸다 */
+  const chatRequest = useRef<string | null>(null);
+  const chatInputRef = useRef<HTMLInputElement>(null);
+  const lastChatAt = useRef(-Infinity);
+  /** 스크린리더용: 캔버스 말풍선은 읽히지 않아서 방금 들은 채팅을 글로도 둔다 */
+  const [heardChat, setHeardChat] = useState("");
   const [world] = useState(() => createWorld(LOBBY_SEED, games));
   const [activeDoor, setActiveDoor] = useState<Door | null>(null);
   const [sitting, setSitting] = useState(false);
@@ -722,6 +773,8 @@ export function Lobby({ games }: { games: DoorGame[] }) {
       lastAttackAt: -Infinity,
       pendingFacing: "up" as Facing,
       facingSince: 0,
+      chat: "",
+      chatUntil: 0,
     };
     const saved: Partial<{ x: number; y: number }> = JSON.parse(loadSession(positionKey) ?? "{}");
     if (typeof saved.x === "number" && typeof saved.y === "number" && !blocked(saved.x, saved.y)) {
@@ -761,6 +814,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
     let charge = 0;
     let leaving = false;
     let attackQueued = false;
+    let chatQueued: string | null = null;
     let shownDoor: Door | null = null;
     let shownSitting = false;
     let shownSeat = false;
@@ -810,6 +864,8 @@ export function Lobby({ games }: { games: DoorGame[] }) {
     resize();
 
     const onKeyDown = (event: KeyboardEvent) => {
+      // 채팅 입력 중엔 WASD·F·Space가 글자로 들어가야 한다
+      if (event.target instanceof HTMLInputElement) return;
       if (KEY_VECTORS[event.code]) {
         event.preventDefault(); // 방향키 스크롤 방지
         pressed.add(event.code);
@@ -826,7 +882,12 @@ export function Lobby({ games }: { games: DoorGame[] }) {
         if (!event.repeat) sitRequest.current = true;
       } else if (event.code === "Enter") {
         const door = nearestDoor();
-        if (door) enter(door);
+        if (door) {
+          enter(door);
+        } else {
+          event.preventDefault();
+          chatInputRef.current?.focus();
+        }
       }
     };
     const onKeyUp = (event: KeyboardEvent) => pressed.delete(event.code);
@@ -880,10 +941,12 @@ export function Lobby({ games }: { games: DoorGame[] }) {
       const sent = { x: me.x, y: me.y };
       const attack = attackQueued;
       attackQueued = false;
+      const chat = chatQueued ?? undefined;
+      chatQueued = null;
       fetch("/api/lobby", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token, ...sent, facing: me.facing, sitting: me.sitting, attack, outfit: outfitRef.current }),
+        body: JSON.stringify({ token, ...sent, facing: me.facing, sitting: me.sitting, attack, outfit: outfitRef.current, chat }),
       })
         .then(async (response) => {
           const data: Partial<PresenceResponse> = await response.json();
@@ -901,11 +964,16 @@ export function Lobby({ games }: { games: DoorGame[] }) {
           }
 
           const seen = new Set<string>();
+          let heard = "";
           for (const player of data.players) {
             seen.add(player.id);
             // 남은 시간이 0이면 0으로 둔다 (received를 넣으면 같은 프레임의 rAF 시각보다 커서 잠깐 기절처럼 보인다)
             const stunUntil = player.stunMs > 0 ? received + player.stunMs : 0;
+            const chatUntil = player.chatMs > 0 ? received + player.chatMs : 0;
             const remote = remotes.get(player.id);
+            if (chatUntil > 0 && (!remote || remote.chat !== player.chat || remote.chatUntil < received)) {
+              heard = `카피바라 ${player.id.slice(0, 4)}: ${player.chat}`;
+            }
             if (remote) {
               // 다음 위치가 올 때까지(=지난 수신 간격) 걸쳐 옮긴다. 지수 감속으로 따라가면 받을 때마다 빨라졌다 느려져서 끊겨 보인다
               remote.fromX = remote.x;
@@ -918,6 +986,8 @@ export function Lobby({ games }: { games: DoorGame[] }) {
               remote.sitting = player.sitting;
               remote.outfit = player.outfit ?? {};
               remote.stunUntil = stunUntil;
+              remote.chat = player.chat;
+              remote.chatUntil = chatUntil;
               if (player.attackMs > 0) remote.attackUntil = received + player.attackMs;
             } else {
               remotes.set(player.id, {
@@ -937,11 +1007,14 @@ export function Lobby({ games }: { games: DoorGame[] }) {
                 idleMs: 0,
                 stunUntil,
                 attackUntil: player.attackMs > 0 ? received + player.attackMs : 0,
+                chat: player.chat,
+                chatUntil,
                 outfit: player.outfit ?? {},
               });
             }
           }
           for (const id of remotes.keys()) if (!seen.has(id)) remotes.delete(id);
+          if (heard) setHeardChat(heard);
           if (data.hit) hitEffects.set(data.hit, received + 450);
           setOffline(false);
         })
@@ -1021,6 +1094,12 @@ export function Lobby({ games }: { games: DoorGame[] }) {
           me.lastAttackAt = now;
           attackQueued = true;
         }
+      }
+      if (chatRequest.current !== null) {
+        me.chat = chatRequest.current;
+        me.chatUntil = now + CHAT_MS;
+        chatQueued = chatRequest.current;
+        chatRequest.current = null;
       }
       if (wantsMove && me.sitting) standUp(); // 움직이면 일어난다
 
@@ -1234,8 +1313,11 @@ export function Lobby({ games }: { games: DoorGame[] }) {
         if (inView(item.x, item.y, TILE * 4)) drawLabel(ctx, item.title, item.x, item.y + TILE * 0.85, true);
       }
       for (const remote of remotes.values()) {
-        drawLabel(ctx, `카피바라 ${remote.id.slice(0, 4)}`, remote.x, remote.y - (remote.sitting ? SIT_SIZE : STAND_SIZE) - 8);
+        const labelY = remote.y - (remote.sitting ? SIT_SIZE : STAND_SIZE) - 8;
+        drawLabel(ctx, `카피바라 ${remote.id.slice(0, 4)}`, remote.x, labelY);
+        if (now < remote.chatUntil) drawBubble(ctx, remote.chat, remote.x, labelY - 10);
       }
+      if (now < me.chatUntil) drawBubble(ctx, me.chat, drawnX, drawnY - (me.sitting ? SIT_SIZE : STAND_SIZE) - 4);
       for (const [id, until] of hitEffects) {
         const target = remotes.get(id);
         const progress = 1 - (until - now) / 450;
@@ -1286,6 +1368,25 @@ export function Lobby({ games }: { games: DoorGame[] }) {
 
   const status = stunned ? "기절! 2초 동안 못 움직여요" : notice || (activeDoor ? `${activeDoor.title} 들어가는 중… (Enter로 바로)` : offline ? "혼자 모드 (연결 끊김)" : "");
 
+  const sendChat = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const input = chatInputRef.current;
+    if (!input) return;
+    const text = cleanChat(input.value);
+    // 빈 Enter면 입력을 끝내고 다시 걷는다
+    if (!text) {
+      input.value = "";
+      input.blur();
+      return;
+    }
+    // 서버도 쿨타임 안의 채팅을 버리므로, 너무 빠르면 지우지 않고 남겨서 다시 보내게 한다
+    const now = performance.now();
+    if (now - lastChatAt.current < CHAT_COOLDOWN_MS) return;
+    lastChatAt.current = now;
+    chatRequest.current = text;
+    input.value = "";
+  };
+
   return (
     <>
       <canvas
@@ -1295,6 +1396,29 @@ export function Lobby({ games }: { games: DoorGame[] }) {
         // touch-none: 누른 채 끌 때 페이지가 스크롤·확대되지 않게
         className="absolute inset-0 size-full touch-none select-none"
       />
+
+      {/* 오른쪽 위 옷장 버튼 자리를 비워 둔다 */}
+      <form onSubmit={sendChat} className="absolute left-4 right-24 top-[max(1rem,env(safe-area-inset-top))] flex max-w-sm gap-2">
+        <Input
+          ref={chatInputRef}
+          name="lobby-chat"
+          aria-label="채팅"
+          placeholder="Enter로 채팅…"
+          autoComplete="off"
+          enterKeyHint="send"
+          maxLength={CHAT_MAX}
+          onKeyDown={(event) => {
+            if (event.key === "Escape") event.currentTarget.blur();
+          }}
+          className="h-11 min-w-0 bg-card/85 text-base text-text-strong backdrop-blur"
+        />
+        <Button type="submit" className="h-11 shrink-0">
+          보내기
+        </Button>
+        <p aria-live="polite" className="sr-only">
+          {heardChat}
+        </p>
+      </form>
 
       <Wardrobe
         onChange={(outfit) => {
@@ -1312,7 +1436,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
         </p>
         <p className="max-w-full text-balance rounded-lg bg-card/80 px-3 py-1.5 text-center text-caption-3 text-text-caption backdrop-blur">
           <span className="[@media(pointer:coarse)]:hidden">
-            방향키·WASD 걷기 · F 때리기 · 통나무 앞에서 Space 앉기 · 오두막 문 앞에 가면 입장
+            방향키·WASD 걷기 · F 때리기 · 통나무 앞에서 Space 앉기 · Enter 채팅 · 오두막 문 앞에 가면 입장
           </span>
           <span className="hidden [@media(pointer:coarse)]:inline">화면을 누른 채 끌면 그쪽으로 걸어요 · 오두막 문 앞에 가면 입장</span>
         </p>
