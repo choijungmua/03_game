@@ -3,7 +3,6 @@
 import { Crown } from "lucide-react";
 import Image from "next/image";
 import {
-  type FormEvent,
   type KeyboardEvent,
   type PointerEvent,
   useEffect,
@@ -17,12 +16,11 @@ import { Progress } from "@/components/feedback/progress";
 import { EmoteBubble, EmotePicker, TurnTimer, useEmoteShowing } from "@/components/games/capybara-room";
 import { GameControls, LEAVE_CONFIRM_MESSAGE } from "@/components/games/game-controls";
 import { Button } from "@/components/inputs/button";
-import { Input } from "@/components/inputs/input";
 import { Dialog } from "@/components/overlay/dialog";
 import { cn } from "@/lib";
 import { GAME_TITLES } from "@/lib/games/constants";
 import { opponent, type RoomView, type Stone, type Vector } from "@/lib/games/rooms";
-import { useRoom } from "@/lib/games/use-room";
+import { useOpenRooms, useRoom } from "@/lib/games/use-room";
 
 import {
   type AlkkagiState,
@@ -85,7 +83,7 @@ export function CapybaraAlkkagi() {
     AlkkagiState,
     AlkkagiAction
   >("capybara-alkkagi");
-  const [codeInput, setCodeInput] = useState("");
+  const openRooms = useOpenRooms("capybara-alkkagi", !view);
   const emoteShowing = useEmoteShowing(view?.emote ?? null);
   const [aim, setAim] = useState<Aim | null>(null);
   /** 샷 애니메이션 중 보여줄 알 위치. null이면 서버 상태 그대로 */
@@ -257,11 +255,6 @@ export function CapybaraAlkkagi() {
     handler();
   }
 
-  function handleJoinSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    join(codeInput);
-  }
-
   const pieces = frame ?? state?.pieces ?? [];
   const toScreen = (point: Vector) => (flipped ? { x: FIELD - point.x, y: FIELD - point.y } : point);
   const aimedPiece = aim ? pieces.find((piece) => piece.id === aim.pieceId && !piece.out) : undefined;
@@ -306,26 +299,39 @@ export function CapybaraAlkkagi() {
             </div>
 
             <Button type="button" onClick={create} disabled={pending} className="h-12 w-full text-title-3 font-bold">
-              방 만들고 초대하기
+              방 만들기
             </Button>
 
-            <form onSubmit={handleJoinSubmit} className="flex w-full gap-2">
-              <Input
-                name="invite-code"
-                aria-label="초대 코드"
-                placeholder="초대 코드 6자리…"
-                autoComplete="off"
-                autoCapitalize="characters"
-                spellCheck={false}
-                maxLength={6}
-                value={codeInput}
-                onChange={(event) => setCodeInput(event.target.value.toUpperCase())}
-                className="h-12 text-base tracking-widest"
-              />
-              <Button type="submit" variant="outline" disabled={pending} className="h-12 shrink-0">
-                참가
-              </Button>
-            </form>
+            <section aria-labelledby="open-rooms" className="flex flex-col gap-2">
+              <h2 id="open-rooms" className="text-caption-1 font-semibold text-text-caption">
+                참가할 수 있는 방
+              </h2>
+              {openRooms.length === 0 ? (
+                <p className="py-6 text-center text-caption-1 text-text-caption">기다리는 방이 없어요. 방을 만들어 보세요</p>
+              ) : (
+                <ul className="flex max-h-64 flex-col gap-2 overflow-y-auto overscroll-contain">
+                  {openRooms.map((room) => (
+                    <li key={room.code}>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        disabled={pending}
+                        onClick={() => join(room.code)}
+                        className="h-12 w-full justify-between"
+                      >
+                        <span>
+                          방{" "}
+                          <strong translate="no" className="tracking-widest">
+                            {room.code}
+                          </strong>
+                        </span>
+                        <span>참가</span>
+                      </Button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </section>
 
             {error && (
               <p role="alert" className="text-center text-caption-1 text-error">

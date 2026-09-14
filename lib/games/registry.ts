@@ -73,6 +73,7 @@ export const GAMES: GameEntry[] = [
     pageName: "alkkagi",
     component: dynamic(() => import("@/app/games/_games/capybara-alkkagi")),
     seo: () => import("@/app/games/_games/capybara-alkkagi/seo"),
+    hideAbout: true,
   },
   {
     slug: "capybara-log-dodge",

@@ -60,6 +60,26 @@ describe("초대 코드 방", () => {
     expect(actOnRoom(code, { type: "emote", index: 0 })).toMatchObject({ ok: false, status: 403 });
   });
 
+  it("방 목록에는 상대를 기다리고 만든 사람이 아직 있는 방만 나온다", () => {
+    vi.useFakeTimers();
+    const waiting = createRoom();
+    if (!waiting.ok || !waiting.token) throw new Error("방 생성 실패");
+    const { code: full } = open();
+    const listed = () => badukRooms.listRooms().map((room) => room.code);
+
+    expect(listed()).toContain(waiting.view.code);
+    expect(listed()).not.toContain(full);
+
+    // 만든 사람이 폴링하면 남고, 5초 넘게 소식이 없으면 빠진다
+    vi.advanceTimersByTime(4000);
+    readRoom(waiting.view.code, waiting.token);
+    vi.advanceTimersByTime(4000);
+    expect(listed()).toContain(waiting.view.code);
+    vi.advanceTimersByTime(2000);
+    expect(listed()).not.toContain(waiting.view.code);
+    vi.useRealTimers();
+  });
+
   it("없는 코드는 404", () => {
     expect(readRoom("ZZZZZZ", null)).toMatchObject({ ok: false, status: 404 });
   });

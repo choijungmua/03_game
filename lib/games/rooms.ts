@@ -58,8 +58,13 @@ export type RoomResult<S> =
   | { ok: true; view: RoomView<S>; token: string | null }
   | { ok: false; error: string; status: 400 | 403 | 404 | 409 };
 
+/** 방 목록에 보이는 참가 가능한 방 */
+export type OpenRoom = Pick<RoomView<RoomState>, "code">;
+
 export interface RoomStore<S> {
   createRoom(): RoomResult<S>;
+  /** 상대를 기다리는 방 중 만든 사람이 아직 방에 있는 것만, 최신순 */
+  listRooms(): OpenRoom[];
   readRoom(code: string, token: string | null): RoomResult<S>;
   actOnRoom(code: string, action: RoomAction): RoomResult<S>;
 }
@@ -69,6 +74,8 @@ interface Room<S> {
   state: S;
   tokens: Record<Stone, string | null>;
   updatedAt: number;
+  /** 만든 사람(흑)이 마지막으로 폴링한 시각. 방 목록에서 나간 방을 거르는 기준 */
+  hostSeenAt: number;
   version: number;
   emote: RoomEmote | null;
 }
@@ -78,6 +85,9 @@ const CODE_LENGTH = 6;
 const ROOM_TTL_MS = 24 * 60 * 60 * 1000;
 // 마감 직전에 둔 수가 네트워크 지연으로 늦게 도착해도 시간패가 되지 않게 봐주는 시간
 const TIMEOUT_GRACE_MS = 1000;
+// 만든 사람은 1초마다 폴링한다. 이보다 오래 소식이 없으면 창을 닫은 것으로 보고 목록에서 뺀다
+const HOST_GONE_MS = 5000;
+const LIST_LIMIT = 20;
 
 function makeCode() {
   const bytes = crypto.getRandomValues(new Uint8Array(CODE_LENGTH));
@@ -139,14 +149,32 @@ export function createRoomStore<S extends RoomState, A extends string>(key: stri
       while (rooms.has(code)) code = makeCode();
 
       const token = crypto.randomUUID();
-      const room: Room<S> = { code, state: rules.create(), tokens: { black: token, white: null }, updatedAt: now, version: 1, emote: null };
+      const room: Room<S> = {
+        code,
+        state: rules.create(),
+        tokens: { black: token, white: null },
+        updatedAt: now,
+        hostSeenAt: now,
+        version: 1,
+        emote: null,
+      };
       rooms.set(code, room);
       return { ok: true, view: toView(room, token), token };
+    },
+
+    listRooms() {
+      const now = Date.now();
+      return [...rooms.values()]
+        .filter((room) => !room.tokens.white && !room.state.endReason && now - room.hostSeenAt <= HOST_GONE_MS)
+        .reverse() // Map은 넣은 순서라 뒤집으면 최신순
+        .slice(0, LIST_LIMIT)
+        .map((room) => ({ code: room.code }));
     },
 
     readRoom(code, token) {
       const room = findRoom(code);
       if (!room) return { ok: false, error: "없는 초대 코드예요", status: 404 };
+      if (seatOf(room, token) === "black") room.hostSeenAt = Date.now();
       return { ok: true, view: toView(room, token), token: null };
     },
 

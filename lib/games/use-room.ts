@@ -1,6 +1,6 @@
 import { useEffect, useEffectEvent, useRef, useState } from "react";
 
-import type { RoomAction, RoomResult, RoomState, Vector } from "./rooms";
+import type { OpenRoom, RoomAction, RoomResult, RoomState, Vector } from "./rooms";
 
 type RoomSuccess<S> = Extract<RoomResult<S>, { ok: true }>;
 
@@ -176,6 +176,34 @@ export function useRoom<S extends RoomState, A extends string>(slug: string) {
   }
 
   return { view, error, pending, copied, clockOffset, create, join, act, sendEmote, copyInvite, leave, setError };
+}
+
+/** 참가할 수 있는 방 목록. enabled일 동안(방 밖에 있을 때) 3초마다 새로 받는다 */
+export function useOpenRooms(slug: string, enabled: boolean) {
+  const [rooms, setRooms] = useState<OpenRoom[]>([]);
+
+  useEffect(() => {
+    if (!enabled) return;
+    let inFlight = false;
+    const load = () => {
+      if (inFlight) return;
+      inFlight = true;
+      fetch(`/api/games/${slug}/rooms`, { cache: "no-store" })
+        .then((response) => response.json())
+        .then((data: Partial<{ rooms: OpenRoom[] }>) => {
+          if (Array.isArray(data.rooms)) setRooms(data.rooms);
+        })
+        .catch(() => {})
+        .finally(() => {
+          inFlight = false;
+        });
+    };
+    load();
+    const id = setInterval(load, POLL_MS * 3);
+    return () => clearInterval(id);
+  }, [slug, enabled]);
+
+  return rooms;
 }
 
 /** 게임 공용 화면에 넘기는 방 핸들. 행동(act)은 게임마다 이름이 달라서 빼고 콜백으로 받는다 */
