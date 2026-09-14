@@ -928,6 +928,9 @@ export function Lobby({ games }: { games: DoorGame[] }) {
     let shownSitting = false;
     let shownSeat = false;
     let shownStunned = false;
+    // 내 캐릭터 동작 프레임이 바뀌는 순간에만 효과음을 내려고 지난 프레임을 기억한다
+    let soundPose: Pose = "stand";
+    let soundIdle: IdleFrame | null = null;
     let noticeTimer = 0;
 
     const showNotice = (text: string) => {
@@ -1204,6 +1207,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
             me.facing = "down";
             me.sitting = true;
             me.seatIndex = index;
+            playSound("sit", settingsRef.current);
           } else {
             showNotice(index >= 0 ? "누가 이미 앉아 있어요" : "통나무 의자 앞에서 앉을 수 있어요");
           }
@@ -1262,6 +1266,15 @@ export function Lobby({ games }: { games: DoorGame[] }) {
       me.pose = moved ? walkPose(me.walkDist) : "stand";
       const attacking = now < me.attackUntil;
       me.idleMs = moved || wantsMove || me.sitting || isStunned || attacking ? 0 : nextIdle(me.idleMs, dt);
+      // 발을 내딛는 프레임마다 톡, 긁는 박자마다 슥슥, 하품을 시작할 때 하아암
+      if (me.pose !== soundPose && me.pose !== "stand") playSound("step", settingsRef.current);
+      soundPose = me.pose;
+      const idleFrame = idleSprite(me.idleMs);
+      if (idleFrame !== soundIdle) {
+        if (idleFrame === "scratch-2" || idleFrame === "scratch-3") playSound("scratch", settingsRef.current);
+        if (idleFrame === "yawn-1") playSound("yawn", settingsRef.current);
+        soundIdle = idleFrame;
+      }
 
       const follow = reducedMotion ? 1 : Math.min(1, dt / 120);
       camera.x += (me.x - camera.x) * follow;
