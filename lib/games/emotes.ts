@@ -26,6 +26,18 @@ export function emoteImage(id: number) {
   return `/assets/images/characters/capybara/emotes/capybara-emote-${id}.webp`;
 }
 
+/** 로비에서 보내는 이모티콘. 채팅 한 줄로 실어 보내서 서버·동기화·쿨타임을 채팅과 똑같이 쓴다 */
+export function emoteChat(id: number) {
+  return `[[emote:${id}]]`;
+}
+
+/** 채팅이 이모티콘 하나뿐이면 그 번호, 아니면 null */
+export function parseEmoteChat(text: string) {
+  const match = /^\[\[emote:(\d+)\]\]$/.exec(text);
+  const id = match ? Number(match[1]) : -1;
+  return id >= 0 && id < CAPYBARA_EMOTES.length ? id : null;
+}
+
 /** 방에 마지막으로 보낸 이모티콘. at이 바뀌면 화면에 새로 띄운다 */
 export interface RoomEmote {
   seat: "black" | "white";

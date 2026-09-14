@@ -1,7 +1,7 @@
 // 로비 오픈월드 멀티: 각 플레이어가 자기 위치를 짧은 주기로 보내고, 응답으로 근처 플레이어를 받는다.
 // 맵은 하나라 모두 같은 공간에 있다. 때리기 판정도 서버가 한다 (앞쪽 가까운 한 명을 2초 기절)
 
-import { CAPYBARA_ADJECTIVES, CAPYBARA_NAMES } from "./constants";
+import { CAPYBARA_ADJECTIVES, CAPYBARA_NAMES, ZWJ } from "./constants";
 import { type Outfit, sanitizeOutfit } from "./wardrobe";
 import { type Facing, FACING_VECTORS, FACINGS, TILE, WALK_SPEED } from "./world";
 
@@ -95,9 +95,20 @@ function pickName(players: Map<string, Player>) {
   return "카피바라";
 }
 
-/** 제어·보이지 않는 문자와 줄바꿈을 공백 하나로 바꾸고 CHAT_MAX 글자로 자른다 (이모지가 반쪽 나지 않게 글자 단위로) */
+const GRAPHEMES = new Intl.Segmenter("ko", { granularity: "grapheme" });
+
+/** 눈에 한 글자로 보이는 단위로 나눈다 (조합 이모지·피부색 이모지도 한 글자) */
+export function graphemes(text: string) {
+  return Array.from(GRAPHEMES.segment(text), ({ segment }) => segment);
+}
+
+/** 제어·보이지 않는 문자와 줄바꿈을 공백 하나로 바꾸고 CHAT_MAX 글자로 자른다 (이모지 조합은 남기고, 반쪽 나지 않게 보이는 글자 단위로) */
 export function cleanChat(text: string) {
-  return [...text.replace(/[\p{C}\s]+/gu, " ").trim()].slice(0, CHAT_MAX).join("").trim();
+  const flat = text
+    .replace(/[\p{C}\s]/gu, (char) => (char === ZWJ ? char : " "))
+    .replace(/ {2,}/g, " ")
+    .trim();
+  return graphemes(flat).slice(0, CHAT_MAX).join("").trim();
 }
 
 /** 요청 본문 검증. 바깥 입력이라 필드마다 타입을 확인한다 */

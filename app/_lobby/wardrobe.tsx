@@ -82,7 +82,7 @@ export function Wardrobe({ onChange }: { onChange: (outfit: Outfit) => void }) {
   };
 
   return (
-    <div className="absolute right-4 top-[max(1rem,env(safe-area-inset-top))] flex justify-end">
+    <div className="relative flex justify-end">
       <button
         ref={openButtonRef}
         type="button"

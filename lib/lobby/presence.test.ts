@@ -7,6 +7,7 @@ import {
   CHAT_MAX,
   CHAT_MS,
   cleanChat,
+  graphemes,
   parsePresence,
   STALE_MS,
   STUN_MS,
@@ -123,6 +124,13 @@ describe("로비 멀티", () => {
     expect(cleanChat(`  안\n녕${String.fromCharCode(0)}하세요  `)).toBe("안 녕 하세요");
     expect([...cleanChat("가".repeat(CHAT_MAX + 10))]).toHaveLength(CHAT_MAX);
     expect(parsePresence({ ...player(0), chat: " \n " })).not.toHaveProperty("chat");
+  });
+
+  it("채팅 이모지는 조합을 지키고, 보이는 글자 단위로 자른다", () => {
+    const family = "\u{1F468}\u200D\u{1F469}\u200D\u{1F467}";
+    const thumb = "\u{1F44D}\u{1F3FD}";
+    expect(cleanChat(`안녕 ${family}${thumb}`)).toBe(`안녕 ${family}${thumb}`);
+    expect(graphemes(cleanChat(family.repeat(CHAT_MAX + 5)))).toHaveLength(CHAT_MAX);
   });
 
   it("대각선을 보고 때리면 그 대각선 앞쪽이 맞는다", () => {
