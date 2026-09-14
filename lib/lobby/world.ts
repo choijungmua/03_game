@@ -65,8 +65,8 @@ export const SPRING_RY = 3.6;
 /** 목욕 중 발이 다닐 수 있는 물 안쪽 반지름(타일). 그림의 물 타원(3.2 × 1.8)보다 조금 안쪽 */
 export const BATH_RX = 2.9;
 export const BATH_RY = 1.5;
-/** 온천 가운데(타일). 위 가운데 오두막 문·아래 가로 데크와 한 칸 넘게 띄운다 */
-const SPRING_TY = 1;
+/** 온천 가운데(타일). 위 가운데 오두막 문·아래 방명록 게시판·가로 데크와 한 칸 넘게 띄우고, 그림 바닥(가운데 + 4타일)이 게시판 그림에 닿지 않게 조금 올린다 */
+const SPRING_TY = 0.75;
 
 /** 온천 가운데에서 (dx, dy)px 떨어진 점이 반지름 rx·ry(타일) 타원의 몇 배 거리인지. 1보다 작으면 안쪽 */
 export const ellipseDistance = (dx: number, dy: number, rx: number, ry: number) => Math.hypot(dx / (rx * TILE), dy / (ry * TILE));
