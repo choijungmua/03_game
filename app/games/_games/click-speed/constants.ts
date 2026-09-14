@@ -17,5 +17,8 @@ export const CLICK_SPEED_SOUNDS = {
 /** 시간 끝 소리 뒤에 결과 소리가 이어지도록 미루는 시간 */
 export const RESULT_SOUND_DELAY_MS = 380;
 
+/** 결과 화면이 뜬 뒤 이 시간 동안은 탭·Space·Enter로 다시 시작하지 않는다 — 시간이 끝나는 순간에도 연타하던 손이 결과를 보기도 전에 새 판을 열지 않게 */
+export const RESULT_TAP_GUARD_MS = 1000;
+
 /** 이 등급 순서(CLICK_SPEED_TIERS 인덱스)부터는 결과 소리를 실패로 낸다 — "조금 느림"부터 */
 export const FAIL_TIER_INDEX = 3;
