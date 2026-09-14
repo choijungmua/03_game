@@ -5,6 +5,7 @@ import Image from "next/image";
 import { useEffect, useEffectEvent, useRef, useState, useSyncExternalStore } from "react";
 
 import { AdSlot } from "@/components/ads/ad-slot";
+import { GameControls } from "@/components/games/game-controls";
 import { ShareButton } from "@/components/games/share-button";
 import { cn } from "@/lib";
 import { submitGameRecord } from "@/lib/games/supabase";
@@ -165,6 +166,7 @@ export function CapybaraLogDodge() {
   const [countdownIndex, setCountdownIndex] = useState(0);
   const [result, setResult] = useState<RoundResult | null>(null);
   const [hud, setHud] = useState<Hud | null>(null);
+  const [paused, setPaused] = useState(false);
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const keysRef = useRef({ left: false, right: false });
@@ -172,7 +174,19 @@ export function CapybaraLogDodge() {
   const stateRef = useRef<GameState | null>(null);
   /** 게임 좌표 1px이 화면에서 몇 CSS px인지. 드래그 거리를 게임 좌표로 바꿀 때 쓴다 */
   const scaleRef = useRef(1);
+  /** rAF 루프는 렌더링과 상관없이 돌아서 멈춤 여부를 ref로 읽는다 */
+  const pausedRef = useRef(false);
   const { ref: recordsRef, inView: recordsVisible } = useInView<HTMLElement>(phase === "result");
+
+  // 멈출 때 입력을 비운다 — 방향키를 누른 채 멈추면 keyup을 놓쳐 이어할 때 한쪽으로 흘러간다
+  function changePaused(next: boolean) {
+    pausedRef.current = next;
+    setPaused(next);
+    if (next) {
+      keysRef.current = { left: false, right: false };
+      dragRef.current = null;
+    }
+  }
 
   const course = mode === "daily" ? courseDate : null;
   const courseBest = courseDate ? getCourseBest(records, courseDate) : null;
@@ -192,6 +206,7 @@ export function CapybaraLogDodge() {
   }, [phase]);
 
   const finishRound = useEffectEvent((state: GameState) => {
+    changePaused(false);
     const now = Date.now();
     const record = { id: String(now), timeMs: state.elapsedMs, nearMisses: state.nearMisses, course, at: now };
     const rank = getRank(records, record);
@@ -245,6 +260,13 @@ export function CapybaraLogDodge() {
     function tick(now: number) {
       const state = stateRef.current;
       if (!state || !ctx) return;
+      if (pausedRef.current) {
+        // step은 건너뛰고 기준 시각만 옮긴다 → 이어할 때 시간이 튀지 않음. 멈춘 동안 resize로 캔버스가 지워져도 다시 그림
+        lastAt = now;
+        draw(ctx, state, sprites, Math.max(0, now - startAt), reducedMotion);
+        frameId = requestAnimationFrame(tick);
+        return;
+      }
       const { left, right } = keysRef.current;
       // rAF는 백그라운드 탭에서 멈추고, step이 프레임 간격에 상한을 둬서 자연히 일시정지된다
       step(state, now - lastAt, {
@@ -280,6 +302,7 @@ export function CapybaraLogDodge() {
   }, [phase, challenge]);
 
   function startCountdown() {
+    changePaused(false);
     keysRef.current = { left: false, right: false };
     setHud(null);
     setCountdownIndex(0);
@@ -289,7 +312,7 @@ export function CapybaraLogDodge() {
   // 드래그는 손가락이 움직인 거리만큼 카피바라를 옮긴다 (손가락이 카피바라를 가리지 않게)
   function handlePointerDown(event: React.PointerEvent<HTMLDivElement>) {
     const state = stateRef.current;
-    if (phase !== "playing" || !state) return;
+    if (phase !== "playing" || !state || pausedRef.current) return;
     event.currentTarget.setPointerCapture(event.pointerId);
     dragRef.current = { pointerX: event.clientX, startX: state.x, targetX: state.x };
   }
@@ -312,7 +335,7 @@ export function CapybaraLogDodge() {
   const handleKey = useEffectEvent((event: KeyboardEvent) => {
     const pressed = event.type === "keydown";
     if (LEFT_KEYS.has(event.key) || RIGHT_KEYS.has(event.key)) {
-      if (phase !== "playing") return;
+      if (phase !== "playing" || pausedRef.current) return;
       event.preventDefault();
       if (LEFT_KEYS.has(event.key)) keysRef.current.left = pressed;
       else keysRef.current.right = pressed;
@@ -372,6 +395,7 @@ export function CapybaraLogDodge() {
     <div
       data-testid="capybara-log-dodge-screen"
       data-phase={phase}
+      data-paused={paused}
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
@@ -481,7 +505,7 @@ export function CapybaraLogDodge() {
         >
           <canvas ref={canvasRef} aria-hidden="true" className="absolute inset-0 size-full" />
           {hud && (
-            <div className="pointer-events-none absolute inset-x-0 top-0 flex flex-col items-center gap-2 px-4 pt-[max(1rem,env(safe-area-inset-top))]">
+            <div className="pointer-events-none absolute inset-x-0 top-0 flex flex-col items-center gap-2 px-16 pt-[max(1rem,env(safe-area-inset-top))]">
               <p className="rounded-full bg-black/40 px-4 py-1 text-title-1 font-black tabular-nums">
                 {(hud.tenths / 10).toFixed(1)}초
               </p>
@@ -570,6 +594,20 @@ export function CapybaraLogDodge() {
           </section>
         </div>
       )}
+
+      <GameControls
+        className={phase === "playing" ? "dark text-foreground" : undefined}
+        pause={
+          phase === "playing"
+            ? {
+                paused,
+                onPause: () => changePaused(true),
+                onResume: () => changePaused(false),
+                onRestart: startCountdown,
+              }
+            : undefined
+        }
+      />
     </div>
   );
 }
