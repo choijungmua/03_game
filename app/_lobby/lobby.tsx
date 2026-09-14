@@ -1530,7 +1530,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
       {/* 있는 듯 없는 듯: 평소엔 반투명 알약, 입력할 때만 넓어지고 또렷해진다. 보내기는 Enter(모바일은 키보드 전송). 오른쪽 위 버튼 줄 자리는 비워 둔다 */}
       <form
         onSubmit={sendChat}
-        className="group absolute left-3 top-[max(0.75rem,env(safe-area-inset-top))] flex w-44 max-w-[calc(100%-12rem)] items-center rounded-full bg-black/25 transition-[width,background-color] duration-150 focus-within:w-72 focus-within:bg-card/90 has-[input:focus-visible]:ring-1 has-[input:focus-visible]:ring-primary motion-reduce:transition-none"
+        className="group absolute left-3 top-[max(0.75rem,env(safe-area-inset-top))] flex w-44 max-w-[calc(100%-12rem)] items-center rounded-full bg-black/25 transition-[width,background-color] duration-150 has-[input:focus]:w-72 has-[input:focus]:bg-card/90 has-[input:focus-visible]:ring-1 has-[input:focus-visible]:ring-primary motion-reduce:transition-none"
       >
         <Input
           ref={chatInputRef}
@@ -1544,7 +1544,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
             if (event.key === "Escape") event.currentTarget.blur();
           }}
           shape="pill"
-          className="h-8 min-w-0 flex-1 border-transparent bg-transparent pl-3 pr-1 text-base text-white shadow-none placeholder:text-white/60 focus-visible:ring-0 group-focus-within:text-text-strong group-focus-within:placeholder:text-text-placeholder md:text-caption-1"
+          className="h-8 min-w-0 flex-1 border-transparent bg-transparent pl-3 pr-1 text-base text-white shadow-none placeholder:text-white/60 focus-visible:ring-0 group-has-[input:focus]:text-text-strong group-has-[input:focus]:placeholder:text-text-placeholder md:text-caption-1"
         />
         <EmotePicker onPick={sendEmote} />
         <p aria-live="polite" className="sr-only">
