@@ -12,7 +12,9 @@ import { cn } from "@/lib";
 import type { Cell, RoomView, Stone } from "@/lib/games/rooms";
 
 import { EmoteBubble, EmotePicker, useEmoteShowing } from "./capybara-emotes";
+import { BotPicker } from "./bot-picker";
 import { RoomList } from "./room-list";
+import { RoomRecordPanel, useRoomRecord } from "./room-record";
 import type { BoardRoomState, CapybaraRoomProps } from "./type";
 
 const ASSET = "/assets/images/games/capybara-board";
@@ -88,6 +90,7 @@ export function CapybaraRoom<S extends BoardRoomState>({
 }: CapybaraRoomProps<S>) {
   const { view, error, pending, copied, clockOffset, create, sendEmote, copyInvite, leave } = room;
   const emoteShowing = useEmoteShowing(view?.emote ?? null);
+  const record = useRoomRecord(room.slug, view);
 
   const state = view?.state;
   const isOver = Boolean(state?.endReason);
@@ -122,7 +125,8 @@ export function CapybaraRoom<S extends BoardRoomState>({
 
       {!view || !state ? (
         // 시작 카드 + 오른쪽 방 목록. 좁은 화면에서는 위아래로 쌓고 스크롤한다
-        <div className="absolute inset-0 flex flex-col items-center gap-4 overflow-y-auto px-4 pt-[calc(max(1rem,env(safe-area-inset-top))_+_3.5rem)] pb-[max(1rem,env(safe-area-inset-bottom))] md:flex-row md:justify-center md:overflow-hidden">
+        <div className="absolute inset-0 flex flex-col items-center gap-4 overflow-y-auto px-4 pt-[calc(max(1rem,env(safe-area-inset-top))_+_3.5rem)] pb-[max(1rem,env(safe-area-inset-bottom))] lg:flex-row lg:justify-center lg:overflow-hidden">
+          <RoomRecordPanel title={title} summary={record} className="order-last w-full max-w-md shrink-0 lg:order-none lg:w-64" />
           <div className={cn(CARD, "flex w-full max-w-md shrink-0 flex-col gap-5 p-6")}>
             <div className="flex flex-col items-center gap-2">
               <p aria-hidden="true" className="text-center text-title-1 font-black">
@@ -132,11 +136,9 @@ export function CapybaraRoom<S extends BoardRoomState>({
             </div>
 
             <div className="flex flex-col gap-2">
+              <BotPicker pending={pending} onPick={create} />
               <Button type="button" onClick={() => create()} disabled={pending} className="h-12 w-full text-title-3 font-bold">
                 방 만들기
-              </Button>
-              <Button type="button" variant="outline" onClick={() => create(true)} disabled={pending} className="h-12 w-full text-title-3 font-bold">
-                컴퓨터와 두기
               </Button>
             </div>
 
@@ -147,7 +149,7 @@ export function CapybaraRoom<S extends BoardRoomState>({
             )}
           </div>
 
-          <RoomList room={room} className="w-full max-w-md shrink-0 md:h-[min(36rem,100%)] md:w-80" />
+          <RoomList room={room} className="w-full max-w-md shrink-0 lg:h-[min(36rem,100%)] lg:w-96" />
         </div>
       ) : (
         <div className="absolute inset-0 flex flex-col items-center gap-3 pt-[calc(max(1rem,env(safe-area-inset-top))_+_3.5rem)] pb-[max(1rem,env(safe-area-inset-bottom))]">

@@ -7,7 +7,7 @@ import { cn } from "@/lib";
 import type { RoomState } from "@/lib/games/rooms";
 import { type RoomHandle, useRoomList } from "@/lib/games/use-room";
 
-import { ROOM_STATUS } from "./constants";
+import { NO_ROOM_IMAGE, ROOM_STATUS } from "./constants";
 
 interface RoomListProps {
   room: Pick<RoomHandle<RoomState>, "slug" | "pending" | "join">;
@@ -29,16 +29,10 @@ export function RoomList({ room, className }: RoomListProps) {
       </h2>
 
       {rooms.length === 0 ? (
-        <div className="flex flex-1 flex-col items-center justify-center gap-3 py-8 text-center">
-          <Image
-            src="/assets/images/games/capybara-board/stone-black.webp"
-            alt=""
-            width={96}
-            height={96}
-            draggable={false}
-            className="size-24 opacity-80"
-          />
-          <p className="text-caption-1 text-text-caption">열린 방이 없어요. 방을 만들어 보세요</p>
+        <div className="flex flex-1 flex-col items-center justify-center gap-3 px-2 py-8 text-center">
+          <Image src={NO_ROOM_IMAGE} alt="" width={160} height={160} draggable={false} className="size-36" />
+          <p className="text-base font-medium text-text-normal">열린 방이 없어요</p>
+          <p className="-mt-2 text-caption-1 text-text-caption">방을 만들어 보세요</p>
         </div>
       ) : (
         <ul className="-mx-1 flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto overscroll-contain p-1">

@@ -13,7 +13,16 @@ import {
 
 import { AdSlot } from "@/components/ads/ad-slot";
 import { Progress } from "@/components/feedback/progress";
-import { EmoteBubble, EmotePicker, RoomList, TurnTimer, useEmoteShowing } from "@/components/games/capybara-room";
+import {
+  BotPicker,
+  EmoteBubble,
+  EmotePicker,
+  RoomList,
+  RoomRecordPanel,
+  TurnTimer,
+  useEmoteShowing,
+  useRoomRecord,
+} from "@/components/games/capybara-room";
 import { GameControls, LEAVE_CONFIRM_MESSAGE } from "@/components/games/game-controls";
 import { Button } from "@/components/inputs/button";
 import { Dialog } from "@/components/overlay/dialog";
@@ -83,6 +92,7 @@ export function CapybaraAlkkagi() {
     AlkkagiState,
     AlkkagiAction
   >("capybara-alkkagi");  const emoteShowing = useEmoteShowing(view?.emote ?? null);
+  const record = useRoomRecord("capybara-alkkagi", view);
   const [aim, setAim] = useState<Aim | null>(null);
   /** 샷 애니메이션 중 보여줄 알 위치. null이면 서버 상태 그대로 */
   const [frame, setFrame] = useState<Piece[] | null>(null);
@@ -285,7 +295,12 @@ export function CapybaraAlkkagi() {
 
       {!view || !state ? (
         // 시작 카드 + 오른쪽 방 목록. 좁은 화면에서는 위아래로 쌓고 스크롤한다
-        <div className="absolute inset-0 flex flex-col items-center gap-4 overflow-y-auto px-4 pt-[calc(max(1rem,env(safe-area-inset-top))_+_3.5rem)] pb-[max(1rem,env(safe-area-inset-bottom))] md:flex-row md:justify-center md:overflow-hidden">
+        <div className="absolute inset-0 flex flex-col items-center gap-4 overflow-y-auto px-4 pt-[calc(max(1rem,env(safe-area-inset-top))_+_3.5rem)] pb-[max(1rem,env(safe-area-inset-bottom))] lg:flex-row lg:justify-center lg:overflow-hidden">
+          <RoomRecordPanel
+            title={GAME_TITLES["capybara-alkkagi"]}
+            summary={record}
+            className="order-last w-full max-w-md shrink-0 lg:order-none lg:w-64"
+          />
           <div className={cn(CARD, "flex w-full max-w-md shrink-0 flex-col gap-5 p-6")}>
             <div className="flex flex-col items-center gap-2">
               <p aria-hidden="true" className="text-center text-title-1 font-black">
@@ -298,11 +313,9 @@ export function CapybaraAlkkagi() {
             </div>
 
             <div className="flex flex-col gap-2">
+              <BotPicker pending={pending} onPick={create} />
               <Button type="button" onClick={() => create()} disabled={pending} className="h-12 w-full text-title-3 font-bold">
                 방 만들기
-              </Button>
-              <Button type="button" variant="outline" onClick={() => create(true)} disabled={pending} className="h-12 w-full text-title-3 font-bold">
-                컴퓨터와 두기
               </Button>
             </div>
 
@@ -315,7 +328,7 @@ export function CapybaraAlkkagi() {
 
           <RoomList
             room={{ slug: "capybara-alkkagi", pending, join }}
-            className="w-full max-w-md shrink-0 md:h-[min(36rem,100%)] md:w-80"
+            className="w-full max-w-md shrink-0 lg:h-[min(36rem,100%)] lg:w-96"
           />
         </div>
       ) : (
