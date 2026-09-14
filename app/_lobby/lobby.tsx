@@ -8,7 +8,7 @@ import { type FormEvent, useEffect, useEffectEvent, useRef, useState } from "rea
 
 import { pretendard } from "@/config";
 import { cn } from "@/lib";
-import { API_URL } from "@/lib/api-url";
+import { ApiError, fetchApi } from "@/lib/api-url";
 
 /** 캔버스는 CSS 폰트를 물려받지 않으니 사이트 폰트(Pretendard) 이름을 직접 쓴다 */
 const CANVAS_FONT = pretendard.style.fontFamily;
@@ -173,6 +173,10 @@ const ENTER_CHARGE_MS = 900;
 /** 통나무 의자 앞 이 거리 안에서 앉을 수 있다 */
 const SEAT_REACH = TILE * 1.4;
 const SYNC_MS = 150;
+/** 동기화 한 번을 기다리는 최대 시간. 넘으면 끊긴 것으로 보고 다음에 다시 보낸다 */
+const SYNC_TIMEOUT_MS = 3000;
+/** 연속 실패 횟수별 다시 보내기까지 쉬는 시간 — 서버가 꺼져 있을 때 150ms마다 두드리지 않는다 */
+const SYNC_BACKOFF_MS = [1000, 2000, 5000, 10_000];
 /** 텍스처 한 장이 덮는 월드 크기(px) — 타일의 배수여야 칸마다 이어진다 */
 const TEXTURE_SIZE = 192;
 const CHARACTER_BASE = "/assets/images/characters/capybara";
@@ -732,7 +736,8 @@ export function Lobby({ games }: { games: DoorGame[] }) {
   const [seatNearby, setSeatNearby] = useState(false);
   const [stunned, setStunned] = useState(false);
   const [notice, setNotice] = useState("");
-  const [offline, setOffline] = useState(false);
+  /** 멀티에 붙지 못한 이유 ("연결 끊김"·"로비가 가득 찼어요"). 빈 문자열이면 연결됨 */
+  const [offline, setOffline] = useState("");
   // 게임 루프 effect가 router 변경으로 다시 실행되면 캐릭터·멀티 상태가 초기화되므로 이벤트로 감싼다
   const goToGame = useEffectEvent((slug: string) => router.push(`/games/${slug}`));
   const prefetchGame = useEffectEvent((slug: string) => router.prefetch(`/games/${slug}`));
@@ -1045,8 +1050,11 @@ export function Lobby({ games }: { games: DoorGame[] }) {
 
     // --- 멀티: 내 상태를 보내고 근처 플레이어를 받는다 ---
     let inFlight = false;
+    let failures = 0;
+    let retryAt = 0;
     const sync = () => {
-      if (inFlight) return;
+      // 탭이 가려져 있으면 보내지 않는다(돌아오면 다음 주기에 바로 보낸다). 실패 뒤에는 쉬는 시간이 지나야 다시 보낸다
+      if (inFlight || document.hidden || performance.now() < retryAt) return;
       inFlight = true;
       const sent = { x: me.x, y: me.y };
       const attack = attackQueued;
@@ -1054,12 +1062,17 @@ export function Lobby({ games }: { games: DoorGame[] }) {
       const chat = chatQueued ?? undefined;
       chatQueued = null;
       // ponytail: 150ms 게임 루프라 React Query 없이 직접 보낸다(렌더 없이 캔버스만 갱신)
-      fetch(`${API_URL}/api/lobby`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token, ...sent, facing: me.facing, sitting: me.sitting, attack, outfit: outfitRef.current, chat }),
-      })
+      fetchApi(
+        "/api/lobby",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ token, ...sent, facing: me.facing, sitting: me.sitting, attack, outfit: outfitRef.current, chat }),
+        },
+        SYNC_TIMEOUT_MS,
+      )
         .then(async (response) => {
+          if (response.status === 503) throw new ApiError("로비가 가득 찼어요", 503);
           const data: Partial<PresenceResponse> = await response.json();
           if (!response.ok || !data.you || !Array.isArray(data.players)) throw new Error("sync failed");
           const received = performance.now();
@@ -1139,9 +1152,19 @@ export function Lobby({ games }: { games: DoorGame[] }) {
             hitEffects.set(data.hit, received + 450);
             playSound("hit", settingsRef.current);
           }
-          setOffline(false);
+          failures = 0;
+          retryAt = 0;
+          setOffline("");
         })
-        .catch(() => setOffline(true))
+        .catch((caught) => {
+          // 보내지 못한 채팅은 다음 동기화에 다시 싣는다 (때리기는 지난 입력이라 버린다)
+          if (chat && chatQueued === null) chatQueued = chat;
+          failures += 1;
+          retryAt = performance.now() + SYNC_BACKOFF_MS[Math.min(failures, SYNC_BACKOFF_MS.length) - 1];
+          // 끊긴 동안 멈춘 다른 플레이어가 그 자리에 서 있지 않게 지운다 (다시 붙으면 새로 받는다)
+          remotes.clear();
+          setOffline(caught instanceof ApiError && caught.status === 503 ? "로비가 가득 찼어요" : "연결 끊김");
+        })
         .finally(() => {
           inFlight = false;
         });
@@ -1493,7 +1516,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
     };
   }, [world]);
 
-  const status = stunned ? "기절! 2초 동안 못 움직여요" : notice || (activeDoor ? `${activeDoor.title} 들어가는 중… (Enter로 바로)` : offline ? "혼자 모드 (연결 끊김)" : "");
+  const status = stunned ? "기절! 2초 동안 못 움직여요" : notice || (activeDoor ? `${activeDoor.title} 들어가는 중… (Enter로 바로)` : offline ? `혼자 모드 (${offline})` : "");
 
   const sendChat = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
