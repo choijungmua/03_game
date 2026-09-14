@@ -83,6 +83,45 @@ describe("ReactionTime", () => {
     });
   });
 
+  describe("뒤로 버튼", () => {
+    function cancelButton() {
+      return screen.getByRole("button", { name: "이번 판 그만하기" });
+    }
+
+    it("시작 화면에서는 로비로 가는 링크다", () => {
+      render(<ReactionTime />);
+      expect(screen.getByRole("link", { name: "로비로 돌아가기" })).toHaveAttribute("href", "/");
+    });
+
+    it("카운트다운 중 누르면 판을 취소하고 시작 화면으로 돌아간다", async () => {
+      render(<ReactionTime />);
+      tap();
+      fireEvent.pointerDown(cancelButton());
+      fireEvent.click(cancelButton());
+      expect(getArea()).toHaveAttribute("data-phase", "idle");
+
+      await advance(COUNTDOWN_STEP_MS * COUNTDOWN_VALUES.length);
+      expect(getArea()).toHaveAttribute("data-phase", "idle");
+    });
+
+    it("측정 중 누르면 기록을 남기지 않고 시작 화면으로 돌아간다", async () => {
+      render(<ReactionTime />);
+      await startAndFinishCountdown();
+      fireEvent.pointerDown(cancelButton());
+      fireEvent.click(cancelButton());
+      expect(getArea()).toHaveAttribute("data-phase", "idle");
+      expect(window.localStorage.getItem("reaction-time-records")).toBeNull();
+    });
+
+    it("너무 빨랐어요 화면에서는 로비로 가는 링크다", () => {
+      render(<ReactionTime />);
+      tap();
+      tap();
+      expect(getArea()).toHaveAttribute("data-phase", "too-soon");
+      expect(screen.getByRole("link", { name: "로비로 돌아가기" })).toHaveAttribute("href", "/");
+    });
+  });
+
   describe("카운트다운", () => {
     it("탭하면 전체 화면이 초록색으로 바뀌고 3부터 센다", () => {
       render(<ReactionTime />);

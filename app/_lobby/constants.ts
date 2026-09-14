@@ -6,6 +6,8 @@ export const BUBBLE_LINE = 16;
 export const EMOTE_SIZE = 60;
 /** 채팅 알약의 이모티콘 버튼에 보이는 이모티콘 번호 (선글라스 카피바라) */
 export const EMOTE_PICKER_ICON = 3;
+/** 앉기·때리기 버튼과 같은 나무 테두리 (punch.webp에서 테두리만 오려낸 그림). 프로필·효과음 원 위에 덮는다 */
+export const FRAME_SRC = "/assets/images/ui/lobby/frame.webp";
 
 /** 로비 하단에 늘 보이는 사이트 정보 링크 (애드센스 심사에서 찾을 수 있어야 한다) */
 export const SITE_LINKS = [

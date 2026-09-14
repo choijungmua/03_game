@@ -360,4 +360,162 @@ describe("CapybaraSneak", () => {
       expect(gaugeValue()).toBe(0);
     });
   });
+
+  describe("일시정지", () => {
+    function pauseButton() {
+      return screen.getByRole("button", { name: "일시정지" });
+    }
+
+    it("시작 전에는 일시정지 버튼 없이 로비 링크만 있다", () => {
+      render(<CapybaraSneak />);
+      expect(screen.queryByRole("button", { name: "일시정지" })).toBeNull();
+      expect(screen.getByRole("link", { name: "로비로 돌아가기" })).toHaveAttribute("href", "/");
+    });
+
+    it("멈춘 동안에는 게이지도 주인도 움직이지 않고, 이어하면 남은 시간부터 다시 움직인다", async () => {
+      render(<CapybaraSneak />);
+      press();
+      await advance(EAT_DELAY_MS);
+      const eaten = gaugeValue();
+      expect(eaten).toBeGreaterThan(0);
+
+      fireEvent.click(pauseButton());
+      const ownerAtPause = ownerState();
+      expect(ownerAtPause).toBe("away");
+
+      // 멈추지 않았다면 LOOKING_AT 안에 turning → looking까지 진행했을 시간이지만, 멈춘 동안은 그대로다
+      await advance(LOOKING_AT);
+      expect(gaugeValue()).toBe(eaten);
+      expect(ownerState()).toBe(ownerAtPause);
+      expect(screen.queryByText("들켰다!")).toBeNull();
+
+      fireEvent.click(screen.getByRole("button", { name: "이어하기" }));
+      release();
+      // 멈추기 전 이미 EAT_DELAY_MS만큼 지나 있었으므로, 새 TURNING_AT이 아니라 남은 시간만 지나면 된다
+      await advance(TURNING_AT - EAT_DELAY_MS);
+      expect(ownerState()).toBe("turning");
+    });
+
+    it("주인이 보고 있을 때 멈췄다 이어하면 보던 채로, 남은 시간이 지나야 등을 돌린다", async () => {
+      render(<CapybaraSneak />);
+      press();
+      release();
+      await advance(LOOKING_AT);
+      expect(ownerState()).toBe("looking");
+
+      const intoLook = 100;
+      expect(intoLook).toBeLessThan(GLANCE_MS_RANGE.min);
+      await advance(intoLook);
+
+      fireEvent.click(pauseButton());
+      await advance(10_000);
+      // 시선을 피해 등을 돌리게 만들 수 없다 — 멈춰 있는 동안은 계속 보고 있다
+      expect(ownerState()).toBe("looking");
+      expect(gaugeValue()).toBe(0);
+
+      fireEvent.click(screen.getByRole("button", { name: "이어하기" }));
+      expect(ownerState()).toBe("looking");
+
+      const remaining = GLANCE_MS_RANGE.min - intoLook;
+      await advance(remaining - 1);
+      expect(ownerState()).toBe("looking");
+      await advance(1);
+      expect(ownerState()).toBe("away");
+    });
+
+    it("경고(turning) 중에 멈췄다 이어하기를 반복해도, 원래 경고 시간이 지나야 본다", async () => {
+      render(<CapybaraSneak />);
+      press();
+      release();
+      await advance(TURNING_AT);
+      expect(ownerState()).toBe("turning");
+
+      // Esc 스팸을 흉내: 조금씩만 진행시키고 그 사이사이 오래 멈췄다 이어한다
+      const step = 50;
+      expect(step).toBeLessThan(WARNING_MS_RANGE.min);
+      let elapsed = 0;
+      while (elapsed + step < WARNING_MS_RANGE.min) {
+        fireEvent.click(pauseButton());
+        await advance(5_000);
+        expect(ownerState()).toBe("turning");
+
+        fireEvent.click(screen.getByRole("button", { name: "이어하기" }));
+        await advance(step);
+        elapsed += step;
+        expect(ownerState()).toBe("turning");
+      }
+
+      // 안 멈췄을 때와 같은 총 경고 시간(WARNING_MS_RANGE.min)이 지나면 본다 — 멈춤이 경고를 늘리지 못한다
+      await advance(WARNING_MS_RANGE.min - elapsed);
+      expect(ownerState()).toBe("looking");
+    });
+
+    it("등을 돌리고 있을 때 멈췄다 이어하면, 원래 예정된 시간이 지나야 경고가 뜬다", async () => {
+      render(<CapybaraSneak />);
+      press();
+      release();
+      expect(ownerState()).toBe("away");
+
+      const beforePause = 100;
+      await advance(beforePause);
+
+      fireEvent.click(pauseButton());
+      await advance(5_000);
+      expect(ownerState()).toBe("away");
+
+      fireEvent.click(screen.getByRole("button", { name: "이어하기" }));
+      // 새 away 주기(TURNING_AT 전체)가 아니라, 멈추기 전 지난 시간을 뺀 나머지만 지나면 된다
+      await advance(TURNING_AT - beforePause - 1);
+      expect(ownerState()).toBe("away");
+
+      await advance(1);
+      expect(ownerState()).toBe("turning");
+    });
+
+    it("멈춘 동안 스페이스바를 눌러도 먹지 않는다", async () => {
+      render(<CapybaraSneak />);
+      press();
+      await advance(EAT_DELAY_MS);
+      const eaten = gaugeValue();
+
+      fireEvent.click(pauseButton());
+      fireEvent.keyDown(window, { key: " " });
+      expect(capybaraPose()).toBe("idle");
+      await advance(EAT_DELAY_MS + EAT_INTERVAL_MS * 3);
+      expect(gaugeValue()).toBe(eaten);
+    });
+
+    it("안 누르고 게이지가 줄던 중에 멈췄다 이어하면, 남은 시간만 지나도 줄어든다", async () => {
+      render(<CapybaraSneak />);
+      await hold(EAT_DELAY_MS + EAT_INTERVAL_MS * 2);
+      const eaten = gaugeValue();
+      expect(eaten).toBeGreaterThan(0);
+
+      // DECAY_GRACE_MS(500)의 일부만 흘려보낸 채로 멈춘다 — 아직 감소 전이어야 한다
+      const before = 400;
+      expect(before).toBeLessThan(DECAY_GRACE_MS);
+      await advance(before);
+      expect(gaugeValue()).toBe(eaten);
+
+      fireEvent.click(pauseButton());
+      await advance(5_000);
+      fireEvent.click(screen.getByRole("button", { name: "이어하기" }));
+
+      // 멈추기 전 지난 시간(400) + 이어서 지난 시간을 더해 원래 그레이스(500)에 도달하면 줄어야 한다
+      await advance(DECAY_GRACE_MS - before);
+      expect(gaugeValue()).toBeLessThan(eaten);
+    });
+
+    it("멈춘 상태에서 처음부터를 누르면 창이 닫히고 시작 전으로 돌아간다", async () => {
+      render(<CapybaraSneak />);
+      press();
+      await advance(EAT_DELAY_MS);
+      fireEvent.click(pauseButton());
+
+      fireEvent.click(screen.getByRole("button", { name: "처음부터" }));
+      expect(screen.queryByRole("dialog")).toBeNull();
+      expect(gaugeValue()).toBe(0);
+      expect(screen.queryByRole("button", { name: "일시정지" })).toBeNull();
+    });
+  });
 });

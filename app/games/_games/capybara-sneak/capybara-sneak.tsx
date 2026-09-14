@@ -5,6 +5,7 @@ import { useEffect, useEffectEvent, useRef, useState } from "react";
 
 import { AdSlot } from "@/components/ads/ad-slot";
 import { Progress } from "@/components/feedback/progress";
+import { GameControls } from "@/components/games/game-controls";
 import { Button } from "@/components/inputs/button";
 import { Dialog } from "@/components/overlay/dialog";
 import { cn } from "@/lib";
@@ -82,6 +83,7 @@ export function CapybaraSneak() {
   const [gauge, setGauge] = useState(0);
   const [trend, setTrend] = useState<GaugeTrend>("up");
   const [pressing, setPressing] = useState(false);
+  const [paused, setPaused] = useState(false);
   useLockPageScroll(status === "playing");
 
   // 먹기·감소·주인 타이머는 화면이 다시 그려지기 전에도 여러 번 돌 수 있어서,
@@ -89,6 +91,17 @@ export function CapybaraSneak() {
   const statusRef = useRef<GameStatus>("ready");
   const ownerRef = useRef<OwnerState>("away");
   const gaugeRef = useRef(0);
+  // 지금 보이는 주인 상태(away/turning/looking)가 다음 상태로 바뀌는 시각(ms epoch).
+  // 멈출 때 여기서 "남은 시간"을 계산해두면, 이어할 때 같은 상태를 남은 시간만큼만 이어갈 수 있다
+  const phaseEndsAtRef = useRef(0);
+  // away 주기에서 "!" 경고가 뜨는 시점(경고 길이)을 기억해둔다 — away 중에 멈췄다 이어할 때도 같은 경고 길이를 쓰기 위해
+  const warningMsRef = useRef(0);
+  // 멈출 때 계산한 "남은 시간". null이 아니면 다음 effect 실행이 새 주기 대신 이 시간부터 이어간다
+  const remainingRef = useRef<number | null>(null);
+  // 다음 게이지 감소 틱이 언제인지(ms epoch). 안 누르고 있을 때만 의미가 있다
+  const decayAtRef = useRef(0);
+  // 멈출 때(안 누르고 있었다면) 계산한 감소까지 남은 시간. null이면 다음 감소 effect가 처음부터(DECAY_GRACE_MS) 기다린다
+  const decayRemainingRef = useRef<number | null>(null);
 
   function changeStatus(next: GameStatus) {
     statusRef.current = next;
@@ -127,35 +140,65 @@ export function CapybaraSneak() {
 
   // 게임 중에만 주인이 등 돌림 → "!" 경고 → 돌아봄(가끔은 흘끗) → 다시 등 돌림을 반복한다
   useEffect(() => {
-    if (status !== "playing") return;
+    if (status !== "playing" || paused) return;
 
     const timers: ReturnType<typeof setTimeout>[] = [];
 
-    function scheduleAway() {
-      const awayMs = pickDuration(AWAY_MS_RANGE);
-      const warningMs = Math.min(awayMs, pickWarningMs(gaugeRef.current));
-      timers.push(setTimeout(() => moveOwner("turning"), awayMs - warningMs));
+    // delayMs 뒤에 등을 돌린다(다음 away 주기 시작). looking이 끝날 때와 이어하기(looking 이어감)가 같이 쓴다
+    function scheduleAwayAfter(delayMs: number) {
+      phaseEndsAtRef.current = Date.now() + delayMs;
+      timers.push(
+        setTimeout(() => {
+          moveOwner("away");
+          scheduleAway();
+        }, delayMs),
+      );
+    }
+
+    // delayMs 뒤에 돌아봄(가끔은 흘끗). away 경로와 이어하기(turning 이어감)가 같이 쓴다
+    function scheduleLooking(delayMs: number) {
       timers.push(
         setTimeout(() => {
           moveOwner("looking");
           const look = pickLook();
-          timers.push(
-            setTimeout(() => {
-              moveOwner("away");
-              scheduleAway();
-            }, look.ms),
-          );
-        }, awayMs),
+          scheduleAwayAfter(look.ms);
+        }, delayMs),
       );
     }
 
-    scheduleAway();
+    function scheduleAway() {
+      const awayMs = pickDuration(AWAY_MS_RANGE);
+      const warningMs = Math.min(awayMs, pickWarningMs(gaugeRef.current));
+      warningMsRef.current = warningMs;
+      phaseEndsAtRef.current = Date.now() + awayMs;
+      timers.push(setTimeout(() => moveOwner("turning"), awayMs - warningMs));
+      scheduleLooking(awayMs);
+    }
+
+    const remaining = remainingRef.current;
+    if (remaining === null) {
+      scheduleAway();
+    } else {
+      // 멈추기 전 상태·남은 시간 그대로 이어간다 — 멈춰서 시선을 피하거나 경고를 늘릴 수 없다
+      remainingRef.current = null;
+      if (ownerRef.current === "looking") {
+        scheduleAwayAfter(remaining);
+      } else if (ownerRef.current === "turning") {
+        phaseEndsAtRef.current = Date.now() + remaining;
+        scheduleLooking(remaining);
+      } else {
+        phaseEndsAtRef.current = Date.now() + remaining;
+        timers.push(setTimeout(() => moveOwner("turning"), Math.max(0, remaining - warningMsRef.current)));
+        scheduleLooking(remaining);
+      }
+    }
+
     return () => timers.forEach(clearTimeout);
-  }, [status]);
+  }, [status, paused]);
 
   // 누르고 딜레이가 지나면 첫 입, 그 뒤로는 손을 뗄 때까지 일정 간격으로 한 입씩 먹는다
   useEffect(() => {
-    if (!pressing || status !== "playing") return;
+    if (!pressing || status !== "playing" || paused) return;
 
     let interval: ReturnType<typeof setInterval> | undefined;
     const delay = setTimeout(() => {
@@ -167,26 +210,36 @@ export function CapybaraSneak() {
       clearTimeout(delay);
       if (interval !== undefined) clearInterval(interval);
     };
-  }, [pressing, status]);
+  }, [pressing, status, paused]);
 
   // 손을 떼고 잠깐 여유를 준 뒤, 다시 누를 때까지 일정 간격으로 게이지가 줄어든다
   useEffect(() => {
-    if (pressing || status !== "playing") return;
+    if (pressing || status !== "playing" || paused) return;
 
     let interval: ReturnType<typeof setInterval> | undefined;
-    const grace = setTimeout(() => {
+    function tick() {
       decay();
-      interval = setInterval(decay, DECAY_INTERVAL_MS);
-    }, DECAY_GRACE_MS);
+      decayAtRef.current = Date.now() + DECAY_INTERVAL_MS;
+    }
+
+    // 멈추기 전 안 누르고 있었다면 남은 시간만큼만 기다린다 — 멈췄다 이어하기를 반복해도 감소를 미룰 수 없다
+    const first = decayRemainingRef.current ?? DECAY_GRACE_MS;
+    decayRemainingRef.current = null;
+    decayAtRef.current = Date.now() + first;
+    const grace = setTimeout(() => {
+      tick();
+      interval = setInterval(tick, DECAY_INTERVAL_MS);
+    }, first);
 
     return () => {
       clearTimeout(grace);
       if (interval !== undefined) clearInterval(interval);
     };
-  }, [pressing, status]);
+  }, [pressing, status, paused]);
 
   // 결과 팝업 안에서 누른 것도 React 트리를 따라 올라오지만, 게임이 끝났으면 무시된다
   function startPress() {
+    if (paused) return;
     if (statusRef.current === "success" || statusRef.current === "fail") return;
     if (statusRef.current === "ready") changeStatus("playing");
     setPressing(true);
@@ -232,6 +285,23 @@ export function CapybaraSneak() {
     setGauge(0);
     setTrend("up");
     setPressing(false);
+    setPaused(false);
+    phaseEndsAtRef.current = 0;
+    warningMsRef.current = 0;
+    remainingRef.current = null;
+    decayAtRef.current = 0;
+    decayRemainingRef.current = null;
+  }
+
+  // 주인 상태는 그대로 두고 누르기만 해제한다 — 멈춘 순간의 상태·남은 시간 그대로 이어가야
+  // 멈춰서 시선을 피하거나("looking"→"away") 경고를 늘리는(매번 새 경고) 꼼수가 생기지 않는다
+  function pauseGame() {
+    remainingRef.current = Math.max(0, phaseEndsAtRef.current - Date.now());
+    // 안 누르고 있어서 게이지가 줄던 중이었다면 그 남은 시간도 이어간다 — 아니면 멈췄다 이어하기를
+    // 반복해서 감소 시작을 계속 미루는(=게이지가 절대 안 줄어드는) 꼼수가 생긴다
+    if (!pressing) decayRemainingRef.current = Math.max(0, decayAtRef.current - Date.now());
+    setPressing(false);
+    setPaused(true);
   }
 
   const foodStage = getFoodStage(gauge);
@@ -379,7 +449,7 @@ export function CapybaraSneak() {
       <div
         data-testid="gauge-panel"
         data-trend={trend}
-        className="absolute inset-x-0 top-[max(1rem,env(safe-area-inset-top))] mx-auto w-[min(32rem,calc(100%-2rem))] rounded-2xl bg-background/85 px-4 py-3 shadow-lg backdrop-blur"
+        className="absolute inset-x-0 top-[max(1rem,env(safe-area-inset-top))] mx-auto w-[min(32rem,calc(100%-8rem))] rounded-2xl bg-background/85 px-4 py-3 shadow-lg backdrop-blur"
       >
         <div className="mb-2 flex items-center justify-between text-caption-1 font-semibold text-text-strong">
           <span>먹기 게이지</span>
@@ -400,6 +470,14 @@ export function CapybaraSneak() {
           </p>
         )}
       </div>
+
+      <GameControls
+        pause={
+          status === "playing"
+            ? { paused, onPause: pauseGame, onResume: () => setPaused(false), onRestart: restart }
+            : undefined
+        }
+      />
 
       <Dialog open={isOver} onOpenChange={(open) => !open && restart()}>
         <Dialog.Content showCloseButton={false} closeOnOverlayClick={false} className="text-center">
