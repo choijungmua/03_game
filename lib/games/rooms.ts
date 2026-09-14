@@ -53,3 +53,6 @@ export type RoomResult<S> =
 
 /** 방 목록 한 줄 (백엔드 GET /api/games/<slug>/rooms). waiting = 상대를 기다림(1/2), playing = 게임 중(2/2) */
 export type RoomSummary = Pick<RoomView<RoomState>, "code"> & { status: "waiting" | "playing" };
+
+/** 컴퓨터 상대 수준 (백엔드 createRoom의 level) */
+export type BotLevel = "easy" | "normal" | "hard";

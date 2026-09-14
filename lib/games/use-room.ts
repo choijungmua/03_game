@@ -3,7 +3,7 @@ import { useEffect, useEffectEvent, useRef, useState } from "react";
 
 import { ApiError, fetchApi, SERVER_ERROR_MESSAGE } from "@/lib/api-url";
 
-import type { RoomAction, RoomResult, RoomState, RoomSummary, Vector } from "./rooms";
+import type { BotLevel, RoomAction, RoomResult, RoomState, RoomSummary, Vector } from "./rooms";
 
 type RoomSuccess<S> = Extract<RoomResult<S>, { ok: true }>;
 type RoomFailure<S> = Extract<RoomResult<S>, { ok: false }>;
@@ -32,7 +32,7 @@ function saveToken(key: string, token: string) {
   } catch {}
 }
 
-async function callApi<S>(path: string, body?: RoomAction | { bot?: boolean }): Promise<RoomSuccess<S>> {
+async function callApi<S>(path: string, body?: RoomAction | { bot?: boolean; level?: BotLevel }): Promise<RoomSuccess<S>> {
   const response = await fetchApi(
     path,
     body
@@ -139,10 +139,10 @@ export function useRoom<S extends RoomState, A extends string>(slug: string) {
   });
   const run = action.mutate;
 
-  /** bot이면 컴퓨터(백)와 두는 방 */
-  function create(bot = false) {
+  /** level을 주면 그 수준의 컴퓨터(백)와 두는 방, 없으면 친구 방 */
+  function create(level?: BotLevel) {
     setSpectateCode(null);
-    run(() => callApi<S>(api, bot ? { bot: true } : {}));
+    run(() => callApi<S>(api, level ? { bot: true, level } : {}));
   }
 
   function join(rawCode: string) {
