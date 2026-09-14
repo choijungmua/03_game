@@ -991,7 +991,7 @@ function facingOf(dx: number, dy: number): Facing {
 export function Lobby({ games }: { games: DoorGame[] }) {
   const router = useRouter();
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  /** Space(앉기·낚시 버튼): 통나무 앞이면 앉기·일어나기, 물가면 찌 던지기·당기기 */
+  /** Space(앉기·낚시 버튼): 통나무 앞이면 앉기·일어나기, 물가면 계속 낚기 시작·그만하기 */
   const spaceRequest = useRef(false);
   const attackRequest = useRef(false);
   const joystickRef = useRef<HTMLDivElement>(null);
@@ -1018,7 +1018,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
   const [seatNearby, setSeatNearby] = useState(false);
   const [waterNearby, setWaterNearby] = useState(false);
   const [fishing, setFishing] = useState(false);
-  /** 자동 낚시: 입질이 오면 알아서 당기고 다시 던진다. 걷기·때리기·기절이면 꺼진다. 게임 루프는 ref로 읽는다 */
+  /** 계속 낚기: 물가에서 Space로 던지면 켜져서 입질마다 알아서 당기고 다시 던진다. Space를 다시 누르거나 걷기·때리기·기절이면 꺼진다. 게임 루프는 ref로 읽는다 */
   const [autoFishing, setAutoFishing] = useState(false);
   const autoFishingRef = useRef(false);
   /** 낚시 가방. 게임 루프가 낚을 때마다 저장하고 새 값을 넣는다 */
@@ -1616,17 +1616,17 @@ export function Lobby({ games }: { games: DoorGame[] }) {
         const water = me.fishing || me.sitting ? null : nearestWater(tileAt, me.x, me.y, FISH_REACH);
         if (isStunned) {
           // 기절 중엔 무시
-        } else if (me.fishing) {
-          // 당기기: 찌가 쑥 들어간 뒤(입질)에 당겨야 낚인다. 늦으면 아래에서 먼저 놓친다. 끌어올리는 중엔 무시
-          if (me.fishing.reelAt === Infinity) {
-            const bit = now >= me.fishing.biteAt;
-            reelLine(now, bit);
-            if (!bit) showNotice("너무 빨리 당겼어요. 찌가 쑥 들어가면 당겨요");
-          }
+        } else if (me.fishing || autoFishingRef.current) {
+          // 계속 낚는 중에 Space: 그만 낚는다. 입질이 와 있으면 그 물고기는 낚고 멈춘다 (이미 당겼으면 reelLine이 무시)
+          if (me.fishing) reelLine(now, now >= me.fishing.biteAt);
+          stopAuto();
         } else if (me.sitting) {
           standUp();
         } else if (nearestSeat() < 0 && water) {
+          // 한 번 던지면 멈출 때까지 입질마다 알아서 당기고 다시 던진다 (아래 게임 루프)
           castLine(water, now);
+          autoFishingRef.current = true;
+          setAutoFishing(true);
         } else {
           const index = nearestSeat();
           if (index >= 0 && !seatTaken(index)) {
@@ -2174,7 +2174,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
         </p>
         {helpOpen && (
           <p className="max-w-full text-balance rounded-lg bg-card/80 px-3 py-1.5 text-center text-caption-3 text-text-caption backdrop-blur">
-            방향키·WASD 걷기 · F 때리기 · 통나무 앞 Space 앉기 · 물가 Space 낚시 · Enter 채팅 · , 이모티콘 · P 프로필 · I 가방 · M 소리 · 오두막 문 앞에 가면 입장 · \ 닫기
+            방향키·WASD 걷기 · F 때리기 · 통나무 앞 Space 앉기 · 물가 Space 계속 낚시(한 번 더 누르면 그만) · Enter 채팅 · , 이모티콘 · P 프로필 · I 가방 · M 소리 · 오두막 문 앞에 가면 입장 · \ 닫기
           </p>
         )}
       </div>
@@ -2224,15 +2224,15 @@ export function Lobby({ games }: { games: DoorGame[] }) {
               <span className="rounded-full bg-card/85 px-2 py-0.5 text-caption-3 font-semibold text-text-strong">{sitting ? "일어나기" : "앉기"}</span>
             </button>
           )}
-          {(waterNearby || fishing) && (
+          {(waterNearby || fishing || autoFishing) && (
             <button
               ref={fishButtonRef}
               type="button"
               onClick={() => {
                 spaceRequest.current = true;
               }}
-              aria-pressed={fishing}
-              aria-label={fishing ? "낚싯대 당기기" : "낚시하기"}
+              aria-pressed={autoFishing}
+              aria-label={autoFishing ? "낚시 그만하기" : "낚시하기 (멈출 때까지 계속 낚아요)"}
               aria-keyshortcuts="Space"
               className="group flex flex-col items-center gap-0.5 rounded-full focus-visible:outline-2 focus-visible:outline-primary"
             >
@@ -2245,7 +2245,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
                   height={256}
                   unoptimized
                   draggable={false}
-                  className={cn("size-full drop-shadow-md", fishing && "brightness-90")}
+                  className={cn("size-full drop-shadow-md", autoFishing && "brightness-90")}
                 />
                 {/* 마우스를 올리거나 키보드 포커스면 나무 테 안쪽 판 위에 물고기 아이콘 (앉기·때리기와 같은 방식) */}
                 <span
@@ -2255,20 +2255,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
                   <Fish className="size-7" />
                 </span>
               </span>
-              <span className="rounded-full bg-card/85 px-2 py-0.5 text-caption-3 font-semibold text-text-strong">{fishing ? "당기기" : "낚시"}</span>
-            </button>
-          )}
-          {(waterNearby || fishing || autoFishing) && (
-            <button
-              type="button"
-              onClick={() => {
-                autoFishingRef.current = !autoFishingRef.current;
-                setAutoFishing(autoFishingRef.current);
-              }}
-              aria-pressed={autoFishing}
-              className="min-h-9 rounded-full bg-card/85 px-3 text-caption-3 font-semibold text-text-strong shadow-sm transition-colors focus-visible:outline-2 focus-visible:outline-primary aria-pressed:bg-primary aria-pressed:text-white"
-            >
-              자동 낚시 {autoFishing ? "켬" : "끔"}
+              <span className="rounded-full bg-card/85 px-2 py-0.5 text-caption-3 font-semibold text-text-strong">{autoFishing ? "그만" : "낚시"}</span>
             </button>
           )}
           <button
