@@ -9,6 +9,7 @@ import { ShareButton } from "@/components/games/share-button";
 import { cn } from "@/lib";
 import { GAME_TITLES } from "@/lib/games/constants";
 import { submitGameRecord } from "@/lib/games/supabase";
+import { useFrameText } from "@/lib/games/use-frame-text";
 import { useInView } from "@/lib/games/use-in-view";
 
 import { ClickSpeedLeaderboard } from "./leaderboard";
@@ -29,12 +30,6 @@ export const COUNTDOWN_STEP_MS = 800;
 
 type Phase = "idle" | "countdown" | "playing" | "result";
 
-interface Ripple {
-  id: number;
-  x: number;
-  y: number;
-}
-
 interface RoundResult {
   count: number;
   cps: number;
@@ -50,19 +45,16 @@ function stopPropagation(event: React.SyntheticEvent) {
 
 /** 오른쪽 아래 남은 시간 */
 function PlayTimer({ startAt, seconds }: { startAt: number; seconds: number }) {
-  const [elapsedMs, setElapsedMs] = useState(0);
-
-  useEffect(() => {
-    const id = setInterval(() => setElapsedMs(Date.now() - startAt), 10);
-    return () => clearInterval(id);
-  }, [startAt]);
+  const valueRef = useRef<HTMLSpanElement>(null);
+  const remaining = (elapsedMs: number) => (Math.max(0, seconds * 1000 - elapsedMs) / 1000).toFixed(2);
+  useFrameText(valueRef, () => remaining(Date.now() - startAt));
 
   return (
     <p
       data-testid="play-timer"
       className="pointer-events-none absolute right-4 bottom-[max(1rem,env(safe-area-inset-bottom))] rounded-full bg-black/15 px-3 py-1.5 text-title-3 font-bold tabular-nums"
     >
-      {(Math.max(0, seconds * 1000 - elapsedMs) / 1000).toFixed(2)}초
+      <span ref={valueRef}>{remaining(0)}</span>초
     </p>
   );
 }
@@ -108,12 +100,12 @@ export function ClickSpeed() {
   const [phase, setPhase] = useState<Phase>("idle");
   const [countdownIndex, setCountdownIndex] = useState(0);
   const [count, setCount] = useState(0);
-  const [ripples, setRipples] = useState<Ripple[]>([]);
   const [result, setResult] = useState<RoundResult | null>(null);
   const [playStartAt, setPlayStartAt] = useState(0);
 
   const containerRef = useRef<HTMLDivElement>(null);
-  const rippleIdRef = useRef(0);
+  /** 탭 물결을 붙이는 층. 플레이가 끝나 층이 사라지면 남은 물결도 같이 사라진다 */
+  const rippleLayerRef = useRef<HTMLDivElement>(null);
   const { ref: recordsRef, inView: recordsVisible } = useInView<HTMLElement>(phase === "result");
 
   const secondsRecords = records.filter((record) => record.seconds === seconds);
@@ -128,7 +120,6 @@ export function ClickSpeed() {
           return;
         }
         setCount(0);
-        setRipples([]);
         setPlayStartAt(Date.now());
         setPhase("playing");
       }, COUNTDOWN_STEP_MS * (index + 1)),
@@ -138,7 +129,6 @@ export function ClickSpeed() {
   }, [phase]);
 
   const finishRound = useEffectEvent(() => {
-    setRipples([]);
     setPhase("result");
 
     if (count === 0) {
@@ -169,14 +159,21 @@ export function ClickSpeed() {
 
   function cancelRound() {
     setCount(0);
-    setRipples([]);
     setPhase("idle");
   }
 
   function registerTap(x: number, y: number) {
-    const id = rippleIdRef.current++;
-    setRipples((prev) => [...prev, { id, x, y }]);
     setCount((prev) => prev + 1);
+    // 물결은 상태로 두지 않고 DOM에 바로 붙였다가 애니메이션이 끝나면 뗀다 (탭마다 렌더를 한 번 더 하지 않게)
+    const layer = rippleLayerRef.current;
+    if (!layer) return;
+    const ripple = document.createElement("span");
+    ripple.dataset.testid = "ripple";
+    ripple.className = "pointer-events-none absolute size-6 rounded-full bg-white animate-click-ripple";
+    ripple.style.left = `${x - 12}px`;
+    ripple.style.top = `${y - 12}px`;
+    ripple.addEventListener("animationend", () => ripple.remove(), { once: true });
+    layer.append(ripple);
   }
 
   // 연타는 손가락이 닿는 순간(pointerdown)에 센다
@@ -211,10 +208,6 @@ export function ClickSpeed() {
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, []);
-
-  function removeRipple(id: number) {
-    setRipples((prev) => prev.filter((ripple) => ripple.id !== id));
-  }
 
   const tier = result ? getClickSpeedTier(result.cps) : null;
 
@@ -314,15 +307,7 @@ export function ClickSpeed() {
             {count}
           </span>
 
-          {ripples.map((ripple) => (
-            <span
-              key={ripple.id}
-              data-testid="ripple"
-              onAnimationEnd={() => removeRipple(ripple.id)}
-              className="pointer-events-none absolute size-6 rounded-full bg-white animate-click-ripple"
-              style={{ left: ripple.x - 12, top: ripple.y - 12 }}
-            />
-          ))}
+          <div ref={rippleLayerRef} aria-hidden="true" className="pointer-events-none absolute inset-0" />
 
           <PlayTimer startAt={playStartAt} seconds={seconds} />
         </>
