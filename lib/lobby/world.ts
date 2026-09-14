@@ -94,6 +94,8 @@ export interface Seat {
   /** 앉았을 때 엉덩이 위치(px) */
   seatX: number;
   seatY: number;
+  /** 통나무 하나에 두 마리가 앉는 왼쪽·오른쪽 자리의 엉덩이 x(px) */
+  spots: readonly [number, number];
   /** 일어나면 서는 위치(px) — 통나무 바로 앞 */
   standY: number;
 }
@@ -225,7 +227,13 @@ export function createWorld(seed: string, games: readonly DoorGame[]): World {
   for (const [leftTx, ty] of seatSpots) {
     place(leftTx, ty, "log");
     place(leftTx + 1, ty, "log");
-    seats.push({ seatX: (leftTx + 1) * TILE, seatY: (ty + 0.62) * TILE, standY: (ty + 1.6) * TILE });
+    const seatX = (leftTx + 1) * TILE;
+    seats.push({
+      seatX,
+      seatY: (ty + 0.62) * TILE,
+      spots: [seatX - TILE * 0.55, seatX + TILE * 0.55],
+      standY: (ty + 1.6) * TILE,
+    });
   }
   const lanterns: [number, number][] = [
     [-W + 1, TOP + 1],

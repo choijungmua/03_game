@@ -11,7 +11,7 @@
 | 게임 오두막 | 같은 파일 + `buildings/hut-{1,2,3}` | 초가 원두막(나무 아케이드 간판), 카피바라 귀 풀 굴집(나무 휴대용 게임기 간판), 바나나잎 대나무 원두막(나무 TV 간판). 첫 게임은 온천 북쪽 가운데, 나머지는 좌우 날개에 대칭, 앞줄·뒷줄 지그재그라 한 줄로 늘어서지 않는다 |
 | 간판 화면 아이콘 + 문 입장 | `public/assets/images/games/<slug>/icon.webp` + `app/_lobby/lobby.tsx` `drawBuilding`·`drawDoorLight` | 포털 없음. 게임 표시는 오두막 간판 화면(아케이드·게임기·TV, 위치는 오두막 정의의 `screen`)에 켜진 테마 아이콘 하나뿐(나무·잎·조약돌 소재 펠트 소품: 스톱워치·마우스·수박·비행기 등). 문 앞에 가면 따뜻한 빛이 켜지며 0.9초 뒤 또는 Enter로 입장 |
 | 바닥·자연 | `ground/{meadow,mud,water,deck}`, `nature/{tree-tropical,palm,rocks,lotus,banana-bush,grass-bush,reeds}`, `props/fence` | 풀밭(얼룩·들꽃 섞음)·진흙길·습지 물·나무 데크 텍스처, 경계에 데크 테두리·진흙 둑. 바깥 습지는 열대 나무·야자수·이끼 바위 줄·수련·바나나잎 |
-| 통나무 앉기 | `props/log-seat`, `ui/lobby/sit.webp` | 통나무 앞에서 Space 또는 앉기 버튼 → 통나무로 폴짝 뛰어 앉고, 일어날 때도 폴짝 |
+| 통나무 앉기 | `props/log-seat`, `ui/lobby/sit.webp` | 통나무 앞에서 Space 또는 앉기 버튼 → 통나무로 폴짝 뛰어 앉고, 일어날 때도 폴짝. 통나무 하나에 두 마리(가까운 빈 자리)까지 앉는다. 30분 넘게 앉아 있으면 `capybara-sleep-{1,2}`로 잠들어 숨 쉬고 z가 떠오른다 |
 | 8방향 걷기 | `capybara-*-{up-left,…}.webp` + `app/_lobby/lobby.tsx` | 대각선 전용 걷기 스프라이트(없으면 옆모습). 걸음 프레임을 시간이 아니라 걸은 거리로 넘기고, 걸음마다 몸이 살짝 뜨고 기울어 뒤뚱뒤뚱 |
 | 모바일 조이스틱 | `ui/lobby/joystick-{base,knob}.webp` | 터치한 자리가 조이스틱 중심, 끈 방향으로 걷고 끈 거리만큼 빨라짐(40~100%). 마우스는 누른 곳으로 걷기 그대로 |
 | 낚시 버튼 | `ui/lobby/fish.webp` | 물가에서 뜨는 버튼. 낚싯대 든 카피바라 그림, 누르면 계속 낚기·한 번 더 누르면 그만 |
