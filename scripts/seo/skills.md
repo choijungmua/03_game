@@ -17,7 +17,7 @@
 
 ## 새 게임 추가 시 (CLAUDE.md "새 게임 추가 절차" 다음 단계)
 
-1. `lib/games/registry.ts` 항목에 `seo: () => import("@/app/games/_games/<slug>/seo"),` 한 줄 추가
+1. `lib/games/registry.ts` 항목에 `pageName: "<영어 소문자 한 단어>",`(페이지 제목 `ggpli - reaction`·공유 이미지)와 `seo: () => import("@/app/games/_games/<slug>/seo"),` 추가
 2. (선택) `pnpm seo:keywords <slug>` — 네이버 연관 검색어·검색수·추세를 `seo-keywords.json`으로 받는다
 3. `pnpm seo:generate <slug>` — 게임 소스 코드와 트렌드를 Claude(`claude-opus-5`)에 넣어 `seo.ts` 작성
 4. **검토**: 게임에 없는 기능·틀린 수치가 없는지 읽는다 (코드가 근거, 추측 금지)

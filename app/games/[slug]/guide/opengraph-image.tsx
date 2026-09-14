@@ -12,9 +12,10 @@ export function generateStaticParams() {
 
 export default async function Image({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
+  const game = getGame(slug);
   return renderOgImage({
-    title: `${getGame(slug)?.title ?? SITE_NAME} guide`,
-    subtitle: "하는 법·등급 기준·공략 팁 정리",
+    title: `${game?.pageName ?? SITE_NAME} guide`,
+    subtitle: game ? `${game.title} 공략` : "게임 공략",
     icon: gameIconPath(slug),
   });
 }

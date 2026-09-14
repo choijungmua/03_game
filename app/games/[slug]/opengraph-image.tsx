@@ -13,9 +13,10 @@ export function generateStaticParams() {
 
 export default async function Image({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
+  const game = getGame(slug);
   return renderOgImage({
-    title: getGame(slug)?.title ?? SITE_NAME,
-    subtitle: "설치·로그인 없이 바로 하는 무료 게임",
+    title: game?.pageName ?? SITE_NAME,
+    subtitle: game ? `${game.title} · 무료 게임` : "무료 게임",
     icon: gameIconPath(slug),
   });
 }
