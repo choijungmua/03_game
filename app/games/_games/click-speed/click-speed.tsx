@@ -4,6 +4,7 @@ import { ChevronDown } from "lucide-react";
 import { useEffect, useEffectEvent, useRef, useState } from "react";
 
 import { AdSlot } from "@/components/ads/ad-slot";
+import { GameControls } from "@/components/games/game-controls";
 import { ShareButton } from "@/components/games/share-button";
 import { cn } from "@/lib";
 import { submitGameRecord } from "@/lib/games/supabase";
@@ -127,6 +128,13 @@ export function ClickSpeed() {
     setPhase("countdown");
   }
 
+  function cancelRound() {
+    setCount(0);
+    setRipples([]);
+    setFirstTapAt(null);
+    setPhase("idle");
+  }
+
   function registerTap(x: number, y: number) {
     const now = Date.now();
     if (count === 0) setFirstTapAt(now);
@@ -225,6 +233,8 @@ export function ClickSpeed() {
           text={shareText}
         />
       )}
+
+      <GameControls onCancelRound={phase === "countdown" || phase === "playing" ? cancelRound : undefined} />
 
       {phase === "idle" && (
         <div className="flex w-full max-w-md flex-col items-center gap-8 text-center">

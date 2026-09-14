@@ -87,6 +87,28 @@ describe("ClickSpeed", () => {
     });
   });
 
+  describe("뒤로 버튼", () => {
+    it("시작 화면에서는 로비로 가는 링크다", () => {
+      render(<ClickSpeed />);
+      expect(screen.getByRole("link", { name: "로비로 돌아가기" })).toHaveAttribute("href", "/");
+    });
+
+    it("연타 중 누르면 기록을 남기지 않고 시작 화면으로 돌아간다", async () => {
+      render(<ClickSpeed />);
+      await startPlaying();
+      await tapTimes(3, 100);
+
+      const cancel = screen.getByRole("button", { name: "이번 판 그만하기" });
+      fireEvent.pointerDown(cancel);
+      fireEvent.click(cancel);
+      expect(getScreenEl()).toHaveAttribute("data-phase", "idle");
+
+      await advance(IDLE_STOP_MS);
+      expect(getScreenEl()).toHaveAttribute("data-phase", "idle");
+      expect(window.localStorage.getItem("click-speed-records")).toBeNull();
+    });
+  });
+
   describe("카운트다운", () => {
     it("탭하면 전체 화면이 초록색으로 바뀌고 3부터 센다", () => {
       render(<ClickSpeed />);
