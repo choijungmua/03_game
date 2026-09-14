@@ -27,6 +27,7 @@ import {
 } from "@/lib/lobby/assets";
 import { Input } from "@/components/inputs/input";
 import {
+  CORRECTION_SNAP_PX,
   DEFAULT_LOBBY_SETTINGS,
   FISH_BITE_MAX_MS,
   FISH_BITE_MIN_MS,
@@ -921,8 +922,9 @@ export function Lobby({ games }: { games: DoorGame[] }) {
     }
     const camera = { x: me.x, y: me.y, shakeUntil: 0 };
 
-    const token = loadSession("lobby-token") ?? crypto.randomUUID();
-    saveSession("lobby-token", token);
+    // 탭마다 새로 만든다. sessionStorage에 두면 탭 복제 때 같은 토큰이 복사돼 두 탭 위치가 번갈아 들어가 서로 끌어당긴다
+    // (게임에 들어가면 연결이 닫혀 서버가 플레이어를 바로 지우므로, 토큰을 이어 써도 이름표가 유지되지 않았다)
+    const token = crypto.randomUUID();
 
     const remotes = new Map<string, Remote>();
     const hitEffects = new Map<string, number>();
@@ -1130,8 +1132,13 @@ export function Lobby({ games }: { games: DoorGame[] }) {
         me.stunUntil = received + data.you.stunMs;
         if (me.sitting) standUp();
         me.fishing = null;
-      } else if (data.corrected && !blocked(data.you.x, data.you.y)) {
-        // 서버가 순간이동으로 판단해 위치를 고쳤을 때만 따른다 (you는 조금 전에 보낸 위치라 매번 따르면 뒤로 튄다)
+      } else if (
+        data.corrected &&
+        Math.hypot(data.you.x - me.x, data.you.y - me.y) > CORRECTION_SNAP_PX &&
+        !blocked(data.you.x, data.you.y)
+      ) {
+        // 서버가 순간이동으로 판단해 위치를 크게 고쳤을 때만 따른다 (you는 조금 전에 보낸 위치라 작은 보정까지 따르면 뒤로 튄다.
+        // 작은 차이는 다음 전송들로 서버가 곧 따라온다)
         me.x = data.you.x;
         me.y = data.you.y;
       }
@@ -1221,6 +1228,19 @@ export function Lobby({ games }: { games: DoorGame[] }) {
         reconnectTimer = window.setTimeout(connect, reconnectDelay);
         reconnectDelay = Math.min(RECONNECT_MAX_MS, reconnectDelay * 2);
       };
+    };
+
+    // 카톡 등 다른 앱·창으로 나가면 blur 없이 숨기만 하기도 한다(모바일). 누르던 조이스틱·키가 남아 돌아왔을 때 저절로 걸어가지 않게 비우고,
+    // 숨어 있는 동안 끊겼으면 재연결 대기(최대 8초)를 기다리지 않고 바로 다시 붙는다
+    const onVisibilityChange = () => {
+      if (document.hidden) {
+        onBlur();
+        return;
+      }
+      if (socket || disposed) return;
+      window.clearTimeout(reconnectTimer);
+      reconnectDelay = RECONNECT_MIN_MS;
+      connect();
     };
 
     let last = performance.now();
@@ -1514,8 +1534,10 @@ export function Lobby({ games }: { games: DoorGame[] }) {
       }
       const { spring } = world;
       if (inView(spring.x, spring.y, TILE * 6)) {
+        // 온천은 납작해서 늘 캐릭터보다 먼저 그린다. 뒤(북쪽)는 물 타일이 막아 캐릭터가 그림과 겹칠 만큼 못 다가가고,
+        // 가운데보다 아래를 기준으로 두면 옆에 선 캐릭터가 둘레 돌 그림에 가려진다
         drawables.push({
-          y: spring.y + SPRING_RADIUS * TILE * 0.6,
+          y: spring.y - SPRING_RADIUS * TILE,
           draw: () => {
             sprite("onsen", spring.x, spring.y + SPRING_RADIUS * TILE);
             drawSteam(ctx, spring.x, spring.y, now, !reducedMotion);
@@ -1633,6 +1655,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
     window.addEventListener("pointerup", onPointerUp);
     window.addEventListener("pointercancel", onPointerUp);
     window.addEventListener("blur", onBlur);
+    document.addEventListener("visibilitychange", onVisibilityChange);
     frame = requestAnimationFrame(tick);
     connect();
     const sendId = window.setInterval(send, LOBBY_TICK_MS);
@@ -1646,6 +1669,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
       window.removeEventListener("pointerup", onPointerUp);
       window.removeEventListener("pointercancel", onPointerUp);
       window.removeEventListener("blur", onBlur);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
       cancelAnimationFrame(frame);
       window.clearInterval(sendId);
       window.clearTimeout(reconnectTimer);
@@ -1725,7 +1749,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
       </form>
 
       {/* 오른쪽 위 세로 줄: 카피바라 옷장 → 효과음. 설정 버튼은 나중에 이 줄에 다시 넣는다 */}
-      {/* 효과음 버튼의 헤드폰이 원 밖으로 삐져나오는 만큼 위(옷장)·오른쪽(화면 끝)을 띄운다. 두 버튼은 앉기·때리기와 같은 size-18 */}
+      {/* 효과음 버튼의 헤드폰이 원 밖으로 삐져나오는 만큼 위(옷장)·오른쪽(화면 끝)을 띄운다. 두 버튼은 앉기·때리기와 같은 크기(모바일 size-14, md 이상 size-18) */}
       <div className="absolute right-5 top-[max(0.75rem,env(safe-area-inset-top))] flex flex-col items-center gap-6">
         <Wardrobe
           onChange={(outfit) => {
@@ -1778,7 +1802,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
               className="group flex flex-col items-center gap-0.5 rounded-full focus-visible:outline-2 focus-visible:outline-primary"
             >
               {/* 누르면 그림과 아이콘이 같이 줄어들게 감싼 쪽에 scale을 준다 */}
-              <span className="relative block size-18 transition-transform duration-100 motion-safe:group-active:scale-90">
+              <span className="relative block size-14 transition-transform md:size-18 duration-100 motion-safe:group-active:scale-90">
                 <NextImage
                   src={`${UI_BASE}/sit.webp`}
                   alt=""
@@ -1786,7 +1810,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
                   height={256}
                   unoptimized
                   draggable={false}
-                  className={cn("size-18 drop-shadow-md", sitting && "brightness-90")}
+                  className={cn("size-full drop-shadow-md", sitting && "brightness-90")}
                 />
                 {/* 마우스를 올리거나 키보드 포커스면 나무 테 안쪽 판 위에 의자 아이콘 (프로필·효과음과 같은 방식) */}
                 <span
@@ -1812,7 +1836,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
               className="group flex flex-col items-center gap-0.5 rounded-full focus-visible:outline-2 focus-visible:outline-primary"
             >
               {/* 그림 버튼이 아직 없어서 옷장 버튼처럼 나무 테 안에 아이콘을 둔다 */}
-              <span className="relative flex size-18 items-center justify-center rounded-full bg-card/90 text-text-strong shadow-md transition-transform duration-100 motion-safe:group-active:scale-90 group-hover:text-primary group-data-flash:text-primary">
+              <span className="relative flex size-14 items-center md:size-18 justify-center rounded-full bg-card/90 text-text-strong shadow-md transition-transform duration-100 motion-safe:group-active:scale-90 group-hover:text-primary group-data-flash:text-primary">
                 <Fish className="size-8" aria-hidden />
                 <NextImage src={FRAME_SRC} alt="" fill unoptimized sizes="72px" draggable={false} />
               </span>
@@ -1831,7 +1855,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
             className="group flex flex-col items-center gap-0.5 rounded-full focus-visible:outline-2 focus-visible:outline-primary disabled:opacity-50"
           >
             {/* 누르면 그림과 아이콘이 같이 줄어들게 감싼 쪽에 scale을 준다 */}
-            <span className="relative block size-18 transition-transform duration-100 motion-safe:group-active:scale-90">
+            <span className="relative block size-14 transition-transform md:size-18 duration-100 motion-safe:group-active:scale-90">
               <NextImage
                 src={`${UI_BASE}/punch.webp`}
                 alt=""
@@ -1839,7 +1863,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
                 height={256}
                 unoptimized
                 draggable={false}
-                className="size-18 drop-shadow-md"
+                className="size-full drop-shadow-md"
               />
               {/* 마우스를 올리거나 키보드 포커스면 나무 테 안쪽 판 위에 주먹 아이콘 (프로필·효과음과 같은 방식) */}
               <span
