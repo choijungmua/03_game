@@ -291,7 +291,7 @@ export function CapybaraSneak() {
       return;
     }
 
-    if (bitesRef.current++ % 3 === 0) playGameSound(SOUNDS.chomp);
+    if (bitesRef.current++ % 3 === 0) playGameSound(SNEAK_SOUNDS.crunch);
     const nextGauge = addBite(gaugeRef.current);
     if (getFoodStage(gaugeRef.current) === "full" && getFoodStage(nextGauge) === "half") {
       playGameSound(SNEAK_SOUNDS.half);
@@ -393,7 +393,7 @@ export function CapybaraSneak() {
   useEffect(() => {
     if (!munching) return;
     const id = setInterval(() => {
-      playGameSound(SNEAK_SOUNDS.hop);
+      playGameSound(SNEAK_SOUNDS.smack);
       setSide((s) => (s === "right" ? "left" : "right"));
     }, SIDE_SWITCH_MS);
     return () => clearInterval(id);
