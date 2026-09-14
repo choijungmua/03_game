@@ -2,13 +2,13 @@ import Link from "next/link";
 
 import { pageMetadata } from "@/lib/seo/site";
 
+import { CONTACT_EMAIL } from "./constants";
+
 export const metadata = pageMetadata({
   title: "contact",
   description: "ggpli 게임 오류 제보, 광고·제휴, 개인정보 관련 문의",
   path: "/contact",
 });
-
-const CONTACT_EMAIL = "chlwjd022@gmail.com";
 
 export default function ContactPage() {
   return (

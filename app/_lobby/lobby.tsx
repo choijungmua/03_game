@@ -2,7 +2,6 @@
 
 // 캔버스용 new Image()와 이름이 겹치지 않게 NextImage로 가져온다
 import NextImage from "next/image";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { type FormEvent, useEffect, useEffectEvent, useRef, useState } from "react";
 
@@ -27,7 +26,8 @@ import { type LobbySettings, loadLobbySettings, playSound, saveLobbySettings } f
 
 import { CAPYBARA_EMOTES, emoteChat, emoteImage, parseEmoteChat } from "@/lib/games/emotes";
 
-import { BUBBLE_LINE, BUBBLE_TEXT_WIDTH, EMOTE_SIZE, SITE_LINKS } from "./constants";
+import { BUBBLE_LINE, BUBBLE_TEXT_WIDTH, EMOTE_SIZE } from "./constants";
+import { SiteLinks } from "./site-sheet";
 import { EmotePicker } from "./emote-picker";
 import { SoundToggle } from "./lobby-settings";
 import {
@@ -973,8 +973,8 @@ export function Lobby({ games }: { games: DoorGame[] }) {
     resize();
 
     const onKeyDown = (event: KeyboardEvent) => {
-      // 채팅 입력 중엔 WASD·F·Space가 글자로 들어가야 한다
-      if (event.target instanceof HTMLInputElement) return;
+      // 채팅 입력 중엔 WASD·F·Space가 글자로 들어가야 한다. 약관 패널이 열려 있을 땐 방향키·Space로 글을 스크롤한다
+      if (event.target instanceof HTMLInputElement || (event.target instanceof Element && event.target.closest("dialog[open]"))) return;
       if (KEY_VECTORS[event.code]) {
         event.preventDefault(); // 방향키 스크롤 방지
         pressed.add(event.code);
@@ -1647,17 +1647,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
             <span className="rounded-full bg-card/85 px-2 py-0.5 text-caption-3 font-semibold text-text-strong">때리기</span>
           </button>
         </div>
-        <nav aria-label="사이트 정보" className="flex gap-3 text-caption-3 text-white/85 drop-shadow-md">
-          {SITE_LINKS.map(({ href, label }) => (
-            <Link
-              key={href}
-              href={href}
-              className="flex min-h-6 items-center rounded-sm transition-colors hover:text-white focus-visible:outline-2 focus-visible:outline-primary"
-            >
-              {label}
-            </Link>
-          ))}
-        </nav>
+        <SiteLinks />
       </div>
     </>
   );
