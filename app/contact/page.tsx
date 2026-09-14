@@ -6,8 +6,7 @@ export const metadata: Metadata = {
   description: "ggpli 게임 오류 제보, 광고·제휴, 개인정보 관련 문의",
 };
 
-// TODO: 실제로 받는 메일 주소로 교체
-const CONTACT_EMAIL = "contact@ggpli.com";
+const CONTACT_EMAIL = "chlwjd022@gmail.com";
 
 export default function ContactPage() {
   return (
