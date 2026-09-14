@@ -1560,7 +1560,8 @@ export function Lobby({ games }: { games: DoorGame[] }) {
       </form>
 
       {/* 오른쪽 위 세로 줄: 카피바라 옷장 → 효과음. 설정 버튼은 나중에 이 줄에 다시 넣는다 */}
-      <div className="absolute right-3 top-[max(0.75rem,env(safe-area-inset-top))] flex flex-col items-center gap-2">
+      {/* 효과음 버튼의 헤드폰이 원 밖으로 삐져나오는 만큼 위(옷장)·오른쪽(화면 끝)을 띄운다 */}
+      <div className="absolute right-5 top-[max(0.75rem,env(safe-area-inset-top))] flex flex-col items-center gap-5">
         <Wardrobe
           onChange={(outfit) => {
             outfitRef.current = outfit;

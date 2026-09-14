@@ -1,6 +1,6 @@
 "use client";
 
-import { Settings } from "lucide-react";
+import { Settings, Volume2, VolumeX } from "lucide-react";
 import NextImage from "next/image";
 import { useEffect, useRef, useState } from "react";
 
@@ -20,10 +20,10 @@ interface SettingsProps {
 const TOOL_BUTTON = "size-11 rounded-lg text-text-strong";
 
 /**
- * 헤드폰 위치: 둥근 버튼 기준 %. 얼굴을 확대해 보여 주는 버튼이라 원본 머리에 맞추면 머리띠·이어컵이 잘려서, 버튼 원에 맞춘다.
- * 헤드폰 그림은 머리띠 활이 높아서, 원보다 넓게(이어컵은 원 가장자리) 두고 세로를 눌러 머리띠는 위 끝·이어컵은 눈 높이에 오게 한다
+ * 헤드폰 위치: 둥근 버튼 기준 %. 얼굴 원(프로필과 같은 크기)은 그대로 두고 헤드폰은 원 바깥에 씌운다 —
+ * 머리띠는 원 위로, 이어컵은 원 양옆 가장자리로. 머리띠 활이 높은 그림이라 세로만 살짝 누른다
  */
-const HEADPHONES = { src: "/assets/images/ui/lobby/headphones.webp", top: -5, width: 118, height: 85 };
+const HEADPHONES = { src: "/assets/images/ui/lobby/headphones.webp", top: -24, width: 150, height: 120 };
 
 /** 카피바라 아래 효과음 켜고 끄기. 헤드폰을 끼면 켜짐, 벗으면 꺼짐. 마우스를 올리거나(키보드는 포커스) 하면 왼쪽에 음량 슬라이더가 나온다 */
 export function SoundToggle({ settings, onChange }: SettingsProps) {
@@ -35,11 +35,17 @@ export function SoundToggle({ settings, onChange }: SettingsProps) {
         onClick={() => onChange({ ...settings, muted: !settings.muted })}
         aria-label="효과음"
         aria-pressed={!settings.muted}
-        className="relative size-14 overflow-hidden rounded-full bg-card/90 shadow-md backdrop-blur focus-visible:outline-2 focus-visible:outline-primary"
+        className="relative size-14 rounded-full bg-card/90 shadow-md backdrop-blur focus-visible:outline-2 focus-visible:outline-primary"
       >
-        {/* 옷장 버튼과 같은 얼굴 확대 */}
-        <span aria-hidden className="relative block size-full origin-[50%_30%] scale-[1.9]">
-          <NextImage src={CAPYBARA_SRC} alt="" fill unoptimized sizes="112px" />
+        {/* 얼굴만 원 안에 자른다(옷장 버튼과 같은 크기·확대). 헤드폰은 이 원 밖에 그려서 바깥으로 삐져나온다 */}
+        <span aria-hidden className="relative block size-full overflow-hidden rounded-full">
+          <span className="relative block size-full origin-[50%_30%] scale-[1.9]">
+            <NextImage src={CAPYBARA_SRC} alt="" fill unoptimized sizes="112px" />
+          </span>
+          {/* 마우스를 올리거나 키보드 포커스면 얼굴 위에 지금 상태 스피커 아이콘 */}
+          <span className="absolute inset-0 flex items-center justify-center bg-overlay text-white opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-has-[:focus-visible]:opacity-100 motion-reduce:transition-none">
+            {volume === 0 ? <VolumeX className="size-6" /> : <Volume2 className="size-6" />}
+          </span>
         </span>
         {/* 인라인 translate로 자리를 잡으니, 벗는 연출은 translate 대신 scale·opacity로 한다 */}
         <NextImage
@@ -60,9 +66,9 @@ export function SoundToggle({ settings, onChange }: SettingsProps) {
           }}
         />
       </button>
-      {/* pr-2가 버튼과 슬라이더 사이 틈을 메워서, 마우스를 슬라이더로 옮기는 중에 hover가 끊기지 않는다.
+      {/* pr-6가 버튼과 슬라이더 사이 틈을 메워서, 마우스를 슬라이더로 옮기는 중에 hover가 끊기지 않는다. 원 밖으로 나온 헤드폰 이어컵을 가리지 않을 만큼 띄운다.
           키보드는 focus-visible일 때만 연다 (focus-within이면 마우스로 누른 뒤 포커스가 남아 슬라이더가 안 닫힌다) */}
-      <div className="pointer-events-none absolute right-full top-1.5 pr-2 opacity-0 transition-opacity duration-150 group-hover:pointer-events-auto group-hover:opacity-100 group-has-[:focus-visible]:pointer-events-auto group-has-[:focus-visible]:opacity-100 motion-reduce:transition-none">
+      <div className="pointer-events-none absolute right-full top-1.5 pr-6 opacity-0 transition-opacity duration-150 group-hover:pointer-events-auto group-hover:opacity-100 group-has-[:focus-visible]:pointer-events-auto group-has-[:focus-visible]:opacity-100 motion-reduce:transition-none">
         <label className="flex h-11 items-center gap-2 rounded-full bg-card/90 pl-4 pr-3 shadow-md backdrop-blur">
           <span className="sr-only">효과음 크기</span>
           <input
@@ -73,7 +79,9 @@ export function SoundToggle({ settings, onChange }: SettingsProps) {
             value={volume}
             // 음소거 중에 음량을 올리면 소리도 같이 켠다
             onChange={(event) => onChange({ ...settings, volume: Number(event.currentTarget.value) / 100, muted: false })}
-            className="h-6 w-28 accent-primary"
+            // 게이지는 카피바라 털색: 찬 쪽 털색, 빈 쪽 밝은 털색, 손잡이는 주둥이색
+            className="h-2 w-28 cursor-pointer appearance-none rounded-full focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-capybara-dark [&::-moz-range-thumb]:size-4 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:border-0 [&::-moz-range-thumb]:bg-capybara-dark [&::-webkit-slider-thumb]:size-4 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-capybara-dark [&::-webkit-slider-thumb]:shadow-md"
+            style={{ background: `linear-gradient(to right, var(--capybara) ${volume}%, var(--capybara-light) ${volume}%)` }}
           />
           <span aria-hidden className="w-9 text-right text-caption-2 tabular-nums text-text-strong">
             {volume}%
