@@ -2,7 +2,7 @@
 
 import { useEffect } from "react";
 
-import { recordGameVisit } from "@/lib/games/supabase";
+import { recordGameVisit } from "@/lib/games/game-events";
 
 export function GameVisitTracker({ slug }: { slug: string }) {
   useEffect(() => {

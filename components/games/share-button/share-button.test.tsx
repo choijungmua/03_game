@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 const toastMock = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn() }));
 vi.mock("sonner", () => ({ toast: toastMock }));
 const recordGameShareMock = vi.hoisted(() => vi.fn());
-vi.mock("@/lib/games/supabase", () => ({ recordGameShare: recordGameShareMock }));
+vi.mock("@/lib/games/game-events", () => ({ recordGameShare: recordGameShareMock }));
 
 import { ShareButton } from "./share-button";
 

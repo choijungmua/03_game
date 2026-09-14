@@ -51,7 +51,7 @@ export default async function GamePage({ params }: GamePageProps) {
         ])}
       />
       <Game />
-      <GameAbout game={game} seo={seo} />
+      {!game.hideAbout && <GameAbout game={game} seo={seo} />}
     </main>
   );
 }
