@@ -36,6 +36,8 @@ export interface RoomView<S> {
   version: number;
   /** 마지막으로 보낸 놀리기 이모티콘 */
   emote: RoomEmote | null;
+  /** 컴퓨터와 두는 방인지 (봇은 늘 백) */
+  bot: boolean;
 }
 
 export interface RoomAction {
