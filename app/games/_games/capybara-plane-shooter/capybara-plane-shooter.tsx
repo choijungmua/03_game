@@ -569,7 +569,7 @@ export function CapybaraPlaneShooter() {
                 </div>
                 <p className="text-title-3 font-bold tabular-nums">{formatScore(hud.score)}</p>
               </div>
-              <div className="flex flex-col items-center gap-1 px-4">
+              <div className="flex flex-wrap items-center justify-center gap-1 px-4">
                 <p className="whitespace-nowrap rounded-full bg-black/30 px-3 py-1 text-caption-1 font-bold tabular-nums">
                   스테이지 {hud.stage} ·{" "}
                   {hud.bossLeftSec !== null ? `보스 버티기 ${hud.bossLeftSec}초` : `남은 적 ${hud.killsLeft}`}
