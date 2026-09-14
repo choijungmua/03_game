@@ -11,6 +11,7 @@ import { Dialog } from "@/components/overlay/dialog";
 import { cn } from "@/lib";
 import { GAME_TITLES } from "@/lib/games/constants";
 import { useLockPageScroll } from "@/lib/games/use-lock-page-scroll";
+import { type LobbySettings, type LobbySound, loadLobbySettings, playSound } from "@/lib/lobby/settings";
 
 import {
   addBite,
@@ -260,6 +261,15 @@ export function CapybaraSneak() {
   // 멈출 때(안 누르고 있었다면) 계산한 감소까지 남은 시간. null이면 다음 감소 effect가 처음부터(DECAY_GRACE_MS) 기다린다
   const decayRemainingRef = useRef<number | null>(null);
 
+  // 효과음은 로비에서 정한 소리 켜기·크기를 그대로 따른다. 처음 소리 낼 때 한 번만 읽는다
+  const soundSettingsRef = useRef<LobbySettings | null>(null);
+  // 한 입(80ms)마다 소리를 내면 너무 촘촘해서 세 입에 한 번 아삭 소리를 낸다
+  const bitesRef = useRef(0);
+  function sound(name: LobbySound) {
+    soundSettingsRef.current ??= loadLobbySettings();
+    playSound(name, soundSettingsRef.current);
+  }
+
   function changeStatus(next: GameStatus) {
     statusRef.current = next;
     setStatus(next);
@@ -276,9 +286,11 @@ export function CapybaraSneak() {
 
     if (ownerRef.current === "looking") {
       changeStatus("fail");
+      sound("caught");
       return;
     }
 
+    if (bitesRef.current++ % 3 === 0) sound("chomp");
     const nextGauge = addBite(gaugeRef.current);
     gaugeRef.current = nextGauge;
     setGauge(nextGauge);
