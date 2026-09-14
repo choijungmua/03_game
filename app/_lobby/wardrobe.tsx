@@ -18,6 +18,8 @@ import {
   wear,
 } from "@/lib/lobby/wardrobe";
 
+import { FRAME_SRC } from "./constants";
+
 export const CAPYBARA_SRC = "/assets/images/characters/capybara/capybara-idle-down.webp";
 
 /** 오른쪽 위 카피바라 얼굴 버튼. 누르면 그 자리에서 커지며 옷 입히기 창이 열린다 */
@@ -90,10 +92,11 @@ export function Wardrobe({ onChange }: { onChange: (outfit: Outfit) => void }) {
         onClick={openWardrobe}
         aria-label="카피바라 옷 입히기"
         aria-expanded={open}
-        className="size-14 overflow-hidden rounded-full bg-card/90 shadow-md backdrop-blur focus-visible:outline-2 focus-visible:outline-primary"
+        className="relative size-14 overflow-hidden rounded-full bg-card/90 shadow-md backdrop-blur focus-visible:outline-2 focus-visible:outline-primary"
       >
         {/* 전신 이미지를 얼굴 쪽으로 확대해 얼굴만 보이게 한다 */}
         <NextImage src={CAPYBARA_SRC} alt="" width={112} height={112} unoptimized className="size-full origin-[50%_30%] scale-[1.9]" />
+        <NextImage src={FRAME_SRC} alt="" fill unoptimized sizes="56px" draggable={false} />
       </button>
 
       <section

@@ -26,7 +26,7 @@ export function CapybaraGomoku() {
   return (
     <CapybaraRoom
       title={GAME_TITLES["capybara-gomoku"]}
-      guide={`친구를 초대해서 카피바라 다섯 마리를 먼저 한 줄로 이으면 이겨요. 한 수에 ${TURN_TIME_MS / 1000}초`}
+      guide={`친구를 초대하거나 컴퓨터와 둬서 카피바라 다섯 마리를 먼저 한 줄로 이으면 이겨요. 한 수에 ${TURN_TIME_MS / 1000}초`}
       room={room}
       starPoints={STAR_POINTS}
       highlight={state?.winLine}
