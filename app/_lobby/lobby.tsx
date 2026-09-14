@@ -845,6 +845,8 @@ export function Lobby({ games }: { games: DoorGame[] }) {
       facingSince: 0,
       chat: "",
       chatUntil: 0,
+      /** 서버가 정해 준 이름표. 첫 동기화 전엔 비어 있다 */
+      name: "",
     };
     const saved: Partial<{ x: number; y: number }> = JSON.parse(loadSession(positionKey) ?? "{}");
     if (typeof saved.x === "number" && typeof saved.y === "number" && !blocked(saved.x, saved.y)) {
@@ -1023,6 +1025,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
           const data: Partial<PresenceResponse> = await response.json();
           if (!response.ok || !data.you || !Array.isArray(data.players)) throw new Error("sync failed");
           const received = performance.now();
+          me.name = data.you.name;
 
           if (data.you.stunMs > 0) {
             if (me.stunUntil < received) camera.shakeUntil = received + 300;
@@ -1389,7 +1392,9 @@ export function Lobby({ games }: { games: DoorGame[] }) {
         drawLabel(ctx, remote.name, remote.x, labelY);
         if (now < remote.chatUntil) drawBubble(ctx, remote.chat, remote.x, labelY - 10);
       }
-      if (now < me.chatUntil) drawBubble(ctx, me.chat, drawnX, drawnY - (me.sitting ? SIT_SIZE : STAND_SIZE) - 4);
+      const myLabelY = drawnY - (me.sitting ? SIT_SIZE : STAND_SIZE) - 8;
+      if (me.name) drawLabel(ctx, me.name, drawnX, myLabelY);
+      if (now < me.chatUntil) drawBubble(ctx, me.chat, drawnX, me.name ? myLabelY - 10 : myLabelY + 4);
       for (const [id, until] of hitEffects) {
         const target = remotes.get(id);
         const progress = 1 - (until - now) / 450;
