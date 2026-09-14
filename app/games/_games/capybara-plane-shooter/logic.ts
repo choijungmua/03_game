@@ -240,6 +240,8 @@ export const BULLET_RADIUS: Record<WeaponKind, number> = {
 };
 
 export const MAX_WEAPON_LEVEL = 10;
+/** 1레벨 발사 간격 배수. 레벨이 오를수록 1로 줄어 10레벨은 원래 연사 — 시작 총은 살살 쏘고 간식을 먹어 가며 강해진다 */
+export const LOW_LEVEL_FIRE_SLOWDOWN = 2.5;
 /** 화면에 내 총알이 이보다 많으면 이번 발사는 건너뛴다 — 고레벨 연사로 프레임이 무너지지 않게 */
 export const MAX_BULLETS = 240;
 /** 화면에 적 탄이 이보다 많으면 적·보스가 이번 발사를 건너뛴다 — 후반 탄막으로 프레임이 무너지지 않게 */
@@ -247,7 +249,7 @@ export const MAX_SHOTS = 500;
 /** 쏘는 적이 여러 발을 부채꼴로 쏠 때 탄 사이 각(라디안) */
 export const ENEMY_SHOT_SPREAD = 0.18;
 /** 아이템 없이 이만큼 격추하면 다음 격추에서 무기 간식을 반드시 떨어뜨린다 (운이 나빠도 레벨을 쌓을 수 있게) */
-export const PITY_KILLS = 12;
+export const PITY_KILLS = 20;
 /** 반드시 떨어뜨릴 때 고르는 무기 간식 */
 export const WEAPON_DROPS: readonly Exclude<DropKind, "heal">[] = ["double", "spread", "rapid", "pierce"];
 
@@ -267,7 +269,8 @@ function fan(count: number, gap: number) {
 /** 무기 레벨(1~MAX_WEAPON_LEVEL) → 한 번 발사하는 모양. 레벨이 오를수록 탄 줄·피해·연사가 늘어 10레벨이면 화면을 덮을 만큼 쏜다 */
 export function getWeaponSpec(weapon: WeaponKind, level: number): WeaponSpec {
   const step = Math.min(MAX_WEAPON_LEVEL, Math.max(1, Math.round(level))) - 1;
-  const faster = (perLevel: number) => FIRE_INTERVAL_MS[weapon] * (1 - perLevel * step);
+  const slowdown = 1 + (LOW_LEVEL_FIRE_SLOWDOWN - 1) * (1 - step / (MAX_WEAPON_LEVEL - 1));
+  const faster = (perLevel: number) => FIRE_INTERVAL_MS[weapon] * (1 - perLevel * step) * slowdown;
   const straight = (count: number, gap: number) => fan(count, gap).map((dx) => ({ dx, angle: 0 }));
 
   switch (weapon) {
@@ -305,15 +308,15 @@ export function getWeaponSpec(weapon: WeaponKind, level: number): WeaponSpec {
 }
 
 /**
- * 적 한 마리를 격추할 때 아이템 종류별로 떨어질 확률 (합계 11%).
- * 무기 간식은 먹을 때마다 레벨이 쌓이므로 넉넉히 떨어뜨리되, 쌍발 < 산탄 < 연사 < 관통 순으로 강한 무기일수록 드물다
+ * 적 한 마리를 격추할 때 아이템 종류별로 떨어질 확률 (합계 5.5%).
+ * 무기 간식은 먹을 때마다 레벨이 쌓이므로 드물게 떨어뜨려 천천히 강해지게 하고, 쌍발 < 산탄 < 연사 < 관통 순으로 강한 무기일수록 더 드물다
  */
 export const DROP_CHANCES: Record<DropKind, number> = {
-  double: 0.03,
-  heal: 0.02,
-  spread: 0.025,
-  rapid: 0.02,
-  pierce: 0.015,
+  double: 0.015,
+  heal: 0.01,
+  spread: 0.0125,
+  rapid: 0.01,
+  pierce: 0.0075,
 };
 
 /** 한 번만 굴려서 아이템 하나를 고르거나, 아무것도 떨어뜨리지 않는다(null) */

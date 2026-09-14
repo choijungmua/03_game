@@ -25,6 +25,7 @@ import {
   getWeaponSpec,
   INVINCIBLE_MS,
   isShieldUp,
+  LOW_LEVEL_FIRE_SLOWDOWN,
   MAX_BULLETS,
   MAX_SHOTS,
   MAX_HP,
@@ -75,7 +76,7 @@ describe("이동", () => {
     const state = createState(400, 800);
     step(state, -30, IDLE);
     expect(state.bannerMs).toBe(STAGE_BANNER_MS);
-    expect(state.fireInMs).toBeLessThanOrEqual(FIRE_INTERVAL_MS.basic);
+    expect(state.fireInMs).toBeLessThanOrEqual(getWeaponSpec("basic", 1).intervalMs);
   });
 });
 
@@ -90,7 +91,7 @@ describe("자동 사격", () => {
 
   it("연사 간격마다 계속 쏜다", () => {
     const state = playing({ fireInMs: 0 });
-    for (let t = 0; t <= FIRE_INTERVAL_MS.basic * 3; t += 16) step(state, 16, IDLE);
+    for (let t = 0; t <= getWeaponSpec("basic", 1).intervalMs * 3; t += 16) step(state, 16, IDLE);
     expect(state.bullets.length).toBeGreaterThanOrEqual(3);
   });
 });
@@ -168,10 +169,10 @@ describe("아이템", () => {
     expect(double).toBeGreaterThan(spread);
     expect(spread).toBeGreaterThan(rapid);
     expect(rapid).toBeGreaterThan(pierce);
-    // 레벨을 10까지 쌓을 수 있게 넉넉히(10% 안팎) 떨어진다
+    // 천천히 강해지도록 드물게(5% 안팎) 떨어진다
     const total = Object.values(DROP_CHANCES).reduce((sum, chance) => sum + chance, 0);
-    expect(total).toBeGreaterThan(0.08);
-    expect(total).toBeLessThan(0.15);
+    expect(total).toBeGreaterThan(0.04);
+    expect(total).toBeLessThan(0.08);
 
     // 한 번 굴린 값이 어느 구간에 들어가느냐로 아이템이 정해지고, 합계를 넘으면 아무것도 없다
     expect(pickDrop(() => 0)).toBe("double");
@@ -224,6 +225,12 @@ describe("무기 레벨", () => {
     }
     expect(getWeaponSpec("spread", MAX_WEAPON_LEVEL).pattern).toHaveLength(11);
     expect(getWeaponSpec("basic", MAX_WEAPON_LEVEL).pattern).toHaveLength(5);
+  });
+
+  it("시작 총(1레벨)은 살살 쏘고, 10레벨은 원래 연사 속도 그대로다", () => {
+    expect(getWeaponSpec("basic", 1).intervalMs).toBeCloseTo(FIRE_INTERVAL_MS.basic * LOW_LEVEL_FIRE_SLOWDOWN);
+    expect(getWeaponSpec("basic", 1).intervalMs).toBeGreaterThanOrEqual(300);
+    expect(getWeaponSpec("basic", MAX_WEAPON_LEVEL).intervalMs).toBeCloseTo(FIRE_INTERVAL_MS.basic * (1 - 0.03 * (MAX_WEAPON_LEVEL - 1)));
   });
 
   it("레벨 피해만큼 적 체력을 깎는다", () => {
