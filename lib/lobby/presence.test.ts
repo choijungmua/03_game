@@ -11,7 +11,7 @@ function spot() {
   return area * 100_000;
 }
 function player(x: number, y = 0) {
-  return { token: `token-${counter++}-xxxxxxxxxxxxxxxx`, x, y, facing: "down" as const, sitting: false, attack: false };
+  return { token: `token-${counter++}-xxxxxxxxxxxxxxxx`, x, y, facing: "down" as const, sitting: false, attack: false, outfit: {} };
 }
 
 describe("로비 멀티", () => {
@@ -81,6 +81,15 @@ describe("로비 멀티", () => {
     expect(parsePresence({ ...player(0), token: "short" })).toBeNull();
     expect(parsePresence({ ...player(0), attack: undefined })?.attack).toBe(false);
     expect(parsePresence({ ...player(0), facing: "up-left" })?.facing).toBe("up-left");
+  });
+
+  it("입은 옷이 다른 플레이어에게 보이고, 모르는 옷·옷 없는 요청도 받아준다", () => {
+    const base = spot();
+    const dressed = parsePresence({ ...player(base), outfit: { hat: "crown", glasses: "nope" } });
+    expect(dressed?.outfit).toEqual({ hat: "crown" });
+    if (dressed) updatePresence(dressed, 90_000);
+    expect(updatePresence(player(base + 50), 90_000)?.players[0].outfit).toEqual({ hat: "crown" });
+    expect(parsePresence({ ...player(0), outfit: undefined })?.outfit).toEqual({});
   });
 
   it("대각선을 보고 때리면 그 대각선 앞쪽이 맞는다", () => {

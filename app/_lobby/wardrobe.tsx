@@ -7,9 +7,10 @@ import { cn } from "@/lib";
 import {
   BODY_LAYERS,
   HEAD_CLIP,
+  loadOutfit,
   type Outfit,
   OVER_HEAD_LAYERS,
-  parseOutfit,
+  saveOutfit,
   SLOT_INFO,
   WARDROBE_SLOTS,
   type WardrobeSlot,
@@ -17,11 +18,10 @@ import {
   wear,
 } from "@/lib/lobby/wardrobe";
 
-const STORAGE_KEY = "lobby-outfit-v1";
 const CAPYBARA_SRC = "/assets/images/characters/capybara/capybara-idle-down.webp";
 
 /** 오른쪽 위 카피바라 얼굴 버튼. 누르면 그 자리에서 커지며 옷 입히기 창이 열린다 */
-export function Wardrobe() {
+export function Wardrobe({ onChange }: { onChange: (outfit: Outfit) => void }) {
   const [open, setOpen] = useState(false);
   const [slot, setSlot] = useState<WardrobeSlot>("hat");
   const [outfit, setOutfit] = useState<Outfit>({});
@@ -30,9 +30,7 @@ export function Wardrobe() {
 
   // 옷은 창 안에서만 보이니, 서버 렌더와 어긋나지 않게 열 때 저장값을 불러온다
   const openWardrobe = () => {
-    try {
-      setOutfit(parseOutfit(localStorage.getItem(STORAGE_KEY)));
-    } catch {}
+    setOutfit(loadOutfit());
     setOpen(true);
   };
 
@@ -51,9 +49,8 @@ export function Wardrobe() {
   const choose = (id: string | null) => {
     const next = wear(outfit, slot, id);
     setOutfit(next);
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
-    } catch {}
+    saveOutfit(next);
+    onChange(next);
   };
 
   const layers = (slots: readonly WardrobeSlot[]) =>
@@ -169,12 +166,18 @@ export function Wardrobe() {
               onClick={() => choose(item.id)}
               aria-pressed={outfit[slot] === item.id}
               className={cn(
-                "flex aspect-square flex-col items-center justify-center gap-0.5 rounded-xl border p-1 text-caption-3 text-text-caption focus-visible:outline-2 focus-visible:outline-primary",
+                "relative flex aspect-square flex-col items-center justify-center gap-0.5 rounded-xl border p-1 text-caption-3 text-text-caption focus-visible:outline-2 focus-visible:outline-primary",
                 outfit[slot] === item.id ? "border-primary text-text-strong" : "border-border-default",
               )}
             >
               <NextImage src={wardrobeSrc(slot, item.id)} alt="" width={96} height={96} unoptimized className="min-h-0 flex-1 object-contain" />
               <span className="w-full truncate text-center">{item.label}</span>
+              {item.special && (
+                <span className="absolute right-1 top-0.5 text-caption-3">
+                  <span aria-hidden>✨</span>
+                  <span className="sr-only">특별한 옷</span>
+                </span>
+              )}
             </button>
           ))}
         </div>
