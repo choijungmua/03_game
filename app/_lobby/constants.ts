@@ -10,7 +10,7 @@ export const EMOTE_PICKER_ICON = 3;
 export const EMOTES_PER_PAGE = 8;
 /** 앉기·때리기 버튼과 같은 나무 테두리 (punch.webp에서 테두리만 오려낸 그림). 프로필·효과음 원 위에 덮는다 */
 export const FRAME_SRC = "/assets/images/ui/lobby/frame.webp";
-/** 물가에서 뜨는 낚시 버튼 그림 (나무 테·펠트 판 위 낚싯대와 찌) */
+/** 물가에서 뜨는 낚시 버튼 그림 (나무 테·펠트 판 위 낚싯대 든 카피바라) */
 export const FISH_BUTTON_SRC = "/assets/images/ui/lobby/fish.webp";
 /** 오른쪽 위 낚시 가방 버튼 그림 (나무 테·펠트 판 위 카피바라 얼굴 백팩) */
 export const FISH_BAG_SRC = "/assets/images/ui/lobby/bag.webp";
