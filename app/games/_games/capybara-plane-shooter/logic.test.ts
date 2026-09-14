@@ -7,6 +7,9 @@ import {
   BOSS_REWARD_LEVELS,
   CHARGE_WINDUP_MS,
   createState,
+  DASHER_SPEED,
+  DASHER_STOP_RATIO,
+  DASHER_WINDUP_MS,
   DROP_CHANCES,
   type Enemy,
   EXPLOSION_MS,
@@ -20,6 +23,7 @@ import {
   getStageConfig,
   getWeaponSpec,
   INVINCIBLE_MS,
+  isShieldUp,
   MAX_BULLETS,
   MAX_HP,
   MAX_WEAPON_LEVEL,
@@ -27,6 +31,7 @@ import {
   pickDrop,
   PITY_KILLS,
   PLANE_HALF_WIDTH,
+  spawnEnemy,
   STAGE_BANNER_MS,
   step,
   WEAPON_DROPS,
@@ -43,7 +48,7 @@ function playing(overrides: Partial<GameState> = {}): GameState {
 }
 
 function enemy(overrides: Partial<Enemy> = {}): Enemy {
-  return { id: 99, kind: "straight", x: 200, y: 300, r: 15, vx: 0, vy: 0, hp: 1, maxHp: 1, fireInMs: 1e9, flashMs: 0, ...overrides };
+  return { id: 99, kind: "straight", x: 200, y: 300, r: 15, vx: 0, vy: 0, hp: 1, maxHp: 1, fireInMs: 1e9, flashMs: 0, timerMs: 0, split: false, ...overrides };
 }
 
 describe("이동", () => {
@@ -240,6 +245,95 @@ describe("무기 레벨", () => {
     const state = playing({ fireInMs: 0, bullets: Array.from({ length: MAX_BULLETS }, () => ({ ...bullet, hitIds: [] })) });
     step(state, 16, IDLE);
     expect(state.bullets).toHaveLength(MAX_BULLETS);
+  });
+});
+
+describe("새 천적", () => {
+  function bullet(weapon: WeaponKind, x = 200, y = 300) {
+    return { x, y, r: 3, vx: 0, vy: 0, weapon, damage: 1, hitIds: [] };
+  }
+
+  it("스테이지가 오를 때마다 새 천적이 합류하고, 종류 확률 합은 0.9를 넘지 않는다", () => {
+    expect(getStageConfig(3).dasherChance).toBe(0);
+    expect(getStageConfig(4).dasherChance).toBeGreaterThan(0);
+    expect(getStageConfig(5).shieldChance).toBe(0);
+    expect(getStageConfig(6).shieldChance).toBeGreaterThan(0);
+    expect(getStageConfig(6).splitterChance).toBe(0);
+    expect(getStageConfig(7).splitterChance).toBeGreaterThan(0);
+    expect(getStageConfig(7).homingChance).toBe(0);
+    expect(getStageConfig(8).homingChance).toBeGreaterThan(0);
+    for (const stage of [1, 8, PEAK_STAGE, 200]) {
+      const c = getStageConfig(stage);
+      const total = c.zigzagChance + c.shooterChance + c.dasherChance + c.shieldChance + c.splitterChance + c.homingChance;
+      expect(total).toBeLessThanOrEqual(0.9);
+    }
+
+    // 굴린 값이 칼새 구간에 들어가면 칼새가 나온다
+    const c = getStageConfig(8);
+    const dasher = spawnEnemy(playing({ stage: 8 }), () => c.shooterChance + c.zigzagChance + c.dasherChance / 2);
+    expect(dasher.kind).toBe("dasher");
+    expect(dasher.timerMs).toBe(DASHER_WINDUP_MS);
+  });
+
+  it("방패를 든 아르마딜로는 일반 총알을 막고, 쏘느라 방패를 내렸을 때나 관통탄에는 맞는다", () => {
+    const shield = enemy({ kind: "shield", r: 18, hp: 5, maxHp: 5 });
+    const state = playing({ enemies: [shield], bullets: [bullet("basic")] });
+    step(state, 16, IDLE, noLuck);
+    expect(shield.hp).toBe(5);
+    expect(state.bullets).toHaveLength(0);
+    expect(state.shieldBlocks).toBe(1);
+
+    state.bullets.push(bullet("pierce"));
+    step(state, 16, IDLE, noLuck);
+    expect(shield.hp).toBe(4);
+
+    // 다음 프레임에 쏘면서 방패를 내린다
+    shield.fireInMs = 0;
+    step(state, 16, IDLE, noLuck);
+    expect(isShieldUp(shield)).toBe(false);
+    state.bullets.push(bullet("basic"));
+    step(state, 16, IDLE, noLuck);
+    expect(shield.hp).toBe(3);
+  });
+
+  it("칼새는 정해진 높이에 멈춰 경고한 뒤 아주 빠르게 내리꽂는다", () => {
+    const state = playing();
+    const dasher = enemy({ kind: "dasher", r: 13, y: state.height * DASHER_STOP_RATIO + 1, vy: 300, timerMs: DASHER_WINDUP_MS });
+    state.enemies = [dasher];
+    step(state, 16, IDLE);
+    expect(dasher.vy).toBe(0);
+
+    for (let t = 0; t < DASHER_WINDUP_MS - 32; t += 16) step(state, 16, IDLE);
+    expect(dasher.vy).toBe(0);
+
+    for (let t = 0; t < 64; t += 16) step(state, 16, IDLE);
+    expect(dasher.vy).toBe(DASHER_SPEED);
+  });
+
+  it("독화살개구리는 격추되면 작은 개구리 둘로 갈라지고, 작은 개구리는 더 갈라지지 않는다", () => {
+    const frog = enemy({ kind: "splitter", r: 17, split: true, hp: 1, maxHp: 4 });
+    const state = playing({ enemies: [frog], bullets: [bullet("basic")] });
+    step(state, 16, IDLE, noLuck);
+    expect(state.enemies).toHaveLength(2);
+    expect(state.enemies.every((child) => child.kind === "splitter" && !child.split && child.r < frog.r)).toBe(true);
+    expect(state.splits).toBe(1);
+
+    for (const child of state.enemies) {
+      child.hp = 1;
+      state.bullets.push(bullet("basic", child.x, child.y));
+    }
+    step(state, 16, IDLE, noLuck);
+    expect(state.enemies).toHaveLength(0);
+    expect(state.splits).toBe(1);
+  });
+
+  it("흡혈박쥐는 비행기 쪽으로 방향을 틀어 따라온다", () => {
+    const state = playing({ planeX: 350 });
+    const bat = enemy({ kind: "homing", r: 12, x: 100, y: 200, vy: 100 });
+    state.enemies = [bat];
+    for (let t = 0; t < 500; t += 16) step(state, 16, IDLE);
+    expect(bat.vx).toBeGreaterThan(0);
+    expect(bat.x).toBeGreaterThan(100);
   });
 });
 
