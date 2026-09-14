@@ -25,8 +25,12 @@ export const MIN_GAP = CAPYBARA_HALF_WIDTH * 2 * 3;
 export const NEAR_MISS_PX = 16;
 export const NEAR_MISS_SLOWMO_MS = 150;
 export const NEAR_MISS_TIME_SCALE = 0.35;
-/** 이 시간에 난이도가 최고가 되고 이후 유지 */
+/** 이 시간에 통나무 종류·밀도 곡선이 끝나고, 그 뒤로는 러시 구간 — 속도가 끝없이 오른다 */
 export const PEAK_MS = 60_000;
+/** 러시 구간에서 1초마다 더해지는 낙하 속도(px/s). 120초면 보통 통나무가 약 1400px/s */
+export const RUSH_SPEED_PER_S = 14;
+/** 웨이브 간격 하한. MOVE_SPEED로 화면 끝에서 끝(GAME_WIDTH - MIN_GAP)까지 갈 수 있는 시간보다 짧아지지 않는다 */
+export const MIN_WAVE_INTERVAL_MS = 600;
 /** 탭 전환 등으로 프레임 간격이 튀어도 한 번에 이만큼만 진행 */
 const MAX_STEP_MS = 50;
 const SPLIT_Y = 300;
@@ -179,10 +183,11 @@ export interface Difficulty {
 
 export function getDifficulty(elapsedMs: number): Difficulty {
   const level = Math.min(1, elapsedMs / PEAK_MS) ** 2;
+  const rushSeconds = Math.max(0, elapsedMs - PEAK_MS) / 1000;
   return {
     level,
-    fallSpeed: 260 + 300 * level,
-    waveIntervalMs: 1300 - 600 * level,
+    fallSpeed: 260 + 300 * level + RUSH_SPEED_PER_S * rushSeconds,
+    waveIntervalMs: Math.max(MIN_WAVE_INTERVAL_MS, 1300 - 600 * level - 2 * rushSeconds),
   };
 }
 

@@ -58,6 +58,7 @@ import {
   LOG_UNLOCK_MS,
   type LogKind,
   parseChallenge,
+  PEAK_MS,
   PICKUP_RADIUS,
   seedFromText,
   step,
@@ -485,7 +486,9 @@ export function CapybaraLogDodge() {
     /** 달리기 비트: 매 박 쿵, 박 사이 칙, 2·4박 짝. 난이도가 오를수록 빨라진다 */
     function playBeat(state: GameState, now: number) {
       if (now < nextBeatAt) return;
-      const beatMs = 60_000 / (BEAT_BPM.min + (BEAT_BPM.max - BEAT_BPM.min) * getDifficulty(state.elapsedMs).level);
+      const rushBpm = Math.max(0, state.elapsedMs - PEAK_MS) / 1000;
+      const bpm = BEAT_BPM.min + (BEAT_BPM.max - BEAT_BPM.min) * getDifficulty(state.elapsedMs).level + rushBpm;
+      const beatMs = 60_000 / Math.min(BEAT_BPM.rush, bpm);
       const hat = { ...BEAT_HAT, at: beatMs / 2 };
       playGameSound(beat % 2 === 1 ? [BEAT_KICK, BEAT_SNARE, hat] : [BEAT_KICK, hat]);
       beat += 1;

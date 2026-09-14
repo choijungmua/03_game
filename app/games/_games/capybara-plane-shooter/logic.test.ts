@@ -28,6 +28,8 @@ import {
   MAX_BULLETS,
   MAX_HP,
   MAX_WEAPON_LEVEL,
+  MIN_ENEMY_FIRE_INTERVAL_MS,
+  MIN_SPAWN_INTERVAL_MS,
   PEAK_STAGE,
   pickDrop,
   PITY_KILLS,
@@ -409,7 +411,7 @@ describe("스테이지", () => {
     expect(getStageConfig(10).boss).toBe(true);
   });
 
-  it("초반은 쉽고 갈수록 어려워지며, 최고 난이도 뒤로는 그대로 유지된다", () => {
+  it("초반은 쉽고 갈수록 어려워지며, 최고 난이도 뒤로도 계속 빨라진다", () => {
     const first = getStageConfig(1);
     expect(first.enemyHp).toBe(2);
     expect(first.shooterChance).toBe(0);
@@ -423,15 +425,18 @@ describe("스테이지", () => {
     // 제곱 곡선: 전반부(1→13)보다 후반부(13→25)에 훨씬 많이 오른다
     const mid = Math.ceil(PEAK_STAGE / 2);
     expect(getDifficulty(PEAK_STAGE) - getDifficulty(mid)).toBeGreaterThan(getDifficulty(mid) * 2);
-    expect(getStageConfig(PEAK_STAGE * 4).enemySpeed).toBe(getStageConfig(PEAK_STAGE).enemySpeed);
+    // 러시: 최고 난이도 뒤로도 스테이지마다 적·탄이 더 빨라진다 (50스테이지면 2.5배)
+    for (let stage = PEAK_STAGE + 1; stage <= PEAK_STAGE * 4; stage += 1) {
+      expect(getStageConfig(stage).enemySpeed).toBeGreaterThan(getStageConfig(stage - 1).enemySpeed);
+      expect(getStageConfig(stage).shotSpeed).toBeGreaterThan(getStageConfig(stage - 1).shotSpeed);
+    }
+    expect(getStageConfig(PEAK_STAGE * 2).enemySpeed).toBeCloseTo(getStageConfig(PEAK_STAGE).enemySpeed * 2.5);
   });
 
-  it("아무리 높은 스테이지도 피할 수 있는 한계(속도·밀도 상한)를 넘지 않는다", () => {
-    const late = getStageConfig(200);
-    expect(late.shotSpeed).toBeLessThanOrEqual(420);
-    expect(late.enemySpeed).toBeLessThanOrEqual(360);
-    expect(late.spawnIntervalMs).toBeGreaterThanOrEqual(260);
-    expect(late.enemyFireIntervalMs).toBeGreaterThanOrEqual(550);
+  it("아무리 높은 스테이지도 출현·사격 간격은 하한 아래로 내려가지 않고, 적 체력은 오르지 않는다", () => {
+    const late = getStageConfig(201);
+    expect(late.spawnIntervalMs).toBe(MIN_SPAWN_INTERVAL_MS);
+    expect(late.enemyFireIntervalMs).toBe(MIN_ENEMY_FIRE_INTERVAL_MS);
     expect(late.enemyHp).toBeLessThanOrEqual(10);
   });
 

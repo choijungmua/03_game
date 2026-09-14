@@ -326,8 +326,18 @@ export function isBossStage(stage: number) {
   return stage % BOSS_STAGE_EVERY === 0;
 }
 
-/** 이 스테이지에서 최고 난이도에 도달하고, 그 뒤로는 유지된다 */
+/** 이 스테이지에서 적 구성·체력 곡선이 끝나고, 그 뒤로는 러시 — 속도가 끝없이 오른다 */
 export const PEAK_STAGE = 25;
+/** 러시 구간에서 스테이지마다 적·탄 속도에 더해지는 배율 (50스테이지면 2.5배) */
+export const RUSH_PER_STAGE = 0.06;
+/** 러시로 간격이 줄어도 이 아래로는 안 내려간다 (화면이 탄으로 뒤덮여 버벅이지 않게) */
+export const MIN_SPAWN_INTERVAL_MS = 120;
+export const MIN_ENEMY_FIRE_INTERVAL_MS = 250;
+
+/** PEAK_STAGE까지 1, 그 뒤로 스테이지마다 RUSH_PER_STAGE씩 커진다 */
+export function getRush(stage: number) {
+  return 1 + Math.max(0, stage - PEAK_STAGE) * RUSH_PER_STAGE;
+}
 
 function lerp(easy: number, hard: number, difficulty: number) {
   return easy + (hard - easy) * difficulty;
@@ -341,18 +351,19 @@ export function getDifficulty(stage: number) {
 
 /**
  * 스테이지는 끝이 없고, 쉬운 값에서 어려운 값으로 난이도 곡선을 따라 옮겨간다.
- * 어려운 쪽 값이 곧 상한이라 최고 난이도도 눈으로 보고 피할 수 있는 한계를 넘지 않는다
+ * PEAK_STAGE 뒤로는 러시 배율만큼 적·탄이 계속 빨라지고 출현·사격 간격이 짧아진다 (간격은 하한까지만)
  */
 export function getStageConfig(stage: number) {
   const boss = isBossStage(stage);
   const d = getDifficulty(stage);
+  const rush = getRush(stage);
   return {
     boss,
     killGoal: Math.round(lerp(10, 40, d)),
     bossHp: Math.round(BOSS_BASE_HP * (stage / BOSS_STAGE_EVERY) ** 1.3),
-    spawnIntervalMs: lerp(750, 260, d) * (boss ? 2.5 : 1),
+    spawnIntervalMs: Math.max(MIN_SPAWN_INTERVAL_MS, lerp(750, 260, d) / rush) * (boss ? 2.5 : 1),
     enemyHp: Math.round(lerp(2, 10, d)),
-    enemySpeed: lerp(100, 360, d),
+    enemySpeed: lerp(100, 360, d) * rush,
     // 새 천적은 스테이지가 오를 때마다 하나씩 합류한다. 확률 합은 최고 난이도에서도 0.9를 넘지 않아 하피독수리가 늘 섞인다
     zigzagChance: stage >= 2 ? 0.2 : 0,
     shooterChance: stage >= 3 ? lerp(0.1, 0.25, d) : 0,
@@ -360,8 +371,8 @@ export function getStageConfig(stage: number) {
     shieldChance: stage >= 6 ? lerp(0.06, 0.12, d) : 0,
     splitterChance: stage >= 7 ? lerp(0.06, 0.1, d) : 0,
     homingChance: stage >= 8 ? lerp(0.05, 0.1, d) : 0,
-    enemyFireIntervalMs: lerp(2000, 550, d),
-    shotSpeed: lerp(160, 420, d),
+    enemyFireIntervalMs: Math.max(MIN_ENEMY_FIRE_INTERVAL_MS, lerp(2000, 550, d) / rush),
+    shotSpeed: lerp(160, 420, d) * rush,
   };
 }
 

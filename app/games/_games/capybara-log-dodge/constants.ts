@@ -136,8 +136,8 @@ export const COMBO_SOUNDS: readonly (readonly SoundLayer[])[] = [523, 659, 784, 
   { at: 50, kind: "tone", wave: "sine", from: hz * 2, to: hz * 2, ms: 120, level: 0.05 },
 ]);
 
-/** 달리기 비트: 난이도에 따라 이 BPM 사이에서 빨라진다 */
-export const BEAT_BPM = { min: 112, max: 172 } as const;
+/** 달리기 비트: 60초까지 min→max로 빨라지고, 러시 구간에선 1초마다 1BPM씩 rush까지 더 빨라진다 */
+export const BEAT_BPM = { min: 112, max: 172, rush: 240 } as const;
 /** 쿵: 매 박 */
 export const BEAT_KICK: SoundLayer = { kind: "tone", wave: "sine", from: 150, to: 45, ms: 130, level: 0.13 };
 /** 칙: 박 사이 (at은 박 간격 절반으로 바꿔 쓴다) */

@@ -24,6 +24,7 @@ import {
   LOG_THICKNESS,
   type LogKind,
   MIN_GAP,
+  MIN_WAVE_INTERVAL_MS,
   MOVE_SPEED,
   NEAR_MISS_TIME_SCALE,
   parseChallenge,
@@ -67,9 +68,16 @@ describe("공정성", () => {
     }
   });
 
-  it("최고 난이도에서도 웨이브 사이에 화면 끝에서 끝까지 갈 수 있다", () => {
-    const { waveIntervalMs } = getDifficulty(PEAK_MS);
+  it("아무리 오래 버텨도 웨이브 사이에 화면 끝에서 끝까지 갈 수 있다", () => {
+    const { waveIntervalMs } = getDifficulty(PEAK_MS * 20);
+    expect(waveIntervalMs).toBe(MIN_WAVE_INTERVAL_MS);
     expect((MOVE_SPEED * waveIntervalMs) / 1000).toBeGreaterThanOrEqual(GAME_WIDTH - MIN_GAP);
+  });
+
+  it("최고 난이도 뒤로도 멈추지 않고 계속 빨라진다", () => {
+    const peak = getDifficulty(PEAK_MS).fallSpeed;
+    expect(getDifficulty(PEAK_MS + 30_000).fallSpeed).toBeGreaterThan(peak);
+    expect(getDifficulty(PEAK_MS * 2).fallSpeed).toBeGreaterThan(peak * 2);
   });
 
   it("가장 느린 허들도 체공 시간 안에 카피바라를 지나가 점프 타이밍 여유가 있다", () => {
