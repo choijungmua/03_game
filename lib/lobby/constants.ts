@@ -13,6 +13,11 @@ export const LOBBY_SETTINGS_CHANGE_EVENT = "ggpli:lobby-settings-change";
 export const REMOTE_RENDER_DELAY_MS = 100;
 /** 응답에서 이만큼 계속 빠진 유저만 지운다. 한 번 빠졌다고 지우면 사라졌다 다시 나타나 깜빡인다 */
 export const REMOTE_GONE_MS = 1_000;
+/**
+ * 서버가 위치를 고쳤다고(corrected) 해도 내 위치와 이만큼(px, 4타일) 넘게 다를 때만 따른다.
+ * 서버가 알려 주는 위치는 왕복 지연만큼 지난 자리라, 작은 보정까지 따르면 걷는 중에 뒤로 튀고 보정이 되풀이된다
+ */
+export const CORRECTION_SNAP_PX = 192;
 /** 유저마다 들고 있는 과거 위치 개수 */
 export const MAX_SNAPSHOTS = 8;
 /** 이보다 오래 같은 자리에 있다가 움직이면, 서 있던 시간에 걸쳐 느리게 오지 않고 한 틱 동안 걷게 한다 */

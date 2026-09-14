@@ -27,6 +27,7 @@ import {
 } from "@/lib/lobby/assets";
 import { Input } from "@/components/inputs/input";
 import {
+  CORRECTION_SNAP_PX,
   DEFAULT_LOBBY_SETTINGS,
   FISH_BITE_MAX_MS,
   FISH_BITE_MIN_MS,
@@ -921,8 +922,9 @@ export function Lobby({ games }: { games: DoorGame[] }) {
     }
     const camera = { x: me.x, y: me.y, shakeUntil: 0 };
 
-    const token = loadSession("lobby-token") ?? crypto.randomUUID();
-    saveSession("lobby-token", token);
+    // 탭마다 새로 만든다. sessionStorage에 두면 탭 복제 때 같은 토큰이 복사돼 두 탭 위치가 번갈아 들어가 서로 끌어당긴다
+    // (게임에 들어가면 연결이 닫혀 서버가 플레이어를 바로 지우므로, 토큰을 이어 써도 이름표가 유지되지 않았다)
+    const token = crypto.randomUUID();
 
     const remotes = new Map<string, Remote>();
     const hitEffects = new Map<string, number>();
@@ -1130,8 +1132,13 @@ export function Lobby({ games }: { games: DoorGame[] }) {
         me.stunUntil = received + data.you.stunMs;
         if (me.sitting) standUp();
         me.fishing = null;
-      } else if (data.corrected && !blocked(data.you.x, data.you.y)) {
-        // 서버가 순간이동으로 판단해 위치를 고쳤을 때만 따른다 (you는 조금 전에 보낸 위치라 매번 따르면 뒤로 튄다)
+      } else if (
+        data.corrected &&
+        Math.hypot(data.you.x - me.x, data.you.y - me.y) > CORRECTION_SNAP_PX &&
+        !blocked(data.you.x, data.you.y)
+      ) {
+        // 서버가 순간이동으로 판단해 위치를 크게 고쳤을 때만 따른다 (you는 조금 전에 보낸 위치라 작은 보정까지 따르면 뒤로 튄다.
+        // 작은 차이는 다음 전송들로 서버가 곧 따라온다)
         me.x = data.you.x;
         me.y = data.you.y;
       }
@@ -1221,6 +1228,19 @@ export function Lobby({ games }: { games: DoorGame[] }) {
         reconnectTimer = window.setTimeout(connect, reconnectDelay);
         reconnectDelay = Math.min(RECONNECT_MAX_MS, reconnectDelay * 2);
       };
+    };
+
+    // 카톡 등 다른 앱·창으로 나가면 blur 없이 숨기만 하기도 한다(모바일). 누르던 조이스틱·키가 남아 돌아왔을 때 저절로 걸어가지 않게 비우고,
+    // 숨어 있는 동안 끊겼으면 재연결 대기(최대 8초)를 기다리지 않고 바로 다시 붙는다
+    const onVisibilityChange = () => {
+      if (document.hidden) {
+        onBlur();
+        return;
+      }
+      if (socket || disposed) return;
+      window.clearTimeout(reconnectTimer);
+      reconnectDelay = RECONNECT_MIN_MS;
+      connect();
     };
 
     let last = performance.now();
@@ -1633,6 +1653,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
     window.addEventListener("pointerup", onPointerUp);
     window.addEventListener("pointercancel", onPointerUp);
     window.addEventListener("blur", onBlur);
+    document.addEventListener("visibilitychange", onVisibilityChange);
     frame = requestAnimationFrame(tick);
     connect();
     const sendId = window.setInterval(send, LOBBY_TICK_MS);
@@ -1646,6 +1667,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
       window.removeEventListener("pointerup", onPointerUp);
       window.removeEventListener("pointercancel", onPointerUp);
       window.removeEventListener("blur", onBlur);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
       cancelAnimationFrame(frame);
       window.clearInterval(sendId);
       window.clearTimeout(reconnectTimer);
