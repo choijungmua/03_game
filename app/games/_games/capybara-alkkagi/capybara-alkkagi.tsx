@@ -232,7 +232,8 @@ export function CapybaraAlkkagi() {
     let shown = -1;
     let lastClack = 0;
     let rafId = requestAnimationFrame(function tick(now) {
-      const index = Math.min(frames.length - 1, Math.floor((now - startedAt) / STEP_MS));
+      // rAF의 now는 그 화면 프레임이 시작된 시각이라 바로 앞에서 잰 startedAt보다 이를 수 있다 — 음수 index(frames[-1] = undefined)가 되지 않게 0에서 막는다
+      const index = Math.max(0, Math.min(frames.length - 1, Math.floor((now - startedAt) / STEP_MS)));
       let shaken = false;
       let fell = false;
       let impact = -1;
