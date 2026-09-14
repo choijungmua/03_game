@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 import { Toaster } from "@/components/feedback/sonner";
 import { pretendard } from "@/config";
 import { JsonLd, websiteJsonLd } from "@/lib/seo/json-ld";
-import { SITE_DESCRIPTION, SITE_NAME, SITE_TAGLINE, SITE_URL } from "@/lib/seo/site";
+import { SITE_DESCRIPTION, SITE_NAME, SITE_URL } from "@/lib/seo/site";
 
 import "./globals.css";
 import { Providers } from "./providers";
@@ -13,14 +13,15 @@ const naverVerification = process.env.NAVER_SITE_VERIFICATION ?? "9515f491bca12b
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
-  title: { default: `${SITE_NAME} - ${SITE_TAGLINE}`, template: `%s | ${SITE_NAME}` },
+  // 모든 페이지 제목은 "ggpli - 페이지 이름" (lib/seo/site.ts siteTitle과 같은 모양)
+  title: { default: SITE_NAME, template: `${SITE_NAME} - %s` },
   description: SITE_DESCRIPTION,
   applicationName: SITE_NAME,
   openGraph: {
     type: "website",
     siteName: SITE_NAME,
     locale: "ko_KR",
-    title: `${SITE_NAME} - ${SITE_TAGLINE}`,
+    title: SITE_NAME,
     description: SITE_DESCRIPTION,
   },
   twitter: { card: "summary_large_image" },

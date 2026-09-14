@@ -26,8 +26,6 @@ export interface GameGuideSection {
 
 /** 게임별 검색 노출 문구. `pnpm seo:generate <slug>`로 만들고 사람이 검토한다 */
 export interface GameSeo {
-  /** 검색 결과 제목. 사이트 이름은 레이아웃 템플릿이 붙인다 */
-  metaTitle: string;
   /** 게임 페이지 검색 결과 설명 (80~160자) */
   metaDescription: string;
   /** 가이드 페이지 검색 결과 설명. 게임 페이지와 겹치지 않게 쓴다 */

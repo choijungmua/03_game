@@ -2,7 +2,6 @@ import type { GameSeo } from "@/lib/games/types";
 
 // pnpm seo:generate로 생성. 코드와 다른 사실이 없는지 검토한 뒤 커밋한다
 export const seo: GameSeo = {
-  metaTitle: "반응속도 테스트 - 무료 온라인 반응속도 측정",
   metaDescription: "타이머가 움직이는 순간 눌러 반응 시간을 ms 단위로 재는 무료 반응속도 테스트. 프로게이머부터 거북이까지 등급과 내 순위를 바로 확인하고 친구에게 기록을 공유해 보세요.",
   guideDescription: "반응속도 테스트 등급 기준(150·200·260·350ms), 카운트다운 중에 누르면 어떻게 되는지, 기록을 줄이는 연습 방법과 기록 저장 방식을 정리했습니다.",
   keywords: [

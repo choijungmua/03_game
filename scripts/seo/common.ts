@@ -43,9 +43,23 @@ export function today() {
 // ponytail: registry.ts는 next/dynamic을 불러 Node에서 import할 수 없어 정규식으로 읽는다. 항목의 slug·title·description 순서가 바뀌면 같이 고칠 것
 export async function readRegistry(): Promise<RegistryGame[]> {
   const source = await readFile(join(ROOT, "lib/games/registry.ts"), "utf8");
-  return [...source.matchAll(/slug: "([^"]+)",\s*title: "([^"]+)",\s*description: "([^"]+)"/g)].map(
-    ([, slug, title, description]) => ({ slug, title, description }),
+  const titles = await loadGameTitles();
+  const entries = source.matchAll(
+    /slug: "([^"]+)",\s*title: (?:"([^"]+)"|GAME_TITLES\[[^\]]+\]),\s*description: "([^"]+)"/g,
   );
+  return [...entries].map(([, slug, title, description]) => ({
+    slug,
+    title: title ?? titles[slug] ?? slug,
+    description,
+  }));
+}
+
+/** 레지스트리가 제목을 lib/games/constants.ts의 GAME_TITLES에서 꺼내 쓰는 경우 */
+async function loadGameTitles(): Promise<Record<string, string>> {
+  const file = join(ROOT, "lib/games/constants.ts");
+  if (!existsSync(file)) return {};
+  const loaded: Partial<{ GAME_TITLES: Record<string, string> }> = await import(pathToFileURL(file).href);
+  return loaded.GAME_TITLES ?? {};
 }
 
 /** 명령줄의 slug 목록을 게임으로 바꾼다. --all·--missing·--stale이면 등록된 게임 전부 */

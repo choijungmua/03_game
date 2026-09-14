@@ -2,7 +2,6 @@ import type { GameSeo } from "@/lib/games/types";
 
 // pnpm seo:generate로 생성. 코드와 다른 사실이 없는지 검토한 뒤 커밋한다
 export const seo: GameSeo = {
-  metaTitle: "카피바라 몰래 먹기 - 들키면 끝나는 눈치 게임",
   metaDescription: "주인이 등을 돌린 사이 화면을 꾹 눌러 수박을 먹고, 돌아보기 전에 손을 떼는 카피바라 눈치 게임. 느낌표 경고를 보고 타이밍을 맞춰 게이지 100%를 채워 보세요.",
   guideDescription: "카피바라 몰래 먹기에서 주인이 돌아보는 시간과 느낌표 경고, 손을 떼면 게이지가 줄어드는 규칙, 들키지 않고 수박을 다 먹는 요령을 정리했습니다.",
   keywords: [

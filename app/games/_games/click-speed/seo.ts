@@ -2,7 +2,6 @@ import type { GameSeo } from "@/lib/games/types";
 
 // pnpm seo:generate로 생성. 코드와 다른 사실이 없는지 검토한 뒤 커밋한다
 export const seo: GameSeo = {
-  metaTitle: "클릭 스피드 테스트 - 초당 클릭 수(CPS) 측정",
   metaDescription: "멈추지 않고 최대한 빠르게 연타해 총 클릭 수와 초당 클릭 수(CPS)를 재는 무료 클릭 속도 테스트. 1.5초 동안 손을 멈추면 끝나고, CPS 등급과 순위를 바로 확인할 수 있습니다.",
   guideDescription: "클릭 스피드 테스트의 CPS 계산 방식과 등급 기준(4·6·8·10 CPS), 순위가 정해지는 순서, 연타 속도를 올리는 요령을 정리했습니다.",
   keywords: [

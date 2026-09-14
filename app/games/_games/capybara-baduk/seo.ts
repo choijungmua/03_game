@@ -2,7 +2,6 @@ import type { GameSeo } from "@/lib/games/types";
 
 // pnpm seo:generate로 생성. 코드와 다른 사실이 없는지 검토한 뒤 커밋한다
 export const seo: GameSeo = {
-  metaTitle: "카피바라 바둑 - 친구와 두는 9줄 온라인 바둑",
   metaDescription: "초대 코드 하나로 친구를 불러 9×9 바둑판에서 1:1로 두는 무료 온라인 바둑. 회원가입 없이 방을 만들고 링크를 보내면 바로 대국을 시작할 수 있습니다.",
   guideDescription: "카피바라 바둑의 방 만들기와 초대 코드 입장 방법, 9줄 바둑 규칙(따내기·패·계가·덤 6.5집), 한 수 60초 제한과 기권·관전 기능을 정리했습니다.",
   keywords: [

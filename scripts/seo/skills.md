@@ -7,11 +7,11 @@
 
 | 무엇 | 어디서 | 비고 |
 |---|---|---|
-| 제목·설명·키워드·canonical·OG 메타 | `app/games/[slug]/page.tsx` | `seo.ts`의 `metaTitle`·`metaDescription`·`keywords` |
+| 제목·설명·키워드·canonical·OG 메타 | `app/games/[slug]/page.tsx` | 제목은 모든 페이지 `ggpli - 페이지 이름`(`lib/seo/site.ts` `siteTitle`), 설명·키워드는 `seo.ts`의 `metaDescription`·`keywords` |
 | 게임 아래 소개(소개·하는 법·FAQ·다른 게임) | `app/games/_components/game-info.tsx` | 첫 화면은 게임 그대로 전체 화면, 스크롤하면 나온다 |
 | 가이드 페이지 `/games/<slug>/guide` | `app/games/[slug]/guide/page.tsx` | `guide`·`tips`·`faq` 긴 본문 |
 | 구조화 데이터(JSON-LD) | `lib/seo/json-ld.tsx` | 게임 `VideoGame`+`WebApplication`(무료), 가이드 `Article`, 모든 페이지 `BreadcrumbList` |
-| 공유 카드 이미지 | `app/games/[slug]/opengraph-image.tsx` | 카피바라 아이콘 + 게임 이름 |
+| 공유 카드 이미지 | 페이지마다 `opengraph-image.tsx` (`lib/seo/og-image.tsx`) | 게임·가이드는 `assets-src/games/<slug>/icon.png`(없으면 카피바라 아이콘) + 페이지 이름. 새 페이지를 만들면 그 폴더에도 `opengraph-image.tsx`를 둔다 |
 | sitemap·RSS·llms.txt | `app/sitemap.ts`, `app/rss.xml`, `app/llms.txt` | 레지스트리 전체를 돈다 |
 | 허브 페이지 `/games` | `app/games/page.tsx` | 전체 게임 목록 + `ItemList` |
 

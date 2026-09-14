@@ -1,10 +1,12 @@
-import type { Metadata } from "next";
 import Link from "next/link";
 
-export const metadata: Metadata = {
+import { pageMetadata } from "@/lib/seo/site";
+
+export const metadata = pageMetadata({
   title: "개인정보처리방침",
   description: "ggpli 개인정보처리방침",
-};
+  path: "/privacy",
+});
 
 export default function PrivacyPage() {
   return (

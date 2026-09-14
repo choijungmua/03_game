@@ -2,7 +2,6 @@ import type { GameSeo } from "@/lib/games/types";
 
 // pnpm seo:generate로 생성. 코드와 다른 사실이 없는지 검토한 뒤 커밋한다
 export const seo: GameSeo = {
-  metaTitle: "카피바라 오목 - 친구와 두는 무료 온라인 오목",
   metaDescription: "초대 코드로 친구를 불러 15×15 판에서 돌 다섯 개를 먼저 한 줄로 잇는 무료 온라인 오목. 금수 없는 자유 오목이라 규칙이 간단하고 회원가입 없이 바로 둘 수 있습니다.",
   guideDescription: "카피바라 오목의 자유 오목 규칙(금수 없음, 6목 이상도 승리), 한 수 30초 제한, 초대 코드로 방 만드는 법과 초보를 위한 공격·수비 요령을 정리했습니다.",
   keywords: [

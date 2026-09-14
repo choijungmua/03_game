@@ -1,10 +1,12 @@
-import type { Metadata } from "next";
 import Link from "next/link";
 
-export const metadata: Metadata = {
+import { pageMetadata } from "@/lib/seo/site";
+
+export const metadata = pageMetadata({
   title: "이용약관",
   description: "ggpli 서비스 이용약관",
-};
+  path: "/terms",
+});
 
 export default function TermsPage() {
   return (

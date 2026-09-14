@@ -2,7 +2,6 @@ import type { GameSeo } from "@/lib/games/types";
 
 // pnpm seo:generate로 생성. 코드와 다른 사실이 없는지 검토한 뒤 커밋한다
 export const seo: GameSeo = {
-  metaTitle: "카피바라 알까기 - 친구와 하는 온라인 알까기",
   metaDescription: "내 알을 당겼다 놓아 튕기고 상대 알을 판 밖으로 떨어뜨리는 무료 온라인 알까기. 초대 코드로 친구를 불러 왕관 쓴 대장 알이 있는 5 대 5 대결을 펼쳐 보세요.",
   guideDescription: "카피바라 알까기의 조작법(당겨서 튕기기·파워 조절·키보드), 대장 알 규칙, 한 번 더 치는 콤보 조건, 턴 20초 제한과 이기는 요령을 정리했습니다.",
   keywords: [

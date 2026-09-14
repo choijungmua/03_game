@@ -2,7 +2,6 @@ import type { GameSeo } from "@/lib/games/types";
 
 // pnpm seo:generate로 생성. 코드와 다른 사실이 없는지 검토한 뒤 커밋한다
 export const seo: GameSeo = {
-  metaTitle: "카피바라 통나무 피하기 - 점프·숙이기 피하기 게임",
   metaDescription: "비탈에서 굴러오는 통나무를 좌우로 피하고 점프로 넘고 숙여서 지나가며 오래 버티는 카피바라 피하기 게임. 매일 바뀌는 오늘의 코스와 친구 도전장 링크로 기록을 겨뤄 보세요.",
   guideDescription: "카피바라 통나무 피하기의 조작법(이동·점프·숙이기), 시간에 따라 등장하는 통나무 6종, 생존 시간 등급 기준, 오늘의 코스와 친구 도전장 사용법을 정리했습니다.",
   keywords: [

@@ -35,9 +35,8 @@ const stringList = { type: "array", items: { type: "string" } };
 const SEO_SCHEMA = {
   type: "object",
   additionalProperties: false,
-  required: ["metaTitle", "metaDescription", "guideDescription", "keywords", "intro", "howToPlay", "tips", "faq", "guide"],
+  required: ["metaDescription", "guideDescription", "keywords", "intro", "howToPlay", "tips", "faq", "guide"],
   properties: {
-    metaTitle: { type: "string" },
     metaDescription: { type: "string" },
     guideDescription: { type: "string" },
     keywords: stringList,
@@ -72,10 +71,9 @@ const SYSTEM_PROMPT = `너는 한국어 무료 웹게임 사이트 ggpli의 SEO 
 - 사람이 읽는 글이다. 이 게임을 하려는 사람이 궁금해할 내용을 자연스러운 한국어로 쓰고, 검색어를 억지로 반복하지 않는다. 구글은 가치 없이 대량 생성한 페이지를 스팸으로 본다.
 - 이미 있는 다른 게임 문구와 표현·문장 구조가 겹치지 않게 쓴다.
 - 검색어 트렌드 데이터가 있으면, 월간 검색수가 많거나 trend가 1보다 큰 검색어 중 이 게임과 정말 관련 있는 것만 keywords와 본문에 녹인다. 관련 없는 인기 검색어는 넣지 않는다.
-- 사이트 이름(ggpli)은 넣지 않는다. 제목 템플릿이 붙인다.
+- 사이트 이름(ggpli)은 넣지 않는다. 페이지 제목은 "ggpli - 게임 이름"으로 자동으로 붙는다.
 
 필드
-- metaTitle: 40자 이내. "게임 이름 - 핵심 검색어" 모양.
 - metaDescription: 80~150자. 무엇을 하는 게임인지와 이 게임만의 특징.
 - guideDescription: 80~150자. 가이드 페이지에서 알 수 있는 내용(규칙·등급·공략). metaDescription과 다른 문장.
 - keywords: 8~12개, 중복 없이. 첫 번째는 게임 이름 그대로, 이어서 대표 검색어, 연관·롱테일 검색어.
@@ -119,7 +117,7 @@ async function otherGamesSummary(games: RegistryGame[], slug: string) {
   for (const game of games) {
     if (game.slug === slug) continue;
     const seo = await loadSeo(game.slug);
-    if (seo) lines.push(`- ${game.title}: ${seo.metaTitle} / ${seo.intro}`);
+    if (seo) lines.push(`- ${game.title}: ${seo.metaDescription} / ${seo.intro}`);
   }
   return lines.length > 0 ? lines.join("\n") : "없음";
 }
@@ -144,9 +142,8 @@ function isStringList(value: string[] | undefined): value is string[] {
 
 function parseSeo(text: string, slug: string): GeneratedSeo {
   const raw: Partial<GeneratedSeo> = JSON.parse(text);
-  const { metaTitle, metaDescription, guideDescription, keywords, intro, howToPlay, tips, faq, guide } = raw;
+  const { metaDescription, guideDescription, keywords, intro, howToPlay, tips, faq, guide } = raw;
   if (
-    typeof metaTitle !== "string" ||
     typeof metaDescription !== "string" ||
     typeof guideDescription !== "string" ||
     typeof intro !== "string" ||
@@ -158,7 +155,7 @@ function parseSeo(text: string, slug: string): GeneratedSeo {
   ) {
     fail(`${slug}: 응답 JSON이 GameSeo 모양과 다릅니다\n${text}`);
   }
-  return { metaTitle, metaDescription, guideDescription, keywords, intro, howToPlay, tips, faq, guide };
+  return { metaDescription, guideDescription, keywords, intro, howToPlay, tips, faq, guide };
 }
 
 const client = new Anthropic();

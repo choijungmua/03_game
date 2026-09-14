@@ -2,7 +2,6 @@ import type { GameSeo } from "@/lib/games/types";
 
 // pnpm seo:generate로 생성. 코드와 다른 사실이 없는지 검토한 뒤 커밋한다
 export const seo: GameSeo = {
-  metaTitle: "카피바라 비행기 슈팅 - 무료 세로 슈팅 게임",
   metaDescription: "카피바라 조종사가 자동으로 풀잎탄을 쏘며 하피독수리·말벌·재규어를 격추하는 무료 세로 슈팅 게임. 간식 아이템으로 무기를 바꾸고 5스테이지마다 나오는 카이만 보스를 버텨 보세요.",
   guideDescription: "카피바라 비행기 슈팅의 스테이지 구성, 카이만 보스 탄막 패턴 5가지, 해바라기씨·귤·옥수수·사탕수수·유자 아이템 효과, 점수 계산과 스테이지 등급을 정리했습니다.",
   keywords: [

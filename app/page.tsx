@@ -2,21 +2,20 @@ import type { Metadata } from "next";
 import Link from "next/link";
 
 import { GAMES } from "@/lib/games/registry";
-import { pageMetadata, SITE_NAME, SITE_TAGLINE } from "@/lib/seo/site";
+import { pageMetadata, siteTitle } from "@/lib/seo/site";
 
 import { Lobby } from "./_lobby/lobby";
 
-const title = `${SITE_NAME} - ${SITE_TAGLINE}`;
-
 export const metadata: Metadata = {
   ...pageMetadata({
-    title,
+    title: "로비",
     description:
       "카피바라를 걸어 다니며 온천 습지 마을의 오두막에 들어가 반응속도 테스트, 클릭 속도 테스트, 바둑, 오목, 알까기 등 무료 게임을 하는 오픈월드 로비. 설치·로그인 없이 브라우저에서 바로 플레이",
     path: "/",
     keywords: ["무료 게임", "미니게임", "웹게임", "카피바라 게임", ...GAMES.map((game) => game.title)],
   }),
-  title: { absolute: title },
+  // 레이아웃 title.template은 같은 폴더의 page에는 적용되지 않아 전체 제목을 직접 둔다
+  title: { absolute: siteTitle("로비") },
 };
 
 export default function Home() {
