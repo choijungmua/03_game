@@ -67,6 +67,7 @@ import { CAPYBARA_EMOTES, emoteChat, emoteImage, parseEmoteChat } from "@/lib/ga
 import { BUBBLE_LINE, BUBBLE_TEXT_WIDTH, EMOTE_SIZE, FRAME_SRC, SITE_LINKS } from "./constants";
 import { EmotePicker } from "./emote-picker";
 import { FishBag } from "./fish-bag";
+import { KeyboardGuide } from "./keyboard-guide";
 import { SoundToggle } from "./lobby-settings";
 import {
   ATTACK_COOLDOWN_MS,
@@ -1003,8 +1004,6 @@ export function Lobby({ games }: { games: DoorGame[] }) {
   const [fishInventory, setFishInventory] = useState<FishInventory>({});
   const [stunned, setStunned] = useState(false);
   const [notice, setNotice] = useState("");
-  /** 하단 조작법 안내. 평소엔 숨기고 \ 키로 켜고 끈다 */
-  const [helpOpen, setHelpOpen] = useState(false);
   /** 로비 이미지를 받은 비율(%). 100이 되기 전엔 로딩창을 덮고 게임 루프를 돌리지 않는다 */
   const [loadProgress, setLoadProgress] = useState(0);
   // 게임 루프 effect가 router 변경으로 다시 실행되면 캐릭터·멀티 상태가 초기화되므로 이벤트로 감싼다
@@ -1296,8 +1295,8 @@ export function Lobby({ games }: { games: DoorGame[] }) {
     const onKeyDown = (event: KeyboardEvent) => {
       // 채팅 입력 중엔 WASD·F·Space가 글자로 들어가야 한다
       if (event.target instanceof HTMLInputElement) return;
+      // \ 키 조작법 창은 KeyboardGuide가 연다. 여는 순간 처음 안내 글은 치운다
       if (isShortcutKey(event, "Backslash")) {
-        setHelpOpen((open) => !open);
         setNotice("");
         return;
       }
@@ -2150,12 +2149,9 @@ export function Lobby({ games }: { games: DoorGame[] }) {
         >
           {status}
         </p>
-        {helpOpen && (
-          <p className="max-w-full text-balance rounded-lg bg-card/80 px-3 py-1.5 text-center text-caption-3 text-text-caption backdrop-blur">
-            방향키·WASD 걷기 · F 때리기 · 통나무 앞 Space 앉기 · 물가 Space 낚시 · Enter 채팅 · , 이모티콘 · P 프로필 · I 가방 · M 소리 · 오두막 문 앞에 가면 입장 · \ 닫기
-          </p>
-        )}
       </div>
+
+      <KeyboardGuide />
 
       {/* 터치 조이스틱: 누른 자리에 나타난다. 위치는 게임 루프가 DOM에 직접 쓴다 */}
       <div ref={joystickRef} hidden aria-hidden="true" className="pointer-events-none fixed left-0 top-0 size-32">
