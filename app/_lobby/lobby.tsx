@@ -1534,8 +1534,10 @@ export function Lobby({ games }: { games: DoorGame[] }) {
       }
       const { spring } = world;
       if (inView(spring.x, spring.y, TILE * 6)) {
+        // 온천은 납작해서 늘 캐릭터보다 먼저 그린다. 뒤(북쪽)는 물 타일이 막아 캐릭터가 그림과 겹칠 만큼 못 다가가고,
+        // 가운데보다 아래를 기준으로 두면 옆에 선 캐릭터가 둘레 돌 그림에 가려진다
         drawables.push({
-          y: spring.y + SPRING_RADIUS * TILE * 0.6,
+          y: spring.y - SPRING_RADIUS * TILE,
           draw: () => {
             sprite("onsen", spring.x, spring.y + SPRING_RADIUS * TILE);
             drawSteam(ctx, spring.x, spring.y, now, !reducedMotion);
