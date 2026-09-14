@@ -1,4 +1,6 @@
-import { DEFAULT_LOBBY_SETTINGS, LOBBY_SETTINGS_STORAGE_KEY, SOUNDS } from "./constants";
+import { useMemo, useSyncExternalStore } from "react";
+
+import { DEFAULT_LOBBY_SETTINGS, LOBBY_SETTINGS_CHANGE_EVENT, LOBBY_SETTINGS_STORAGE_KEY, SOUNDS } from "./constants";
 
 /** 로비 설정(효과음 켜고 끄기·크기, 조작법 안내 보기). 이 기기(localStorage)에만 저장한다 */
 export interface LobbySettings {
@@ -8,9 +10,17 @@ export interface LobbySettings {
   showHelp: boolean;
 }
 
-export function loadLobbySettings(): LobbySettings {
+function readRawSettings() {
   try {
-    const saved: Partial<LobbySettings> | null = JSON.parse(localStorage.getItem(LOBBY_SETTINGS_STORAGE_KEY) ?? "null");
+    return localStorage.getItem(LOBBY_SETTINGS_STORAGE_KEY);
+  } catch {
+    return null;
+  }
+}
+
+function parseLobbySettings(raw: string | null): LobbySettings {
+  try {
+    const saved: Partial<LobbySettings> | null = JSON.parse(raw ?? "null");
     const { muted, volume, showHelp } = saved ?? {};
     return {
       muted: typeof muted === "boolean" ? muted : DEFAULT_LOBBY_SETTINGS.muted,
@@ -22,10 +32,31 @@ export function loadLobbySettings(): LobbySettings {
   }
 }
 
+export function loadLobbySettings(): LobbySettings {
+  return parseLobbySettings(readRawSettings());
+}
+
 export function saveLobbySettings(settings: LobbySettings) {
   try {
     localStorage.setItem(LOBBY_SETTINGS_STORAGE_KEY, JSON.stringify(settings));
   } catch {}
+  window.dispatchEvent(new Event(LOBBY_SETTINGS_CHANGE_EVENT));
+}
+
+function subscribeSettings(onChange: () => void) {
+  window.addEventListener("storage", onChange);
+  window.addEventListener(LOBBY_SETTINGS_CHANGE_EVENT, onChange);
+  return () => {
+    window.removeEventListener("storage", onChange);
+    window.removeEventListener(LOBBY_SETTINGS_CHANGE_EVENT, onChange);
+  };
+}
+
+/** 저장된 설정을 구독한다. 서버 렌더에서는 기본값이라 하이드레이션이 어긋나지 않고, 어느 화면에서 저장하든 바로 따라 바뀐다 */
+export function useLobbySettings(): LobbySettings {
+  // 스냅숏은 문자열 그대로 비교해야 매 렌더 새 객체로 무한 렌더가 돌지 않는다
+  const raw = useSyncExternalStore(subscribeSettings, readRawSettings, () => null);
+  return useMemo(() => parseLobbySettings(raw), [raw]);
 }
 
 export type LobbySound =
