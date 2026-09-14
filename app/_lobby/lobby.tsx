@@ -16,7 +16,6 @@ import {
   type SpriteAsset,
   type SpriteId,
 } from "@/lib/lobby/assets";
-import { Button } from "@/components/inputs/button";
 import { Input } from "@/components/inputs/input";
 import {
   ATTACK_COOLDOWN_MS,
@@ -375,12 +374,12 @@ function drawLabel(ctx: CanvasRenderingContext2D, text: string, x: number, y: nu
   ctx.fillText(text, x, y);
 }
 
-const BUBBLE_TEXT_WIDTH = 180;
-const BUBBLE_LINE = 17;
+const BUBBLE_TEXT_WIDTH = 160;
+const BUBBLE_LINE = 16;
 
 /** 꼬리 끝이 (x, bottom)에 오는 말풍선. 한글은 띄어쓰기 없이 길게 쓰기도 해서 글자 단위로 줄을 바꾼다 */
 function drawBubble(ctx: CanvasRenderingContext2D, text: string, x: number, bottom: number) {
-  ctx.font = "13px system-ui, sans-serif";
+  ctx.font = "500 12px system-ui, sans-serif";
   const lines: string[] = [];
   let line = "";
   for (const char of text) {
@@ -392,17 +391,25 @@ function drawBubble(ctx: CanvasRenderingContext2D, text: string, x: number, bott
     }
   }
   if (line) lines.push(line);
-  const width = Math.max(...lines.map((item) => ctx.measureText(item).width)) + 16;
+  const width = Math.round(Math.max(...lines.map((item) => ctx.measureText(item).width)) + 20);
   const height = lines.length * BUBBLE_LINE + 10;
-  const top = bottom - 6 - height;
+  const left = Math.round(x - width / 2);
+  const top = Math.round(bottom - 5 - height);
+  // 한 줄이면 알약, 여러 줄이면 둥근 카드. 꼬리는 몸통과 한 번에 채워 이음새가 안 보이게
   ctx.beginPath();
-  ctx.roundRect(x - width / 2, top, width, height, 8);
-  ctx.moveTo(x - 5, top + height);
+  ctx.roundRect(left, top, width, height, Math.min(height / 2, 10));
+  ctx.moveTo(x - 4, top + height - 1);
   ctx.lineTo(x, bottom);
-  ctx.lineTo(x + 5, top + height);
-  ctx.fillStyle = "rgba(255,250,238,0.95)";
+  ctx.lineTo(x + 4, top + height - 1);
+  ctx.closePath();
+  ctx.save();
+  ctx.shadowColor = "rgba(40,28,16,0.25)";
+  ctx.shadowBlur = 6;
+  ctx.shadowOffsetY = 1;
+  ctx.fillStyle = "#fff";
   ctx.fill();
-  ctx.fillStyle = "#2a1f14";
+  ctx.restore();
+  ctx.fillStyle = "#1f1a14";
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
   lines.forEach((item, index) => ctx.fillText(item, x, top + 5 + BUBBLE_LINE * (index + 0.5)));
@@ -1448,7 +1455,8 @@ export function Lobby({ games }: { games: DoorGame[] }) {
       />
 
       {/* 오른쪽 위 옷장 버튼 자리를 비워 둔다 */}
-      <form onSubmit={sendChat} className="absolute left-4 right-24 top-[max(1rem,env(safe-area-inset-top))] flex max-w-sm gap-2">
+      {/* 있는 듯 없는 듯: 평소엔 반투명 알약, 입력할 때만 넓어지고 또렷해진다. 보내기는 Enter(모바일은 키보드 전송) */}
+      <form onSubmit={sendChat} className="absolute left-3 top-[max(0.75rem,env(safe-area-inset-top))] w-36 max-w-[calc(100%-6rem)] transition-[width] duration-150 focus-within:w-64 motion-reduce:transition-none">
         <Input
           ref={chatInputRef}
           name="lobby-chat"
@@ -1460,11 +1468,9 @@ export function Lobby({ games }: { games: DoorGame[] }) {
           onKeyDown={(event) => {
             if (event.key === "Escape") event.currentTarget.blur();
           }}
-          className="h-11 min-w-0 bg-card/85 text-base text-text-strong backdrop-blur"
+          shape="pill"
+          className="h-8 border-transparent bg-black/25 px-3 text-base text-white shadow-none placeholder:text-white/60 focus-visible:bg-card/90 focus-visible:text-text-strong focus-visible:placeholder:text-text-placeholder md:text-caption-1"
         />
-        <Button type="submit" className="h-11 shrink-0">
-          보내기
-        </Button>
         <p aria-live="polite" className="sr-only">
           {heardChat}
         </p>
