@@ -81,6 +81,12 @@ assets-src/lobby/<분류>/<id>/source.png            # 생성 원본
 - 크기·정렬은 stand와 같음. 배율은 첫 프레임(보통 자세) 기준으로 모든 프레임 같게 — 기지개처럼 키가 커지는 프레임도 발바닥 높이 유지
 - 로비는 3.5초 쉬고 긁기(2.2초) → 3.5초 쉬고 하품(2초) → 3.5초 쉬고 졸기(3초)를 반복 (`IDLE_ACTIONS`)
 
+## 먹이 먹기 이미지
+
+- `capybara-eating-{1,2}`: 정면, 두 앞발을 턱 아래에 모으고 1 입 크게 벌려 베어 묾 → 2 입 다물고 눈 감고 오물오물. 앞발 사이 먹이(낚은 것 그림)와 머리 위 하트는 로비 코드가 그린다 (`app/_lobby/lobby.tsx` `drawFood`·`drawHearts`, 먹이 높이 `FOOD_Y`)
+- 시트 1장(`assets-src/characters/capybara/sheets/capybara-eating-sheet.png`, 마젠타 배경, 참고 `capybara-stand-down.png` + `capybara-idle-down.png`)에서 자름. 마젠타는 make_image가 못 지워서 초록 대비 빨강·파랑 차이로 알파를 만들고 가장자리 분홍 번짐을 뺐다
+- 크기·정렬은 stand와 같음 (1024 캔버스, 캐릭터 높이 900, 발바닥 y=1000, 384 WebP). 두 프레임 같은 배율
+
 ## 약관 읽기 이미지
 
 - `capybara-reading-{right,left}`: 앉아서 나무테 안경을 쓰고 종이를 읽으며 연필로 가리킴. 방향은 바라보는 쪽 — 이용약관·개인정보처리방침·문의 페이지(`app/_legal/legal-page.tsx`)에서 `right`는 종이 왼편, `left`는 오른편
