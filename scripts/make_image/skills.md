@@ -65,6 +65,11 @@ assets-src/lobby/<분류>/<id>/source.png            # 생성 원본
 
 **바닥 텍스처처럼 화면을 꽉 채우는 이미지는 `--keep-background`** — 안 주면 모서리 색을 배경으로 알고 지워 버린다
 
+## 파비콘
+
+- 카피바라 정면 얼굴(점 1개 규칙 동일). 원본 `assets-src/favicon/source.png` (1024, 가장자리까지 자르고 2% 여백)
+- Next 파일 규칙으로 자동 연결 — `layout.tsx` 수정 없음: `app/favicon.ico` (16·32·48), `app/icon.png` (512), `app/apple-icon.png` (180). PNG는 256색 양자화로 용량 줄임
+
 ## 대기 동작 이미지 (가만히 서 있을 때)
 
 - `capybara-scratch-{1,2,3}`: 뒷모습, 1 앞발을 엉덩이에 댐 → 2 위로 긁기 → 3 아래로 긁기

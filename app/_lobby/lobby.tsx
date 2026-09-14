@@ -5,7 +5,11 @@ import NextImage from "next/image";
 import { useRouter } from "next/navigation";
 import { type FormEvent, useEffect, useEffectEvent, useRef, useState } from "react";
 
+import { pretendard } from "@/config";
 import { cn } from "@/lib";
+
+/** 캔버스는 CSS 폰트를 물려받지 않으니 사이트 폰트(Pretendard) 이름을 직접 쓴다 */
+const CANVAS_FONT = pretendard.style.fontFamily;
 
 import {
   BUILDING_ASSETS,
@@ -16,7 +20,6 @@ import {
   type SpriteAsset,
   type SpriteId,
 } from "@/lib/lobby/assets";
-import { Button } from "@/components/inputs/button";
 import { Input } from "@/components/inputs/input";
 import {
   ATTACK_COOLDOWN_MS,
@@ -369,7 +372,7 @@ function drawSteam(ctx: CanvasRenderingContext2D, x: number, y: number, now: num
 }
 
 function drawLabel(ctx: CanvasRenderingContext2D, text: string, x: number, y: number, strong = false) {
-  ctx.font = `${strong ? "bold " : ""}13px system-ui, sans-serif`;
+  ctx.font = `${strong ? 700 : 600} 13px ${CANVAS_FONT}`;
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
   ctx.lineWidth = 4;
@@ -379,12 +382,12 @@ function drawLabel(ctx: CanvasRenderingContext2D, text: string, x: number, y: nu
   ctx.fillText(text, x, y);
 }
 
-const BUBBLE_TEXT_WIDTH = 180;
-const BUBBLE_LINE = 17;
+const BUBBLE_TEXT_WIDTH = 160;
+const BUBBLE_LINE = 16;
 
 /** 꼬리 끝이 (x, bottom)에 오는 말풍선. 한글은 띄어쓰기 없이 길게 쓰기도 해서 글자 단위로 줄을 바꾼다 */
 function drawBubble(ctx: CanvasRenderingContext2D, text: string, x: number, bottom: number) {
-  ctx.font = "13px system-ui, sans-serif";
+  ctx.font = `500 12px ${CANVAS_FONT}`;
   const lines: string[] = [];
   let line = "";
   for (const char of text) {
@@ -396,17 +399,25 @@ function drawBubble(ctx: CanvasRenderingContext2D, text: string, x: number, bott
     }
   }
   if (line) lines.push(line);
-  const width = Math.max(...lines.map((item) => ctx.measureText(item).width)) + 16;
+  const width = Math.round(Math.max(...lines.map((item) => ctx.measureText(item).width)) + 20);
   const height = lines.length * BUBBLE_LINE + 10;
-  const top = bottom - 6 - height;
+  const left = Math.round(x - width / 2);
+  const top = Math.round(bottom - 5 - height);
+  // 한 줄이면 알약, 여러 줄이면 둥근 카드. 꼬리는 몸통과 한 번에 채워 이음새가 안 보이게
   ctx.beginPath();
-  ctx.roundRect(x - width / 2, top, width, height, 8);
-  ctx.moveTo(x - 5, top + height);
+  ctx.roundRect(left, top, width, height, Math.min(height / 2, 10));
+  ctx.moveTo(x - 4, top + height - 1);
   ctx.lineTo(x, bottom);
-  ctx.lineTo(x + 5, top + height);
-  ctx.fillStyle = "rgba(255,250,238,0.95)";
+  ctx.lineTo(x + 4, top + height - 1);
+  ctx.closePath();
+  ctx.save();
+  ctx.shadowColor = "rgba(40,28,16,0.25)";
+  ctx.shadowBlur = 6;
+  ctx.shadowOffsetY = 1;
+  ctx.fillStyle = "#fff";
   ctx.fill();
-  ctx.fillStyle = "#2a1f14";
+  ctx.restore();
+  ctx.fillStyle = "#1f1a14";
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
   lines.forEach((item, index) => ctx.fillText(item, x, top + 5 + BUBBLE_LINE * (index + 0.5)));
@@ -427,14 +438,14 @@ function drawStar(ctx: CanvasRenderingContext2D, x: number, y: number, radius: n
   ctx.stroke();
 }
 
-/** 옷 입은 스프라이트를 굽는 캔버스 크기(px). 화면에는 최대 STAND_SIZE(76) × 기기 픽셀 비율 2 = 152px로 그린다 */
-const DRESSED_PX = 192;
-
 interface OutfitDrawer {
   /** 옷 이미지 (처음 부를 때 불러온다) */
   image: (src: string) => HTMLImageElement;
-  /** 옷 입은 스프라이트를 구워 둔 캔버스. 입은 옷이 없거나 옷 이미지를 아직 불러오는 중이면 null */
-  dressed: (base: HTMLImageElement, outfit: Outfit, view: Facing | "sit-down") => HTMLCanvasElement | null;
+  /**
+   * 옷 입은 스프라이트를 구워 둔 캔버스. size는 화면에 그릴 크기(CSS px)이고, 캔버스는 size × 기기 픽셀 비율로 딱 맞게 굽는다
+   * (서 있으면 76 → 152px, 앉으면 64 → 128px). 입은 옷이 없거나 옷 이미지를 아직 불러오는 중이면 null
+   */
+  dressed: (base: HTMLImageElement, outfit: Outfit, view: Facing | "sit-down", size: number) => HTMLCanvasElement | null;
 }
 
 /**
@@ -516,7 +527,7 @@ function drawCapybara(
 ) {
   /** 옷 입은 스프라이트 한 장. 구워 둔 캔버스가 있으면 한 번에, 옷 이미지를 불러오는 중이면 겹쳐 그린다 */
   const drawDressed = (image: HTMLImageElement, view: Facing | "sit-down", left: number, top: number, size: number) => {
-    const dressed = wardrobe.dressed(image, outfit, view);
+    const dressed = wardrobe.dressed(image, outfit, view, size);
     if (dressed) {
       ctx.drawImage(dressed, left, top, size, size);
       return;
@@ -626,7 +637,7 @@ function drawHit(ctx: CanvasRenderingContext2D, x: number, y: number, progress: 
     ctx.stroke();
   }
   ctx.globalAlpha = 1 - progress;
-  ctx.font = "900 18px system-ui, sans-serif";
+  ctx.font = `700 18px ${CANVAS_FONT}`;
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
   ctx.lineWidth = 4;
@@ -745,15 +756,19 @@ export function Lobby({ games }: { games: DoorGame[] }) {
     };
     // 옷 입은 스프라이트는 (스프라이트·방향·옷 조합)마다 한 번만 캔버스에 구워 두고, 매 프레임엔 그 한 장만 그린다
     const dressedCache = new Map<string, HTMLCanvasElement>();
+    /** 캔버스의 기기 픽셀 비율 (resize에서 갱신). 옷 입은 스프라이트를 화면 크기에 딱 맞게 굽는 데 쓴다 */
+    let pixelRatio = 1;
     const wardrobe: OutfitDrawer = {
       image: outfitImage,
-      dressed: (base, outfit, view) => {
+      dressed: (base, outfit, view, size) => {
         const worn = WARDROBE_SLOTS.flatMap((slot) => {
           const id = outfit[slot];
           return id ? [`${slot}:${id}`] : [];
         });
         if (worn.length === 0) return null;
-        const key = `${base.src}|${view}|${worn.join(",")}`;
+        // 그릴 크기 그대로 구워서 매 프레임 확대·축소 없이 1:1로 찍는다 (크기가 키에 들어가 화면 배율이 바뀌면 새로 굽는다)
+        const px = Math.ceil(size * pixelRatio);
+        const key = `${base.src}|${view}|${px}|${worn.join(",")}`;
         const cached = dressedCache.get(key);
         if (cached) return cached;
         // 옷 이미지를 다 불러온 뒤에만 굽는다 (덜 불러온 채 구우면 빠진 옷이 그대로 굳는다)
@@ -763,12 +778,12 @@ export function Lobby({ games }: { games: DoorGame[] }) {
         });
         if (!loaded) return null;
         const canvas = document.createElement("canvas");
-        canvas.width = DRESSED_PX;
-        canvas.height = DRESSED_PX;
+        canvas.width = px;
+        canvas.height = px;
         const bake = canvas.getContext("2d");
         if (!bake) return null;
-        bake.drawImage(base, 0, 0, DRESSED_PX, DRESSED_PX);
-        drawOutfit(bake, base, outfit, view, 0, 0, DRESSED_PX, outfitImage);
+        bake.drawImage(base, 0, 0, px, px);
+        drawOutfit(bake, base, outfit, view, 0, 0, px, outfitImage);
         // ponytail: 넘치면 통째로 비운다 (청크 캐시와 같은 방식). 사람이 많아 자주 비워지면 LRU로
         if (dressedCache.size > 300) dressedCache.clear();
         dressedCache.set(key, canvas);
@@ -909,6 +924,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
 
     const resize = () => {
       const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      pixelRatio = dpr;
       view.width = canvas.clientWidth;
       view.height = canvas.clientHeight;
       canvas.width = Math.round(view.width * dpr);
@@ -1452,7 +1468,8 @@ export function Lobby({ games }: { games: DoorGame[] }) {
       />
 
       {/* 오른쪽 위 옷장 버튼 자리를 비워 둔다 */}
-      <form onSubmit={sendChat} className="absolute left-4 right-24 top-[max(1rem,env(safe-area-inset-top))] flex max-w-sm gap-2">
+      {/* 있는 듯 없는 듯: 평소엔 반투명 알약, 입력할 때만 넓어지고 또렷해진다. 보내기는 Enter(모바일은 키보드 전송) */}
+      <form onSubmit={sendChat} className="absolute left-3 top-[max(0.75rem,env(safe-area-inset-top))] w-36 max-w-[calc(100%-6rem)] transition-[width] duration-150 focus-within:w-64 motion-reduce:transition-none">
         <Input
           ref={chatInputRef}
           name="lobby-chat"
@@ -1464,11 +1481,9 @@ export function Lobby({ games }: { games: DoorGame[] }) {
           onKeyDown={(event) => {
             if (event.key === "Escape") event.currentTarget.blur();
           }}
-          className="h-11 min-w-0 bg-card/85 text-base text-text-strong backdrop-blur"
+          shape="pill"
+          className="h-8 border-transparent bg-black/25 px-3 text-base text-white shadow-none placeholder:text-white/60 focus-visible:bg-card/90 focus-visible:text-text-strong focus-visible:placeholder:text-text-placeholder md:text-caption-1"
         />
-        <Button type="submit" className="h-11 shrink-0">
-          보내기
-        </Button>
         <p aria-live="polite" className="sr-only">
           {heardChat}
         </p>
