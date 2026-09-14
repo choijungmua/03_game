@@ -14,10 +14,9 @@ import type { Cell, RoomView, Stone } from "@/lib/games/rooms";
 import { playGameSound } from "@/lib/lobby/settings";
 
 import { EmoteBubble, EmotePicker, useEmoteShowing } from "./capybara-emotes";
-import { BotPicker } from "./bot-picker";
 import { ROOM_SOUNDS, TICK_SECONDS, URGENT_SECONDS } from "./constants";
-import { RoomList } from "./room-list";
-import { RoomRecordPanel, useRoomRecord } from "./room-record";
+import { RoomLobby } from "./room-lobby";
+import { useRoomRecord } from "./room-record";
 import type { BoardRoomState, CapybaraRoomProps } from "./type";
 
 const ASSET = "/assets/images/games/capybara-board";
@@ -114,8 +113,7 @@ export function CapybaraRoom<S extends BoardRoomState>({
   resultText,
   adPlacement,
 }: CapybaraRoomProps<S>) {
-  const { view, error, pending, reconnecting, gone, spectateCode, copied, clockOffset, create, watch, sendEmote, copyInvite, leave } =
-    room;
+  const { view, error, pending, reconnecting, gone, copied, clockOffset, sendEmote, copyInvite, leave } = room;
   const emoteShowing = useEmoteShowing(view?.emote ?? null);
   const record = useRoomRecord(room.slug, view);
 
@@ -169,38 +167,7 @@ export function CapybaraRoom<S extends BoardRoomState>({
       />
 
       {!view || !state ? (
-        // 시작 카드 + 오른쪽 방 목록. 좁은 화면에서는 위아래로 쌓고 스크롤한다
-        <div className="absolute inset-0 flex flex-col items-center gap-4 overflow-y-auto px-4 pt-[calc(max(1rem,env(safe-area-inset-top))_+_3.5rem)] pb-[max(1rem,env(safe-area-inset-bottom))] lg:flex-row lg:justify-center lg:overflow-hidden">
-          <RoomRecordPanel title={title} summary={record} className="order-last w-full max-w-md shrink-0 lg:order-none lg:w-64" />
-          <div className={cn(CARD, "flex w-full max-w-md shrink-0 flex-col gap-5 p-6")}>
-            <div className="flex flex-col items-center gap-2">
-              <p aria-hidden="true" className="text-center text-title-1 font-black">
-                {title}
-              </p>
-              <p className="text-center text-caption-1 text-text-caption">{guide}</p>
-            </div>
-
-            <div className="flex flex-col gap-2">
-              <BotPicker pending={pending} onPick={(level) => tap(() => create(level))} />
-              <Button type="button" onClick={() => tap(() => create())} disabled={pending} className="h-12 w-full text-title-3 font-bold">
-                방 만들기
-              </Button>
-            </div>
-
-            {error && (
-              <p role="alert" className="text-center text-caption-1 text-error">
-                {error}
-              </p>
-            )}
-            {spectateCode && (
-              <Button type="button" variant="outline" onClick={() => tap(watch)} className="h-12 w-full">
-                관전하기
-              </Button>
-            )}
-          </div>
-
-          <RoomList room={room} className="w-full max-w-md shrink-0 lg:h-[min(36rem,100%)] lg:w-96" />
-        </div>
+        <RoomLobby title={title} guide={guide} room={room} record={record} />
       ) : (
         <div className="absolute inset-0 flex flex-col items-center gap-3 pt-[calc(max(1rem,env(safe-area-inset-top))_+_3.5rem)] pb-[max(1rem,env(safe-area-inset-bottom))]">
           {/* 위·아래 영역은 높이를 고정한다 — 안의 내용(초대 버튼↔남은 시간, 에러, 버튼 줄)이 바뀌어도 판 크기와 위치가 그대로다 */}

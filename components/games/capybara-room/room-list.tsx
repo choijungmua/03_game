@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { useEffect, useRef } from "react";
+import { type ReactNode, useEffect, useRef } from "react";
 
 import { Badge } from "@/components/display/badge";
 import { cn } from "@/lib";
@@ -14,11 +14,13 @@ import { NO_ROOM_IMAGE, ROOM_SOUNDS, ROOM_STATUS } from "./constants";
 
 interface RoomListProps {
   room: Pick<RoomHandle<RoomState>, "slug" | "pending" | "join">;
+  /** 카드 맨 위, 목록 제목 위에 넣을 내용 (컴터랑 두기) */
+  top?: ReactNode;
   className?: string;
 }
 
 /** 온라인 대전 시작 화면 오른쪽 방 목록. 기다리는 방은 눌러서 들어가고, 게임 중인 방은 상태만 보인다 */
-export function RoomList({ room, className }: RoomListProps) {
+export function RoomList({ room, top, className }: RoomListProps) {
   const { rooms, failed } = useRoomList(room.slug);
 
   // 목록이 바뀐 순간에만 울린다: 방이 늘어남 퐁, 못 받게 됨 삐삐, 다시 받음 뚜루
@@ -37,6 +39,8 @@ export function RoomList({ room, className }: RoomListProps) {
       aria-labelledby="room-list"
       className={cn("flex min-h-0 flex-col gap-3 rounded-2xl bg-background/85 p-4 shadow-lg backdrop-blur", className)}
     >
+      {top && <div className="border-b border-border-default pb-4">{top}</div>}
+
       <h2 id="room-list" className="flex items-baseline justify-between text-title-3 font-bold">
         방 목록
         <span className="text-caption-1 font-normal text-text-caption tabular-nums">{rooms.length}개</span>
