@@ -1,10 +1,13 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  BOMB_BOSS_RATIO,
   BOSS_CLEAR_SCORE,
   BOSS_PATTERN_MS,
   BOSS_PATTERNS,
   BOSS_REWARD_LEVELS,
+  BOSS_STUN_DAMAGE,
+  BOSS_STUN_MS,
   CHARGE_WINDUP_MS,
   createState,
   DASHER_SPEED,
@@ -23,14 +26,20 @@ import {
   getStageConfig,
   getWeaponSpec,
   INVINCIBLE_MS,
+  isLaserActive,
   isShieldUp,
+  LASER_WINDUP_MS,
   MAX_BULLETS,
+  MAX_SHOTS,
   MAX_HP,
   MAX_WEAPON_LEVEL,
   PEAK_STAGE,
   pickDrop,
   PITY_KILLS,
   PLANE_HALF_WIDTH,
+  SKILL_GAUGE_MAX,
+  SKILL_PER_KILL,
+  SKILLS,
   spawnEnemy,
   STAGE_BANNER_MS,
   step,
@@ -337,6 +346,67 @@ describe("새 천적", () => {
   });
 });
 
+describe("스킬", () => {
+  const basicBullet = () => ({ x: 200, y: 300, r: 3, vx: 0, vy: 0, weapon: "basic" as const, damage: 1, hitIds: [] });
+
+  it("격추할 때마다 스킬 게이지가 차고, 최대를 넘지 않는다", () => {
+    const fresh = playing({ enemies: [enemy()], bullets: [basicBullet()] });
+    step(fresh, 16, IDLE, noLuck);
+    expect(fresh.skillGauge).toBe(SKILL_PER_KILL);
+
+    const almost = playing({ skillGauge: SKILL_GAUGE_MAX - 1, enemies: [enemy()], bullets: [basicBullet()] });
+    step(almost, 16, IDLE, noLuck);
+    expect(almost.skillGauge).toBe(SKILL_GAUGE_MAX);
+  });
+
+  it("게이지가 비용보다 모자라면 스킬이 나가지 않는다", () => {
+    const shot = { x: 200, y: 100, r: 5, vx: 0, vy: 0, fromBoss: false };
+    const state = playing({ skillGauge: SKILLS.bomb.cost - 1, shots: [shot] });
+    step(state, 16, { ...IDLE, skill: "bomb" });
+    expect(state.shots).toHaveLength(1);
+    expect(state.bombMs).toBe(0);
+    expect(state.skillGauge).toBe(SKILLS.bomb.cost - 1);
+  });
+
+  it("방어막 동안은 적 탄에 맞지 않고 닿은 탄이 사라지며, 끝나면 다시 맞는다", () => {
+    const planeY = getPlaneY(playing());
+    const shot = () => ({ x: 200, y: planeY, r: 5, vx: 0, vy: 0, fromBoss: false });
+    const state = playing({ skillGauge: SKILLS.barrier.cost, shots: [shot()] });
+    step(state, 16, { ...IDLE, skill: "barrier" });
+    expect(state.hp).toBe(MAX_HP);
+    expect(state.shots).toHaveLength(0);
+    expect(state.skillGauge).toBe(0);
+
+    for (let t = 0; t < SKILLS.barrier.ms; t += 16) step(state, 16, IDLE);
+    state.shots.push(shot());
+    step(state, 16, IDLE);
+    expect(state.hp).toBe(MAX_HP - 1);
+  });
+
+  it("폭주 동안은 무기 레벨이 3 높은 것처럼 쏜다", () => {
+    const state = playing({ weaponLevel: 1, skillGauge: SKILLS.overdrive.cost, fireInMs: 0 });
+    step(state, 16, { ...IDLE, skill: "overdrive" });
+    expect(state.overdriveMs).toBeGreaterThan(0);
+    expect(state.bullets).toHaveLength(getWeaponSpec("basic", 4).pattern.length);
+    expect(state.bullets.length).toBeGreaterThan(getWeaponSpec("basic", 1).pattern.length);
+  });
+
+  it("폭탄은 적 탄을 지우고 방패병까지 일반 적을 부수며, 보스에게는 최대 체력 비율만큼 피해를 준다", () => {
+    const shield = enemy({ id: 1, kind: "shield", r: 18, x: 100, hp: 5, maxHp: 5 });
+    const boss = enemy({ id: 2, kind: "boss", r: 44, x: 300, y: 200, hp: 1000, maxHp: 1000 });
+    const state = playing({
+      skillGauge: SKILLS.bomb.cost,
+      enemies: [shield, boss],
+      shots: [{ x: 50, y: 500, r: 5, vx: 0, vy: 0, fromBoss: true }],
+    });
+    step(state, 16, { ...IDLE, skill: "bomb" }, noLuck);
+    expect(state.shots).toHaveLength(0);
+    expect(state.enemies).toEqual([boss]);
+    expect(boss.hp).toBe(1000 - Math.ceil(1000 * BOMB_BOSS_RATIO));
+    expect(state.bombMs).toBeGreaterThan(0);
+  });
+});
+
 describe("스테이지", () => {
   it("5스테이지마다 보스가 나온다", () => {
     expect(getStageConfig(4).boss).toBe(false);
@@ -365,9 +435,30 @@ describe("스테이지", () => {
     const late = getStageConfig(200);
     expect(late.shotSpeed).toBeLessThanOrEqual(420);
     expect(late.enemySpeed).toBeLessThanOrEqual(360);
-    expect(late.spawnIntervalMs).toBeGreaterThanOrEqual(260);
-    expect(late.enemyFireIntervalMs).toBeGreaterThanOrEqual(550);
-    expect(late.enemyHp).toBeLessThanOrEqual(10);
+    expect(late.spawnIntervalMs).toBeGreaterThanOrEqual(200);
+    expect(late.enemyFireIntervalMs).toBeGreaterThanOrEqual(380);
+    expect(late.enemyHp).toBeLessThanOrEqual(60);
+    expect(late.enemyShotCount).toBeLessThanOrEqual(5);
+  });
+
+  it("뒤 스테이지 적은 훨씬 단단하고, 쏘는 적은 부채꼴로 여러 발을 쏜다", () => {
+    expect(getStageConfig(PEAK_STAGE).enemyHp).toBeGreaterThanOrEqual(getStageConfig(1).enemyHp * 20);
+    expect(getStageConfig(1).enemyShotCount).toBe(1);
+    expect(getStageConfig(PEAK_STAGE).enemyShotCount).toBe(5);
+
+    const state = playing({ stage: PEAK_STAGE, enemies: [enemy({ kind: "shooter", r: 18, fireInMs: 0 })] });
+    step(state, 16, IDLE);
+    expect(state.shots).toHaveLength(5);
+  });
+
+  it("화면에 적 탄이 너무 많으면 적이 더 쏘지 않는다", () => {
+    const shot = { x: 10, y: 10, r: 5, vx: 0, vy: 0, fromBoss: false };
+    const state = playing({
+      enemies: [enemy({ kind: "shooter", r: 18, fireInMs: 0 })],
+      shots: Array.from({ length: MAX_SHOTS }, () => ({ ...shot })),
+    });
+    step(state, 16, IDLE);
+    expect(state.shots).toHaveLength(MAX_SHOTS);
   });
 
   it("목표만큼 격추하면 다음 스테이지로 넘어가고 배너가 뜬다", () => {
@@ -395,10 +486,10 @@ describe("보스 패턴", () => {
     return { state, boss };
   }
 
-  it("보스전 한 번에 다섯 가지 패턴이 돌아가며 나온다", () => {
+  it("보스전 한 번에 여덟 가지 패턴이 돌아가며 나온다", () => {
     const { state } = bossFight();
     const seen = new Set<string>();
-    for (let t = 0; t < 30_000; t += 16) {
+    for (let t = 0; t < 50_000; t += 16) {
       step(state, 16, IDLE);
       seen.add(getBossPattern(state));
     }
@@ -419,6 +510,61 @@ describe("보스 패턴", () => {
       elapsed += 16;
     }
     expect(elapsed).toBeLessThan(BOSS_PATTERN_MS.ring * 0.7);
+  });
+
+  it("돌격을 마치고 돌아오면 기절하고, 기절 동안은 쏘지 않으며 피해를 3배로 받는다", () => {
+    const { state, boss } = bossFight({ bossPatternIndex: BOSS_PATTERNS.indexOf("charge") });
+    boss.hp = 1000;
+    boss.maxHp = 1000;
+    let elapsed = 0;
+    while (getBossPattern(state) === "charge" && elapsed < 10_000) {
+      step(state, 16, IDLE);
+      elapsed += 16;
+    }
+    expect(state.bossStunMs).toBeGreaterThan(0);
+
+    const fireInMs = boss.fireInMs;
+    state.bullets.push({ x: boss.x, y: boss.y, r: 3, vx: 0, vy: 0, weapon: "basic", damage: 2, hitIds: [] });
+    step(state, 16, IDLE);
+    expect(boss.hp).toBe(1000 - 2 * BOSS_STUN_DAMAGE);
+    expect(boss.fireInMs).toBe(fireInMs);
+
+    for (let t = 0; t < BOSS_STUN_MS; t += 16) step(state, 16, IDLE);
+    expect(state.bossStunMs).toBe(0);
+  });
+
+  it("레이저는 먼저 경고선만 긋고, 예고가 끝나면 비행기 쪽으로 휩쓸며 닿으면 맞는다", () => {
+    const { state, boss } = bossFight({ bossPatternIndex: BOSS_PATTERNS.indexOf("laser"), planeX: 300 });
+    boss.x = 200;
+    for (let t = 0; t < LASER_WINDUP_MS - 16; t += 16) step(state, 16, IDLE);
+    expect(isLaserActive(state)).toBe(false);
+    expect(state.hp).toBe(1e6);
+
+    for (let t = 0; t < 1000; t += 16) step(state, 16, IDLE);
+    expect(state.bossLaserX).toBeGreaterThan(200);
+    expect(state.hp).toBeLessThan(1e6);
+  });
+
+  it("부하 소환은 보스 좌우에서 부하를 하나씩 내보낸다", () => {
+    const { state } = bossFight({ bossPatternIndex: BOSS_PATTERNS.indexOf("summon") });
+    step(state, 16, IDLE);
+    expect(state.enemies.filter((candidate) => candidate.kind !== "boss")).toHaveLength(2);
+  });
+
+  it("앞 방패를 든 보스는 정면 총알을 튕겨내고, 옆에서 맞힌 총알만 들어간다", () => {
+    const { state, boss } = bossFight({ bossPatternIndex: BOSS_PATTERNS.indexOf("guard") });
+    boss.hp = 100;
+    boss.maxHp = 100;
+    const shotAt = (x: number) => ({ x, y: boss.y, r: 3, vx: 0, vy: 0, weapon: "basic" as const, damage: 1, hitIds: [] });
+
+    state.bullets = [shotAt(boss.x)];
+    step(state, 16, IDLE);
+    expect(boss.hp).toBe(100);
+    expect(state.shieldBlocks).toBe(1);
+
+    state.bullets = [shotAt(boss.x + boss.r * 0.8)];
+    step(state, 16, IDLE);
+    expect(boss.hp).toBe(99);
   });
 
   it("원형 확산은 보스 한가운데서 사방으로 퍼진다", () => {
@@ -451,7 +597,7 @@ describe("보스 패턴", () => {
 
     let deepest = homeY;
     let xAtDeepest = boss.x;
-    for (let t = 0; t < 4000; t += 16) {
+    for (let t = 0; t < 4600; t += 16) {
       step(state, 16, IDLE);
       if (boss.y > deepest) {
         deepest = boss.y;
