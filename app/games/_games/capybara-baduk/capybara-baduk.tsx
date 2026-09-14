@@ -31,7 +31,7 @@ export function CapybaraBaduk() {
   return (
     <CapybaraRoom
       title="카피바라 바둑"
-      guide={`친구를 초대해서 9줄 판에서 집을 더 많이 지으면 이겨요. 한 수에 ${TURN_TIME_MS / 1000}초`}
+      guide={`친구를 초대하거나 컴퓨터와 둬서 9줄 판에서 집을 더 많이 지으면 이겨요. 한 수에 ${TURN_TIME_MS / 1000}초`}
       room={room}
       starPoints={STAR_POINTS}
       turnTimeMs={TURN_TIME_MS}

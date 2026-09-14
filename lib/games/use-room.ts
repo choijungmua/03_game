@@ -25,7 +25,7 @@ function saveToken(key: string, token: string) {
   } catch {}
 }
 
-async function callApi<S>(path: string, body?: RoomAction | Record<string, never>): Promise<RoomSuccess<S>> {
+async function callApi<S>(path: string, body?: RoomAction | { bot?: boolean }): Promise<RoomSuccess<S>> {
   const response = await fetch(
     path,
     body
@@ -88,8 +88,9 @@ export function useRoom<S extends RoomState, A extends string>(slug: string) {
   });
   const run = action.mutate;
 
-  function create() {
-    run(() => callApi<S>(api, {}));
+  /** bot이면 컴퓨터(백)와 두는 방 */
+  function create(bot = false) {
+    run(() => callApi<S>(api, bot ? { bot: true } : {}));
   }
 
   function join(rawCode: string) {

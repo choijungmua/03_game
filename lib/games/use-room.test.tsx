@@ -33,6 +33,7 @@ function fakeServer() {
       now: Date.now(),
       version,
       emote: null,
+      bot: false,
     },
     token: issued,
   });
