@@ -1,7 +1,8 @@
 "use client";
 
+import { Shirt } from "lucide-react";
 import NextImage from "next/image";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useEffectEvent, useRef, useState } from "react";
 
 import { cn } from "@/lib";
 import {
@@ -19,6 +20,7 @@ import {
 } from "@/lib/lobby/wardrobe";
 
 import { FRAME_SRC } from "./constants";
+import { isShortcutKey } from "./shortcut";
 
 export const CAPYBARA_SRC = "/assets/images/characters/capybara/capybara-idle-down.webp";
 
@@ -83,6 +85,18 @@ export function Wardrobe({ onChange }: { onChange: (outfit: Outfit) => void }) {
     openButtonRef.current?.focus();
   };
 
+  // P: 옷 입히기 창 열고 닫기
+  const onShortcut = useEffectEvent((event: KeyboardEvent) => {
+    if (!isShortcutKey(event, "KeyP")) return;
+    event.preventDefault();
+    if (open) close();
+    else openWardrobe();
+  });
+  useEffect(() => {
+    window.addEventListener("keydown", onShortcut);
+    return () => window.removeEventListener("keydown", onShortcut);
+  }, []);
+
   return (
     // z-10: 열린 옷 입히기 창이 아래 효과음 버튼 위에 그려지게
     <div className="relative z-10 flex justify-end">
@@ -92,11 +106,20 @@ export function Wardrobe({ onChange }: { onChange: (outfit: Outfit) => void }) {
         onClick={openWardrobe}
         aria-label="카피바라 옷 입히기"
         aria-expanded={open}
-        className="relative size-14 overflow-hidden rounded-full bg-card/90 shadow-md backdrop-blur focus-visible:outline-2 focus-visible:outline-primary"
+        aria-keyshortcuts="P"
+        // 크기는 오른쪽 아래 앉기·때리기 버튼(size-18)과 같게
+        className="group relative size-18 overflow-hidden rounded-full bg-card/90 shadow-md backdrop-blur focus-visible:outline-2 focus-visible:outline-primary"
       >
         {/* 전신 이미지를 얼굴 쪽으로 확대해 얼굴만 보이게 한다 */}
-        <NextImage src={CAPYBARA_SRC} alt="" width={112} height={112} unoptimized className="size-full origin-[50%_30%] scale-[1.9]" />
-        <NextImage src={FRAME_SRC} alt="" fill unoptimized sizes="56px" draggable={false} />
+        <NextImage src={CAPYBARA_SRC} alt="" width={144} height={144} unoptimized className="size-full origin-[50%_30%] scale-[1.9]" />
+        {/* 마우스를 올리거나 키보드 포커스면 얼굴 위에 옷 아이콘 (효과음 버튼의 스피커 아이콘과 같은 방식) */}
+        <span
+          aria-hidden
+          className="absolute inset-0 flex items-center justify-center bg-overlay text-white opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-visible:opacity-100 motion-reduce:transition-none"
+        >
+          <Shirt className="size-7" />
+        </span>
+        <NextImage src={FRAME_SRC} alt="" fill unoptimized sizes="72px" draggable={false} />
       </button>
 
       <section
