@@ -17,6 +17,8 @@ export const SOUND_GAP_MS = {
   bossHit: 110,
   enemyShot: 180,
   bossShot: 220,
+  shieldBlock: 90,
+  dasherWarn: 250,
 } as const;
 
 export const PLANE_SHOOTER_SOUNDS = {
@@ -53,6 +55,21 @@ export const PLANE_SHOOTER_SOUNDS = {
   ],
   /** 팅: 보스 가죽에 튕김 (보스는 안 죽는다) */
   bossHit: [{ kind: "tone", wave: "square", from: 2300, to: 2100, ms: 25, level: 0.03 }],
+  /** 팅: 아르마딜로 방패에 총알이 막힘 */
+  shieldBlock: [
+    { kind: "tone", wave: "square", from: 1800, to: 1500, ms: 35, level: 0.035 },
+    { kind: "noise", filter: "highpass", q: 2, from: 4000, to: 3000, ms: 25, level: 0.06 },
+  ],
+  /** 뾰로롱: 독화살개구리가 둘로 갈라짐 */
+  split: [
+    { kind: "tone", wave: "sine", from: 400, to: 900, ms: 90, level: 0.08 },
+    { at: 70, kind: "tone", wave: "sine", from: 500, to: 1100, ms: 90, level: 0.07 },
+  ],
+  /** 삐빅: 칼새가 멈춰 돌진을 예고 */
+  dasherWarn: [
+    { kind: "tone", wave: "square", from: 1200, to: 1200, ms: 60, level: 0.05 },
+    { at: 90, kind: "tone", wave: "square", from: 1500, to: 1500, ms: 60, level: 0.05 },
+  ],
   /** 뿅: 조준 사격 적이 쏨 */
   enemyShot: [{ kind: "tone", wave: "sine", from: 560, to: 360, ms: 80, level: 0.06 }],
   /** 부웅: 보스 탄막 발사 */

@@ -42,6 +42,7 @@ import {
   BOSS_REWARD_LEVELS,
   CHARGE_WINDUP_MS,
   createState,
+  DASHER_WINDUP_MS,
   EXPLOSION_MS,
   type GameInput,
   type GameState,
@@ -51,6 +52,7 @@ import {
   getPlaneY,
   getStageConfig,
   isBossStage,
+  isShieldUp,
   ITEMS,
   KILL_SCORE,
   BULLET_RADIUS,
@@ -173,7 +175,7 @@ function readHud(state: GameState): Hud {
 /** step 직전 상태 중 효과음·연출 판단에 필요한 것만 떠 둔다 (배열은 새로 생긴·사라진 것을 가리려고 참조를 복사) */
 type FrameSnapshot = Pick<
   GameState,
-  "hp" | "stage" | "bank" | "fireInMs" | "weaponLevel" | "bossPatternIndex" | "bossPatternMs" | "items"
+  "hp" | "stage" | "bank" | "fireInMs" | "weaponLevel" | "shieldBlocks" | "splits" | "bossPatternIndex" | "bossPatternMs" | "items"
 > & {
   hasBoss: boolean;
   /** 보스가 격파되면 이번 프레임에 사라지므로 터질 자리를 미리 떠 둔다 */
@@ -192,6 +194,8 @@ function takeFrameSnapshot(state: GameState): FrameSnapshot {
     bank: state.bank,
     fireInMs: state.fireInMs,
     weaponLevel: state.weaponLevel,
+    shieldBlocks: state.shieldBlocks,
+    splits: state.splits,
     bossPatternIndex: state.bossPatternIndex,
     bossPatternMs: state.bossPatternMs,
     items: [...state.items],
@@ -225,6 +229,12 @@ function playStepSounds(
     if (enemy.flashMs !== 80) continue;
     if (enemy.kind === "boss") throttled("bossHit", PLANE_SHOOTER_SOUNDS.bossHit);
     else throttled("enemyHit", PLANE_SHOOTER_SOUNDS.enemyHit);
+  }
+  if (state.shieldBlocks > prev.shieldBlocks) throttled("shieldBlock", PLANE_SHOOTER_SOUNDS.shieldBlock);
+  if (state.splits > prev.splits) playGameSound(PLANE_SHOOTER_SOUNDS.split);
+  // 칼새가 멈춘 프레임에는 경고 시간이 아직 줄지 않아 DASHER_WINDUP_MS 그대로다
+  if (state.enemies.some((enemy) => enemy.kind === "dasher" && enemy.vy === 0 && enemy.timerMs === DASHER_WINDUP_MS)) {
+    throttled("dasherWarn", PLANE_SHOOTER_SOUNDS.dasherWarn);
   }
 
   const damaged = state.hp < prev.hp;
@@ -414,8 +424,27 @@ function draw(
   }
 
   for (const enemy of state.enemies) {
+    if (enemy.kind !== "dasher" || enemy.vy !== 0) continue;
+    // 칼새 돌진 예고: 내리꽂을 줄을 붉게 칠해 옆으로 비켜날 시간을 준다
+    ctx.fillStyle = palette.danger;
+    ctx.globalAlpha = reducedMotion ? 0.28 : 0.2 + 0.1 * Math.sin(clockMs / 70);
+    ctx.fillRect(enemy.x - enemy.r, enemy.y, enemy.r * 2, state.height - enemy.y);
+  }
+  ctx.globalAlpha = 1;
+
+  for (const enemy of state.enemies) {
     const sprite = ENEMY_SPRITES[enemy.kind];
     drawSprite(ctx, sprites[enemy.flashMs > 0 ? sprite.hit : sprite.normal], enemy.x, enemy.y, enemy.r * ENEMY_SIZE_RATIO);
+    if (isShieldUp(enemy)) {
+      // 아르마딜로가 든 방패: 아래쪽 반원. 쏠 때 잠깐 사라진다
+      ctx.strokeStyle = palette.text;
+      ctx.globalAlpha = 0.75;
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.arc(enemy.x, enemy.y, enemy.r * 1.3, Math.PI * 0.15, Math.PI * 0.85);
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+    }
   }
 
   for (const explosion of state.explosions) {
@@ -820,7 +849,7 @@ export function CapybaraPlaneShooter() {
             {/* 좌우 여백: 좁은 폰에서 제목이 오른쪽 위 공유 버튼 밑으로 들어가지 않게 */}
             <h1 className="px-12 text-title-1 font-bold text-text-strong">{TITLE}</h1>
             <p className="text-caption-1 text-balance text-text-caption">
-              카피바라 조종사가 풀잎탄을 자동으로 쏴요. 화면을 좌우로 드래그하거나 방향키로 움직여 하피독수리·말벌·재규어를 격추하세요. 떨어진 간식을 먹으면 무기가 바뀌고 무기 레벨이 {MAX_WEAPON_LEVEL}레벨까지 올라 탄이 점점 많아져요. 맞으면 레벨이 하나 내려가요. 5스테이지마다 나오는 카이만 보스는 체력이 줄수록 거세지니, 격파해서 무기 레벨을 {BOSS_REWARD_LEVELS} 올리세요. 체력은 {MAX_HP}칸이에요.
+              카피바라 조종사가 풀잎탄을 자동으로 쏴요. 화면을 좌우로 드래그하거나 방향키로 움직여 하피독수리·말벌·재규어를 격추하세요. 스테이지가 오르면 방패로 막는 아르마딜로, 경고선 뒤 내리꽂는 칼새, 둘로 갈라지는 독화살개구리, 따라오는 흡혈박쥐도 나와요. 떨어진 간식을 먹으면 무기가 바뀌고 무기 레벨이 {MAX_WEAPON_LEVEL}레벨까지 올라 탄이 점점 많아져요. 맞으면 레벨이 하나 내려가요. 5스테이지마다 나오는 카이만 보스는 체력이 줄수록 거세지니, 격파해서 무기 레벨을 {BOSS_REWARD_LEVELS} 올리세요. 체력은 {MAX_HP}칸이에요.
             </p>
           </header>
 
