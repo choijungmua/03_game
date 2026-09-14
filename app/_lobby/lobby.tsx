@@ -1104,9 +1104,11 @@ export function Lobby({ games }: { games: DoorGame[] }) {
     };
 
     // 타일은 청크(16×16) 단위로 한 번만 계산하고, 바닥은 청크마다 캔버스 한 장으로 구워 둔다
-    const chunks = new Map<string, Chunk>();
+    const chunks = new Map<number, Chunk>();
     const chunkAt = (cx: number, cy: number) => {
-      const key = `${cx},${cy}`;
+      // 매 프레임 보이는 타일마다(1080p 약 1,400번) 불린다 — 문자열 키를 만들지 않고 숫자 키로 찾는다.
+      // ponytail: cy가 ±50,000청크(80만 타일) 안일 때만 겹치지 않는다. 세계가 그보다 넓어지면 키를 바꿀 것
+      const key = cx * 100_003 + cy;
       let chunk = chunks.get(key);
       if (!chunk) {
         // ponytail: 오래 돌아다니면 통째로 비운다. 메모리가 문제면 LRU로
@@ -1629,6 +1631,8 @@ export function Lobby({ games }: { games: DoorGame[] }) {
           me.attackUntil = now + ATTACK_MS;
           me.lastAttackAt = now;
           attackQueued = true;
+          // 다음 전송 주기를 기다리지 않고 바로 보낸다 — 맞는 사람·구경하는 사람에게 한 주기 늦게 보이지 않게
+          send();
           playSound("swing", settingsRef.current);
         }
       }
@@ -1636,6 +1640,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
         me.chat = chatRequest.current;
         me.chatUntil = now + CHAT_MS;
         chatQueued = chatRequest.current;
+        send();
         playSound("chat", settingsRef.current);
         chatRequest.current = null;
       }

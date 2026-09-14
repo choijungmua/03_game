@@ -12,8 +12,11 @@ export const LOBBY_SETTINGS_CHANGE_EVENT = "ggpli:lobby-settings-change";
 /** 로비 낚시로 낚은 것별 횟수 (lib/lobby/fishing.ts). 이 기기에만 저장한다 */
 export const FISH_INVENTORY_STORAGE_KEY = "ggpli:lobby-fish-inventory";
 
-/** 다른 유저는 이만큼 과거 위치를 그린다. WebSocket 틱(50ms, presence.ts LOBBY_TICK_MS) 두 번치라 한 틱이 늦게 와도 멈칫하지 않는다 (150ms 폴링 때는 250ms였다) */
-export const REMOTE_RENDER_DELAY_MS = 100;
+/**
+ * 다른 유저는 이만큼 과거 위치를 그린다. WebSocket 틱(33ms, presence.ts LOBBY_TICK_MS) 두 번치라 한 틱이 늦게 와도 멈칫하지 않는다
+ * (150ms 폴링 때는 250ms, 50ms 틱 때는 100ms였다). 받은 위치 너머로 앞질러 그리지는 않는다 — 멈춘 유저는 서버가 같은 위치를 다시 보내지 않아 앞지른 자리에 그대로 남는다
+ */
+export const REMOTE_RENDER_DELAY_MS = 66;
 /** 응답에서 이만큼 계속 빠진 유저만 지운다. 한 번 빠졌다고 지우면 사라졌다 다시 나타나 깜빡인다 */
 export const REMOTE_GONE_MS = 1_000;
 /**
