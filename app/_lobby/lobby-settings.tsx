@@ -16,23 +16,44 @@ interface SettingsProps {
 /** 세로 툴바 안 아이콘 버튼. 모바일 터치 영역 44px을 지킨다 */
 const TOOL_BUTTON = "size-11 rounded-lg text-text-strong";
 
-/** 오른쪽 위 세로 툴바 카드. 설정·효과음 버튼을 한데 묶는다 */
-export const TOOLBAR = "flex flex-col gap-1 rounded-xl border border-border-default bg-card/90 p-1 shadow-md backdrop-blur";
-
-/** 설정 아래 효과음 켜고 끄기 */
+/** 카피바라 아래 효과음 켜고 끄기. 마우스를 올리거나(키보드는 포커스) 하면 왼쪽에 음량 슬라이더가 나온다 */
 export function SoundToggle({ settings, onChange }: SettingsProps) {
-  const Icon = settings.muted ? VolumeX : Volume2;
+  const volume = settings.muted ? 0 : Math.round(settings.volume * 100);
+  const Icon = volume === 0 ? VolumeX : Volume2;
   return (
-    <Button
-      type="button"
-      variant="ghost"
-      onClick={() => onChange({ ...settings, muted: !settings.muted })}
-      aria-label="효과음"
-      aria-pressed={!settings.muted}
-      className={cn(TOOL_BUTTON, settings.muted && "text-text-caption")}
-    >
-      <Icon aria-hidden className="size-5" />
-    </Button>
+    <div className="group relative">
+      <button
+        type="button"
+        onClick={() => onChange({ ...settings, muted: !settings.muted })}
+        aria-label="효과음"
+        aria-pressed={!settings.muted}
+        className={cn(
+          "flex size-11 items-center justify-center rounded-full bg-card/90 text-text-strong shadow-md backdrop-blur hover:bg-card focus-visible:outline-2 focus-visible:outline-primary",
+          volume === 0 && "text-text-caption",
+        )}
+      >
+        <Icon aria-hidden className="size-5" />
+      </button>
+      {/* pr-2가 버튼과 슬라이더 사이 틈을 메워서, 마우스를 슬라이더로 옮기는 중에 hover가 끊기지 않는다 */}
+      <div className="pointer-events-none absolute right-full top-0 pr-2 opacity-0 transition-opacity duration-150 group-focus-within:pointer-events-auto group-focus-within:opacity-100 group-hover:pointer-events-auto group-hover:opacity-100 motion-reduce:transition-none">
+        <label className="flex h-11 items-center gap-2 rounded-full bg-card/90 pl-4 pr-3 shadow-md backdrop-blur">
+          <span className="sr-only">효과음 크기</span>
+          <input
+            type="range"
+            min={0}
+            max={100}
+            step={5}
+            value={volume}
+            // 음소거 중에 음량을 올리면 소리도 같이 켠다
+            onChange={(event) => onChange({ ...settings, volume: Number(event.currentTarget.value) / 100, muted: false })}
+            className="h-6 w-28 accent-primary"
+          />
+          <span aria-hidden className="w-9 text-right text-caption-2 tabular-nums text-text-strong">
+            {volume}%
+          </span>
+        </label>
+      </div>
+    </div>
   );
 }
 
