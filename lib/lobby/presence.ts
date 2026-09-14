@@ -1,7 +1,7 @@
 // 로비 오픈월드 멀티의 공용 타입·상수. 각 플레이어가 자기 위치를 짧은 주기로 보내고, 응답으로 근처 플레이어를 받는다.
 // 위치 보정·때리기 판정·이름표 고르기는 백엔드(04_game_b src/lobby/presence.ts)가 한다
 
-import { ZWJ } from "./constants";
+import { NAME_MAX, ZWJ } from "./constants";
 import type { Outfit } from "./wardrobe";
 import type { Facing } from "./world";
 
@@ -34,6 +34,10 @@ export interface PresenceRequest extends PlayerState {
   attack: boolean;
   /** 이번 동기화 사이에 보낸 채팅 (cleanChat을 거친 값) */
   chat?: string;
+  /** 기기별 프로필 id(UUID). 서버가 채팅·낚시 이력을 이 id로 묶어 저장한다 */
+  profileId?: string;
+  /** 사용자가 정한 이름표 (cleanName을 거친 값). 없으면 서버가 고른 이름을 쓴다 */
+  name?: string;
 }
 
 export interface PresenceResponse {
@@ -80,4 +84,9 @@ export function cleanChat(text: string) {
     .replace(/ {2,}/g, " ")
     .trim();
   return graphemes(flat).slice(0, CHAT_MAX).join("").trim();
+}
+
+/** 이름표: 채팅처럼 정리하고 NAME_MAX 글자로 자른다. 이모티콘·낚시 표시와 헷갈리는 [[ ]]는 뺀다 (백엔드와 같은 규칙) */
+export function cleanName(text: string) {
+  return graphemes(cleanChat(text).replace(/[[\]]/g, "").trim()).slice(0, NAME_MAX).join("").trim();
 }
