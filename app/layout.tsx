@@ -8,7 +8,8 @@ import { SITE_DESCRIPTION, SITE_NAME, SITE_TAGLINE, SITE_URL } from "@/lib/seo/s
 import "./globals.css";
 import { Providers } from "./providers";
 
-const naverVerification = process.env.NAVER_SITE_VERIFICATION;
+// 소유 확인 값은 공개값이라 기본값으로 둔다. 바꿀 때는 배포 환경변수로 덮어쓴다
+const naverVerification = process.env.NAVER_SITE_VERIFICATION ?? "9515f491bca12bedec4cbf4d83d09b9950554a92";
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
@@ -26,10 +27,10 @@ export const metadata: Metadata = {
   alternates: {
     types: { "application/rss+xml": [{ url: "/rss.xml", title: `${SITE_NAME} 게임 소식` }] },
   },
-  // 구글 서치 콘솔·네이버 서치어드바이저 소유 확인. 값은 배포 환경변수로 넣는다
+  // 구글 서치 콘솔·네이버 서치어드바이저 소유 확인
   verification: {
     google: process.env.GOOGLE_SITE_VERIFICATION,
-    other: naverVerification ? { "naver-site-verification": naverVerification } : undefined,
+    other: { "naver-site-verification": naverVerification },
   },
 };
 
