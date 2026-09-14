@@ -127,7 +127,7 @@ describe("로비 멀티", () => {
   });
 
   it("채팅 이모지는 조합을 지키고, 보이는 글자 단위로 자른다", () => {
-    const family = "\u{1F468}‍\u{1F469}‍\u{1F467}";
+    const family = "\u{1F468}\u200D\u{1F469}\u200D\u{1F467}";
     const thumb = "\u{1F44D}\u{1F3FD}";
     expect(cleanChat(`안녕 ${family}${thumb}`)).toBe(`안녕 ${family}${thumb}`);
     expect(graphemes(cleanChat(family.repeat(CHAT_MAX + 5)))).toHaveLength(CHAT_MAX);

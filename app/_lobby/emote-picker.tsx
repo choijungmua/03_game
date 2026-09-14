@@ -5,6 +5,8 @@ import { useEffect, useRef, useState } from "react";
 
 import { CAPYBARA_EMOTES, emoteImage } from "@/lib/games/emotes";
 
+import { EMOTE_PICKER_ICON } from "./constants";
+
 /** 채팅 알약 오른쪽 끝의 카피바라 이모티콘 버튼. 고르면 바로 내 머리 위 말풍선으로 보낸다 */
 export function EmotePicker({ onPick }: { onPick: (id: number) => void }) {
   const [open, setOpen] = useState(false);
@@ -35,7 +37,7 @@ export function EmotePicker({ onPick }: { onPick: (id: number) => void }) {
         aria-expanded={open}
         className="flex size-8 items-center justify-center rounded-full focus-visible:outline-2 focus-visible:outline-primary"
       >
-        <NextImage src={emoteImage(3)} alt="" width={56} height={56} unoptimized draggable={false} className="size-7" />
+        <NextImage src={emoteImage(EMOTE_PICKER_ICON)} alt="" width={56} height={56} unoptimized draggable={false} className="size-7" />
       </button>
       {open && (
         <div

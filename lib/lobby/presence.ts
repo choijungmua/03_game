@@ -1,6 +1,7 @@
 // 로비 오픈월드 멀티: 각 플레이어가 자기 위치를 짧은 주기로 보내고, 응답으로 근처 플레이어를 받는다.
 // 맵은 하나라 모두 같은 공간에 있다. 때리기 판정도 서버가 한다 (앞쪽 가까운 한 명을 2초 기절)
 
+import { ZWJ } from "./constants";
 import { type Outfit, sanitizeOutfit } from "./wardrobe";
 import { type Facing, FACING_VECTORS, FACINGS, TILE, WALK_SPEED } from "./world";
 
@@ -79,8 +80,6 @@ function allPlayers() {
 }
 
 const GRAPHEMES = new Intl.Segmenter("ko", { granularity: "grapheme" });
-/** 이모지를 이어 붙이는 보이지 않는 문자. 지우면 👨‍👩‍👧가 👨 👩 👧로 흩어진다 */
-const ZWJ = "‍";
 
 /** 눈에 한 글자로 보이는 단위로 나눈다 (조합 이모지·피부색 이모지도 한 글자) */
 export function graphemes(text: string) {

@@ -21,10 +21,12 @@ import {
   type SpriteId,
 } from "@/lib/lobby/assets";
 import { Input } from "@/components/inputs/input";
-import { DEFAULT_LOBBY_SETTINGS, type LobbySettings, loadLobbySettings, playSound, saveLobbySettings } from "@/lib/lobby/settings";
+import { DEFAULT_LOBBY_SETTINGS } from "@/lib/lobby/constants";
+import { type LobbySettings, loadLobbySettings, playSound, saveLobbySettings } from "@/lib/lobby/settings";
 
 import { CAPYBARA_EMOTES, emoteChat, emoteImage, parseEmoteChat } from "@/lib/games/emotes";
 
+import { BUBBLE_LINE, BUBBLE_TEXT_WIDTH, EMOTE_SIZE } from "./constants";
 import { EmotePicker } from "./emote-picker";
 import { SettingsMenu, SoundToggle } from "./lobby-settings";
 import {
@@ -388,10 +390,6 @@ function drawLabel(ctx: CanvasRenderingContext2D, text: string, x: number, y: nu
   ctx.fillStyle = "#fff";
   ctx.fillText(text, x, y);
 }
-
-const BUBBLE_TEXT_WIDTH = 160;
-const BUBBLE_LINE = 16;
-const EMOTE_SIZE = 60;
 
 /** 꼬리 끝이 (x, bottom)에 오는 흰 말풍선 몸통을 칠하고 몸통 top을 돌려준다. 꼬리는 몸통과 한 번에 채워 이음새가 안 보이게 */
 function fillBubble(ctx: CanvasRenderingContext2D, x: number, bottom: number, width: number, height: number, radius: number) {
