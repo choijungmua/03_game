@@ -242,6 +242,10 @@ export const BULLET_RADIUS: Record<WeaponKind, number> = {
 export const MAX_WEAPON_LEVEL = 10;
 /** 화면에 내 총알이 이보다 많으면 이번 발사는 건너뛴다 — 고레벨 연사로 프레임이 무너지지 않게 */
 export const MAX_BULLETS = 240;
+/** 화면에 적 탄이 이보다 많으면 적·보스가 이번 발사를 건너뛴다 — 후반 탄막으로 프레임이 무너지지 않게 */
+export const MAX_SHOTS = 500;
+/** 쏘는 적이 여러 발을 부채꼴로 쏠 때 탄 사이 각(라디안) */
+export const ENEMY_SHOT_SPREAD = 0.18;
 /** 아이템 없이 이만큼 격추하면 다음 격추에서 무기 간식을 반드시 떨어뜨린다 (운이 나빠도 레벨을 쌓을 수 있게) */
 export const PITY_KILLS = 12;
 /** 반드시 떨어뜨릴 때 고르는 무기 간식 */
@@ -327,10 +331,10 @@ export function isBossStage(stage: number) {
 }
 
 /** 이 스테이지에서 적 구성·체력 곡선이 끝나고, 그 뒤로는 러시 — 속도가 끝없이 오른다 */
-export const PEAK_STAGE = 25;
-/** 러시 구간에서 스테이지마다 적·탄 속도에 더해지는 배율 (50스테이지면 2.5배) */
+export const PEAK_STAGE = 40;
+/** 러시 구간에서 스테이지마다 적·탄 속도에 더해지는 배율 (65스테이지면 2.5배) */
 export const RUSH_PER_STAGE = 0.06;
-/** 러시로 간격이 줄어도 이 아래로는 안 내려간다 (화면이 탄으로 뒤덮여 버벅이지 않게) */
+/** 러시로 간격이 줄어도 이 아래로는 안 내려간다 (화면이 탄으로 뒤덮여 버벅이지 않게, 적 탄은 MAX_SHOTS 상한도 있다) */
 export const MIN_SPAWN_INTERVAL_MS = 120;
 export const MIN_ENEMY_FIRE_INTERVAL_MS = 250;
 
@@ -359,10 +363,11 @@ export function getStageConfig(stage: number) {
   const rush = getRush(stage);
   return {
     boss,
-    killGoal: Math.round(lerp(10, 40, d)),
+    killGoal: Math.round(lerp(10, 50, d)),
     bossHp: Math.round(BOSS_BASE_HP * (stage / BOSS_STAGE_EVERY) ** 1.3),
-    spawnIntervalMs: Math.max(MIN_SPAWN_INTERVAL_MS, lerp(750, 260, d) / rush) * (boss ? 2.5 : 1),
-    enemyHp: Math.round(lerp(2, 10, d)),
+    spawnIntervalMs: Math.max(MIN_SPAWN_INTERVAL_MS, lerp(750, 200, d) / rush) * (boss ? 2.5 : 1),
+    // 무기 레벨·스킬로 내가 강해지는 만큼 적도 훨씬 단단해진다 (10스테이지 ≈5, 20 ≈16, 30 ≈35, 40 이후 60)
+    enemyHp: Math.round(lerp(2, 60, d)),
     enemySpeed: lerp(100, 360, d) * rush,
     // 새 천적은 스테이지가 오를 때마다 하나씩 합류한다. 확률 합은 최고 난이도에서도 0.9를 넘지 않아 하피독수리가 늘 섞인다
     zigzagChance: stage >= 2 ? 0.2 : 0,
@@ -371,8 +376,10 @@ export function getStageConfig(stage: number) {
     shieldChance: stage >= 6 ? lerp(0.06, 0.12, d) : 0,
     splitterChance: stage >= 7 ? lerp(0.06, 0.1, d) : 0,
     homingChance: stage >= 8 ? lerp(0.05, 0.1, d) : 0,
-    enemyFireIntervalMs: Math.max(MIN_ENEMY_FIRE_INTERVAL_MS, lerp(2000, 550, d) / rush),
+    enemyFireIntervalMs: Math.max(MIN_ENEMY_FIRE_INTERVAL_MS, lerp(2000, 380, d) / rush),
+    // 최고 난이도까지는 탄 수를 늘려 탄막을 두껍게 하고, 그 뒤로는 러시 배율만큼 탄도 빨라진다
     shotSpeed: lerp(160, 420, d) * rush,
+    enemyShotCount: Math.round(lerp(1, 5, d)),
   };
 }
 
@@ -578,12 +585,14 @@ function fireBoss(
 ): number {
   const d = getDifficulty(state.stage);
   const speed = getStageConfig(state.stage).shotSpeed;
+  // 화면에 탄이 너무 많으면 이번 발사는 건너뛰고 잠깐 뒤에 다시 쏜다
+  if (state.shots.length >= MAX_SHOTS) return 300;
 
   // 어려운 쪽 값도 비행기 근처 탄 사이 틈이 비행기 피격 폭보다 넉넉히 남는 선에서 멈춘다
   switch (pattern) {
     case "ring": {
       // 보스 한가운데서 원형으로 퍼진다. 링마다 반 칸씩 돌려 틈 위치가 바뀐다
-      const count = Math.round(lerp(12, 30, d));
+      const count = Math.round(lerp(12, 44, d));
       state.bossAngle += Math.PI / count;
       for (let i = 0; i < count; i += 1) {
         state.shots.push(radialShot(boss.x, boss.y, (i / count) * Math.PI * 2 + state.bossAngle, speed * 0.85));
@@ -592,7 +601,7 @@ function fireBoss(
     }
     case "grid": {
       // 화면 위에서 격자 모양 탄 줄이 내려온다. 줄마다 반 칸 어긋나고, 두 칸짜리 빈틈이 하나 있다
-      const spacing = lerp(90, 62, d);
+      const spacing = lerp(90, 54, d);
       const offset = state.bossGridRow % 2 === 0 ? spacing / 4 : (spacing * 3) / 4;
       const columns = Math.floor((state.width - offset) / spacing) + 1;
       const gap = Math.floor(random() * Math.max(1, columns - 1));
@@ -604,14 +613,14 @@ function fireBoss(
       return lerp(900, 520, d);
     }
     case "fan": {
-      const half = Math.round(lerp(1, 3, d));
+      const half = Math.round(lerp(1, 5, d));
       for (let i = -half; i <= half; i += 1) {
         state.shots.push(aimedShot(state, boss.x, boss.y + boss.r * 0.6, speed * 1.1, i * 0.16));
       }
       return lerp(1100, 450, d);
     }
     case "spiral": {
-      const arms = d < 0.5 ? 3 : 4;
+      const arms = Math.round(lerp(3, 6, d));
       for (let arm = 0; arm < arms; arm += 1) {
         state.shots.push(radialShot(boss.x, boss.y, state.bossAngle + (arm * Math.PI * 2) / arms, speed));
       }
@@ -693,7 +702,12 @@ function updateEnemy(state: GameState, enemy: Enemy, dt: number, config: ReturnT
   if ((enemy.kind !== "shooter" && enemy.kind !== "shield") || enemy.y < 0) return;
   enemy.fireInMs -= dt;
   if (enemy.fireInMs > 0) return;
-  state.shots.push(aimedShot(state, enemy.x, enemy.y + enemy.r, config.shotSpeed, 0, false));
+  if (state.shots.length < MAX_SHOTS) {
+    // 뒤 스테이지일수록 비행기를 겨눈 부채꼴로 여러 발을 쏜다
+    for (const offset of fan(config.enemyShotCount, ENEMY_SHOT_SPREAD)) {
+      state.shots.push(aimedShot(state, enemy.x, enemy.y + enemy.r, config.shotSpeed, offset, false));
+    }
+  }
   if (enemy.kind === "shield") {
     // 아르마딜로는 느리게 쏘고, 쏠 때 방패를 잠깐 내린다 — 그때가 일반 총알로 잡을 기회
     enemy.fireInMs = config.enemyFireIntervalMs * 1.3;

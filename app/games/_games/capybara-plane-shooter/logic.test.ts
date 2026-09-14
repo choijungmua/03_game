@@ -26,6 +26,7 @@ import {
   INVINCIBLE_MS,
   isShieldUp,
   MAX_BULLETS,
+  MAX_SHOTS,
   MAX_HP,
   MAX_WEAPON_LEVEL,
   MIN_ENEMY_FIRE_INTERVAL_MS,
@@ -425,19 +426,40 @@ describe("스테이지", () => {
     // 제곱 곡선: 전반부(1→13)보다 후반부(13→25)에 훨씬 많이 오른다
     const mid = Math.ceil(PEAK_STAGE / 2);
     expect(getDifficulty(PEAK_STAGE) - getDifficulty(mid)).toBeGreaterThan(getDifficulty(mid) * 2);
-    // 러시: 최고 난이도 뒤로도 스테이지마다 적·탄이 더 빨라진다 (50스테이지면 2.5배)
+    // 러시: 최고 난이도 뒤로도 스테이지마다 적·탄이 더 빨라진다 (65스테이지면 2.5배)
     for (let stage = PEAK_STAGE + 1; stage <= PEAK_STAGE * 4; stage += 1) {
       expect(getStageConfig(stage).enemySpeed).toBeGreaterThan(getStageConfig(stage - 1).enemySpeed);
       expect(getStageConfig(stage).shotSpeed).toBeGreaterThan(getStageConfig(stage - 1).shotSpeed);
     }
-    expect(getStageConfig(PEAK_STAGE * 2).enemySpeed).toBeCloseTo(getStageConfig(PEAK_STAGE).enemySpeed * 2.5);
+    expect(getStageConfig(PEAK_STAGE + 25).enemySpeed).toBeCloseTo(getStageConfig(PEAK_STAGE).enemySpeed * 2.5);
   });
 
-  it("아무리 높은 스테이지도 출현·사격 간격은 하한 아래로 내려가지 않고, 적 체력은 오르지 않는다", () => {
+  it("아무리 높은 스테이지도 출현·사격 간격은 하한 아래로 내려가지 않고, 적 체력·탄 수는 상한을 넘지 않는다", () => {
     const late = getStageConfig(201);
     expect(late.spawnIntervalMs).toBe(MIN_SPAWN_INTERVAL_MS);
     expect(late.enemyFireIntervalMs).toBe(MIN_ENEMY_FIRE_INTERVAL_MS);
-    expect(late.enemyHp).toBeLessThanOrEqual(10);
+    expect(late.enemyHp).toBeLessThanOrEqual(60);
+    expect(late.enemyShotCount).toBeLessThanOrEqual(5);
+  });
+
+  it("뒤 스테이지 적은 훨씬 단단하고, 쏘는 적은 부채꼴로 여러 발을 쏜다", () => {
+    expect(getStageConfig(PEAK_STAGE).enemyHp).toBeGreaterThanOrEqual(getStageConfig(1).enemyHp * 20);
+    expect(getStageConfig(1).enemyShotCount).toBe(1);
+    expect(getStageConfig(PEAK_STAGE).enemyShotCount).toBe(5);
+
+    const state = playing({ stage: PEAK_STAGE, enemies: [enemy({ kind: "shooter", r: 18, fireInMs: 0 })] });
+    step(state, 16, IDLE);
+    expect(state.shots).toHaveLength(5);
+  });
+
+  it("화면에 적 탄이 너무 많으면 적이 더 쏘지 않는다", () => {
+    const shot = { x: 10, y: 10, r: 5, vx: 0, vy: 0, fromBoss: false };
+    const state = playing({
+      enemies: [enemy({ kind: "shooter", r: 18, fireInMs: 0 })],
+      shots: Array.from({ length: MAX_SHOTS }, () => ({ ...shot })),
+    });
+    step(state, 16, IDLE);
+    expect(state.shots).toHaveLength(MAX_SHOTS);
   });
 
   it("목표만큼 격추하면 다음 스테이지로 넘어가고 배너가 뜬다", () => {
