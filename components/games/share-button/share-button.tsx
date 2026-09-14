@@ -11,9 +11,9 @@ function stopPropagation(event: React.SyntheticEvent) {
   event.stopPropagation();
 }
 
-export function ShareButton({ title, text, className }: ShareButtonProps) {
+export function ShareButton({ title, text, url: shareUrl, className }: ShareButtonProps) {
   async function share() {
-    const url = window.location.href;
+    const url = shareUrl ?? window.location.href;
 
     if (navigator.share) {
       try {
