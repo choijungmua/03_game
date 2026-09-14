@@ -120,9 +120,10 @@ describe("로비 멀티", () => {
   });
 
   it("채팅은 줄바꿈·제어문자를 지우고 길이를 자르며, 빈 채팅은 없는 것으로 본다", () => {
-    expect(cleanChat("  안\n녕0000하세요  ")).toBe("안 녕 하세요");
+    expect(cleanChat(`  안\n녕${String.fromCharCode(0)}하세요  `)).toBe("안 녕 하세요");
     expect([...cleanChat("가".repeat(CHAT_MAX + 10))]).toHaveLength(CHAT_MAX);
-    expect(parsePresence({ ...player(0), chat: " \n " })).not.toHaveProperty("chat");  });
+    expect(parsePresence({ ...player(0), chat: " \n " })).not.toHaveProperty("chat");
+  });
 
   it("대각선을 보고 때리면 그 대각선 앞쪽이 맞는다", () => {
     const base = spot();
