@@ -27,6 +27,8 @@ export interface Enemy extends Circle {
   id: number;
   kind: EnemyKind;
   hp: number;
+  /** 처음 체력. 보스 체력바·페이즈 계산에 쓴다 */
+  maxHp: number;
   fireInMs: number;
   /** 맞았을 때 잠깐 하얗게 번쩍이는 시간 */
   flashMs: number;
@@ -64,8 +66,8 @@ export interface GameState {
   fireInMs: number;
   stage: number;
   stageKills: number;
-  /** 배너가 끝난 뒤 이번 스테이지를 진행한 시간 */
-  stageTimeMs: number;
+  /** 이번 보스 스테이지의 보스를 격파했는지 (격파한 프레임에 다음 스테이지로 넘어간다) */
+  bossDown: boolean;
   bannerMs: number;
   score: number;
   spawnInMs: number;
@@ -132,6 +134,12 @@ export const BOSS_PATTERN_LABELS: Record<BossPattern, string> = {
 export const CHARGE_WINDUP_MS = 700;
 /** 예고 뒤 비행기 높이까지 내리꽂는 시간 */
 export const CHARGE_DASH_MS = 800;
+/** 첫 보스(5스테이지) 체력. 뒤 보스일수록 (보스 순번^1.3)배로 늘어 무기 레벨이 쌓인 만큼 버틴다 */
+export const BOSS_BASE_HP = 600;
+/** 보스 페이즈(1·2·3)별 발사·패턴 간격 배수. 체력이 줄수록 빨라진다 (돌격 예고 시간은 공정하게 그대로 둔다) */
+export const BOSS_PHASE_TEMPO = [1, 0.8, 0.6] as const;
+/** 보스를 격파하면 무기 레벨을 이만큼 올려 준다 */
+export const BOSS_REWARD_LEVELS = 2;
 export const ITEM_RADIUS = 13;
 /** 폭발 애니메이션 4프레임이 재생되는 시간 */
 export const EXPLOSION_MS = 400;
@@ -279,8 +287,7 @@ export function getStageConfig(stage: number) {
   return {
     boss,
     killGoal: Math.round(lerp(10, 40, d)),
-    // 보스전은 패턴 다섯 가지를 한 바퀴 볼 만큼 길다
-    bossSurviveMs: Math.round(lerp(22_000, 38_000, d)),
+    bossHp: Math.round(BOSS_BASE_HP * (stage / BOSS_STAGE_EVERY) ** 1.3),
     spawnIntervalMs: lerp(750, 260, d) * (boss ? 2.5 : 1),
     enemyHp: Math.round(lerp(2, 10, d)),
     enemySpeed: lerp(100, 360, d),
@@ -305,7 +312,7 @@ export function createState(width: number, height: number): GameState {
     fireInMs: 0,
     stage: 1,
     stageKills: 0,
-    stageTimeMs: 0,
+    bossDown: false,
     bannerMs: STAGE_BANNER_MS,
     score: 0,
     spawnInMs: 0,
@@ -327,10 +334,10 @@ export function getPlaneY(state: Pick<GameState, "height">) {
   return state.height * PLANE_Y_RATIO;
 }
 
-/** 보스 스테이지면 남은 버티기 시간, 아니면 null */
-export function getBossLeftMs(state: GameState) {
-  const config = getStageConfig(state.stage);
-  return config.boss ? Math.max(0, config.bossSurviveMs - state.stageTimeMs) : null;
+/** 보스 체력 비율로 나눈 페이즈: 2/3 초과 1, 1/3 초과 2, 그 아래 3 */
+export function getBossPhase(boss: Pick<Enemy, "hp" | "maxHp">): 1 | 2 | 3 {
+  const ratio = boss.hp / boss.maxHp;
+  return ratio > 2 / 3 ? 1 : ratio > 1 / 3 ? 2 : 3;
 }
 
 function overlaps(a: Circle, b: Circle, radius = a.r + b.r) {
@@ -399,12 +406,14 @@ export function spawnEnemy(state: GameState, random: () => number = Math.random)
     vx: kind === "zigzag" ? (random() < 0.5 ? -1 : 1) * speed * 0.7 : 0,
     vy: speed,
     hp: config.enemyHp,
+    maxHp: config.enemyHp,
     fireInMs: config.enemyFireIntervalMs * random(),
     flashMs: 0,
   };
 }
 
 function spawnBoss(state: GameState): Enemy {
+  const hp = getStageConfig(state.stage).bossHp;
   // 보스마다 시작 패턴을 한 칸씩 밀어 매번 다른 순서로 시작한다
   state.bossPatternIndex = state.stage / BOSS_STAGE_EVERY - 1;
   state.bossPatternMs = 0;
@@ -417,7 +426,8 @@ function spawnBoss(state: GameState): Enemy {
     r: BOSS_RADIUS,
     vx: 80 + state.stage * 4,
     vy: 70,
-    hp: 1,
+    hp,
+    maxHp: hp,
     fireInMs: 600,
     flashMs: 0,
   };
@@ -494,6 +504,7 @@ function updateBoss(state: GameState, boss: Enemy, dt: number, random: () => num
   }
 
   const pattern = getBossPattern(state);
+  const tempo = BOSS_PHASE_TEMPO[getBossPhase(boss) - 1];
   state.bossPatternMs += dt;
 
   if (pattern === "charge") {
@@ -508,22 +519,33 @@ function updateBoss(state: GameState, boss: Enemy, dt: number, random: () => num
       boss.y = Math.max(homeY, boss.y - 420 * seconds);
     }
   } else {
-    // 좌우로 오가며 쏜다
-    boss.x += boss.vx * seconds;
+    // 좌우로 오가며 쏜다. 페이즈가 오를수록 빨리 움직인다
+    boss.x += (boss.vx * seconds) / tempo;
     if (boss.x < boss.r || boss.x > state.width - boss.r) {
       boss.vx = -boss.vx;
       boss.x = Math.min(state.width - boss.r, Math.max(boss.r, boss.x));
     }
     boss.fireInMs -= dt;
-    if (boss.fireInMs <= 0) boss.fireInMs = fireBoss(state, boss, pattern, random);
+    if (boss.fireInMs <= 0) boss.fireInMs = fireBoss(state, boss, pattern, random) * tempo;
   }
 
   // 돌격에서 제자리로 돌아온 뒤에야 다음 패턴으로 넘어간다
-  if (state.bossPatternMs >= BOSS_PATTERN_MS[pattern] && boss.y <= homeY) {
+  if (state.bossPatternMs >= BOSS_PATTERN_MS[pattern] * tempo && boss.y <= homeY) {
     state.bossPatternIndex += 1;
     state.bossPatternMs = 0;
     boss.fireInMs = 500;
   }
+}
+
+/** 보스 체력이 0이 되면: 크게 한 번 + 둘레 네 번 터지고, 남은 보스 탄이 사라지며, 무기 레벨을 올려 준다 */
+function defeatBoss(state: GameState, boss: Enemy) {
+  state.bossDown = true;
+  state.weaponLevel = Math.min(MAX_WEAPON_LEVEL, state.weaponLevel + BOSS_REWARD_LEVELS);
+  explode(state, boss);
+  for (const [dx, dy] of [[-1, -1], [1, -1], [-1, 1], [1, 1]] as const) {
+    state.explosions.push({ x: boss.x + dx * boss.r * 0.6, y: boss.y + dy * boss.r * 0.6, size: boss.r * 2, ageMs: 0 });
+  }
+  state.shots = [];
 }
 
 function applyItem(state: GameState, kind: DropKind) {
@@ -548,7 +570,7 @@ function advanceStage(state: GameState) {
   state.score += getStageConfig(state.stage).boss ? BOSS_CLEAR_SCORE : STAGE_CLEAR_SCORE;
   state.stage += 1;
   state.stageKills = 0;
-  state.stageTimeMs = 0;
+  state.bossDown = false;
   state.bannerMs = STAGE_BANNER_MS;
   state.spawnInMs = 0;
   // 다음 스테이지는 숨 돌릴 틈을 주고 시작한다
@@ -614,7 +636,6 @@ export function step(
   }
 
   if (state.bannerMs <= 0) {
-    state.stageTimeMs += dt;
     if (config.boss && !state.enemies.some((enemy) => enemy.kind === "boss")) {
       state.enemies.push(spawnBoss(state));
     }
@@ -625,17 +646,19 @@ export function step(
     }
   }
 
-  // 내 총알 → 적. 보스는 맞아도 번쩍이기만 하고 죽지 않는다
+  // 내 총알 → 적. 보스도 맞으면 체력이 깎이고 0이 되면 격파된다
   const spent = new Set<Bullet>();
   for (const bullet of state.bullets) {
     for (const enemy of state.enemies) {
       if (enemy.hp <= 0 || bullet.hitIds.includes(enemy.id) || !overlaps(bullet, enemy)) continue;
       enemy.flashMs = 80;
+      enemy.hp -= bullet.damage;
       if (enemy.kind === "boss") {
+        // 보스는 관통탄도 뚫지 못한다
         spent.add(bullet);
+        if (enemy.hp <= 0) defeatBoss(state, enemy);
         break;
       }
-      enemy.hp -= bullet.damage;
       if (enemy.hp <= 0) {
         state.score += KILL_SCORE;
         state.stageKills += 1;
@@ -686,8 +709,6 @@ export function step(
   state.items = state.items.filter((item) => !picked.includes(item) && item.y - item.r < state.height);
   state.explosions = state.explosions.filter((explosion) => explosion.ageMs < EXPLOSION_MS);
 
-  const cleared = config.boss
-    ? state.stageTimeMs >= config.bossSurviveMs
-    : state.stageKills >= config.killGoal;
+  const cleared = config.boss ? state.bossDown : state.stageKills >= config.killGoal;
   if (cleared && state.hp > 0) advanceStage(state);
 }

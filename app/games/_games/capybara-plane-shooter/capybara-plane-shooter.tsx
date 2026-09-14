@@ -5,6 +5,7 @@ import Image from "next/image";
 import { useEffect, useEffectEvent, useRef, useState } from "react";
 
 import { AdSlot } from "@/components/ads/ad-slot";
+import { Progress } from "@/components/feedback/progress";
 import { GameControls } from "@/components/games/game-controls";
 import { ShareButton } from "@/components/games/share-button";
 import { cn } from "@/lib";
@@ -38,14 +39,15 @@ import { PlaneShooterLeaderboard } from "./leaderboard";
 import {
   BOSS_CLEAR_SCORE,
   BOSS_PATTERN_LABELS,
+  BOSS_REWARD_LEVELS,
   CHARGE_WINDUP_MS,
   createState,
   EXPLOSION_MS,
   type GameInput,
   type GameState,
   getBossHomeY,
-  getBossLeftMs,
   getBossPattern,
+  getBossPhase,
   getPlaneY,
   getStageConfig,
   isBossStage,
@@ -119,7 +121,8 @@ interface Hud {
   score: number;
   weapon: WeaponKind;
   weaponLevel: number;
-  bossLeftSec: number | null;
+  /** 보스 남은 체력(%, 2 단위). 보스가 없으면 null */
+  bossHp: number | null;
   /** 보스가 지금 쓰는 패턴 이름 (보스가 없으면 null) */
   bossPattern: string | null;
   killsLeft: number;
@@ -153,17 +156,16 @@ function readPalette(canvas: HTMLCanvasElement): Palette {
 }
 
 function readHud(state: GameState): Hud {
-  const bossLeftMs = getBossLeftMs(state);
+  const boss = state.enemies.find((enemy) => enemy.kind === "boss");
   return {
     hp: state.hp,
     stage: state.stage,
     score: state.score,
     weapon: state.weapon,
     weaponLevel: state.weaponLevel,
-    bossLeftSec: bossLeftMs === null ? null : Math.ceil(bossLeftMs / 1000),
-    bossPattern: state.enemies.some((enemy) => enemy.kind === "boss")
-      ? BOSS_PATTERN_LABELS[getBossPattern(state)]
-      : null,
+    // 체력바는 2% 단위로만 바꿔 맞을 때마다 HUD 전체를 다시 그리지 않게 한다
+    bossHp: boss ? Math.max(0, Math.ceil((boss.hp / boss.maxHp) * 50) * 2) : null,
+    bossPattern: boss ? BOSS_PATTERN_LABELS[getBossPattern(state)] : null,
     killsLeft: Math.max(0, getStageConfig(state.stage).killGoal - state.stageKills),
   };
 }
@@ -174,10 +176,16 @@ type FrameSnapshot = Pick<
   "hp" | "stage" | "bank" | "fireInMs" | "weaponLevel" | "bossPatternIndex" | "bossPatternMs" | "items"
 > & {
   hasBoss: boolean;
+  /** 보스가 격파되면 이번 프레임에 사라지므로 터질 자리를 미리 떠 둔다 */
+  bossX: number;
+  bossY: number;
+  /** 보스가 없으면 0 */
+  bossPhase: number;
   shots: Set<GameState["shots"][number]>;
 };
 
 function takeFrameSnapshot(state: GameState): FrameSnapshot {
+  const boss = state.enemies.find((enemy) => enemy.kind === "boss");
   return {
     hp: state.hp,
     stage: state.stage,
@@ -187,7 +195,10 @@ function takeFrameSnapshot(state: GameState): FrameSnapshot {
     bossPatternIndex: state.bossPatternIndex,
     bossPatternMs: state.bossPatternMs,
     items: [...state.items],
-    hasBoss: state.enemies.some((enemy) => enemy.kind === "boss"),
+    hasBoss: boss !== undefined,
+    bossX: boss?.x ?? 0,
+    bossY: boss?.y ?? 0,
+    bossPhase: boss ? getBossPhase(boss) : 0,
     shots: new Set(state.shots),
   };
 }
@@ -242,17 +253,18 @@ function playStepSounds(
   }
 
   if (state.stage > prev.stage) {
-    playGameSound(isBossStage(prev.stage) ? PLANE_SHOOTER_SOUNDS.bossClear : PLANE_SHOOTER_SOUNDS.stageClear);
+    playGameSound(isBossStage(prev.stage) ? PLANE_SHOOTER_SOUNDS.bossDefeat : PLANE_SHOOTER_SOUNDS.stageClear);
     if (isBossStage(state.stage)) playGameSound(PLANE_SHOOTER_SOUNDS.bossStage);
     return;
   }
 
-  const hasBoss = state.enemies.some((enemy) => enemy.kind === "boss");
-  if (!hasBoss) return;
+  const boss = state.enemies.find((enemy) => enemy.kind === "boss");
+  if (!boss) return;
   if (!prev.hasBoss) {
     playGameSound(PLANE_SHOOTER_SOUNDS.bossAppear);
     return;
   }
+  if (getBossPhase(boss) > prev.bossPhase) playGameSound(PLANE_SHOOTER_SOUNDS.bossPhase);
   if (state.bossPatternIndex !== prev.bossPatternIndex) playGameSound(PLANE_SHOOTER_SOUNDS.bossPattern);
   if (getBossPattern(state) !== "charge") return;
   if (prev.bossPatternMs === 0 && state.bossPatternMs > 0) playGameSound(PLANE_SHOOTER_SOUNDS.chargeWindup);
@@ -276,14 +288,15 @@ function applyStepEffects(prev: FrameSnapshot, state: GameState, effects: Effect
   }
 
   const damaged = state.hp < prev.hp;
+  const bossDefeated = state.stage > prev.stage && isBossStage(prev.stage);
   for (const explosion of state.explosions) {
     if (explosion.ageMs !== 0) continue;
     if (motion) {
       const { count, speed } = EFFECTS.burst.enemyDown;
       burst(effects, explosion.x, explosion.y, count, ["success", "warning", "text"], speed);
     }
-    // 들이받아 같이 부서진 적은 점수가 없고, 흔들림은 피격 흔들림이 대신한다
-    if (damaged) continue;
+    // 들이받아 같이 부서진 적은 점수가 없고, 흔들림은 피격 흔들림이 대신한다. 보스 격파 폭발은 아래에서 따로 크게 보여준다
+    if (damaged || bossDefeated) continue;
     popup(effects, explosion.x, explosion.y, `+${KILL_SCORE}`, "text");
     if (motion) shake(effects, EFFECTS.shake.enemyDown.power, EFFECTS.shake.enemyDown.ms);
   }
@@ -312,11 +325,24 @@ function applyStepEffects(prev: FrameSnapshot, state: GameState, effects: Effect
   }
 
   if (state.stage > prev.stage) {
-    const bossCleared = isBossStage(prev.stage);
-    const bonus = bossCleared ? BOSS_CLEAR_SCORE : STAGE_CLEAR_SCORE;
+    const bonus = bossDefeated ? BOSS_CLEAR_SCORE : STAGE_CLEAR_SCORE;
     popup(effects, state.width / 2, state.height * 0.56, `+${formatScore(bonus)}`, "warning", true);
-    if (motion && bossCleared) shake(effects, EFFECTS.shake.bossClear.power, EFFECTS.shake.bossClear.ms);
+    if (bossDefeated) {
+      popup(effects, state.width / 2, state.height * 0.56 - 40, "보스 격파!", "danger", true);
+      popup(effects, labelX, labelY, `무기 Lv +${BOSS_REWARD_LEVELS}`, "warning");
+      if (motion) {
+        const { count, speed } = EFFECTS.burst.gameOver;
+        burst(effects, prev.bossX, prev.bossY, count, ["warning", "danger", "text"], speed);
+        shake(effects, EFFECTS.shake.bossClear.power, EFFECTS.shake.bossClear.ms);
+      }
+    }
     return;
+  }
+
+  const boss = state.enemies.find((enemy) => enemy.kind === "boss");
+  if (boss && prev.hasBoss && getBossPhase(boss) > prev.bossPhase) {
+    popup(effects, state.width / 2, state.height * 0.4, getBossPhase(boss) === 3 ? "보스 분노!" : "보스 2페이즈", "danger", true);
+    if (motion) shake(effects, EFFECTS.shake.chargeDash.power, EFFECTS.shake.chargeDash.ms);
   }
 
   const dashStarted =
@@ -461,7 +487,7 @@ function draw(
     ctx.fillText(`스테이지 ${state.stage}`, state.width / 2, state.height * 0.42);
     ctx.font = `600 16px ${palette.font}`;
     ctx.fillText(
-      bossStage ? "카이만 보스는 쓰러지지 않아요. 끝까지 버티세요" : "천적들을 모두 격추하세요",
+      bossStage ? "카이만 보스를 격파하세요" : "천적들을 모두 격추하세요",
       state.width / 2,
       state.height * 0.42 + 36,
     );
@@ -794,7 +820,7 @@ export function CapybaraPlaneShooter() {
             {/* 좌우 여백: 좁은 폰에서 제목이 오른쪽 위 공유 버튼 밑으로 들어가지 않게 */}
             <h1 className="px-12 text-title-1 font-bold text-text-strong">{TITLE}</h1>
             <p className="text-caption-1 text-balance text-text-caption">
-              카피바라 조종사가 풀잎탄을 자동으로 쏴요. 화면을 좌우로 드래그하거나 방향키로 움직여 하피독수리·말벌·재규어를 격추하세요. 떨어진 간식을 먹으면 무기가 바뀌고 무기 레벨이 {MAX_WEAPON_LEVEL}레벨까지 올라 탄이 점점 많아져요. 맞으면 레벨이 하나 내려가요. 5스테이지마다 나오는 카이만 보스는 쓰러지지 않으니 끝까지 버티세요. 체력은 {MAX_HP}칸이에요.
+              카피바라 조종사가 풀잎탄을 자동으로 쏴요. 화면을 좌우로 드래그하거나 방향키로 움직여 하피독수리·말벌·재규어를 격추하세요. 떨어진 간식을 먹으면 무기가 바뀌고 무기 레벨이 {MAX_WEAPON_LEVEL}레벨까지 올라 탄이 점점 많아져요. 맞으면 레벨이 하나 내려가요. 5스테이지마다 나오는 카이만 보스는 체력이 줄수록 거세지니, 격파해서 무기 레벨을 {BOSS_REWARD_LEVELS} 올리세요. 체력은 {MAX_HP}칸이에요.
             </p>
           </header>
 
@@ -862,7 +888,7 @@ export function CapybaraPlaneShooter() {
               <div className="flex flex-wrap items-center justify-center gap-1 px-4">
                 <p className="whitespace-nowrap rounded-full bg-black/30 px-3 py-1 text-caption-1 font-bold tabular-nums">
                   스테이지 {hud.stage} ·{" "}
-                  {hud.bossLeftSec !== null ? `보스 버티기 ${hud.bossLeftSec}초` : `남은 적 ${hud.killsLeft}`}
+                  {isBossStage(hud.stage) ? "카이만 보스 격파" : `남은 적 ${hud.killsLeft}`}
                 </p>
                 {hud.bossPattern && (
                   <p className="whitespace-nowrap rounded-full bg-destructive/85 px-2.5 py-0.5 text-caption-2 font-bold text-white">
@@ -870,6 +896,15 @@ export function CapybaraPlaneShooter() {
                   </p>
                 )}
               </div>
+              {hud.bossHp !== null && (
+                // 보스 체력바: 체력이 2/3·1/3 아래로 떨어질 때마다 페이즈가 오른다
+                <Progress
+                  value={hud.bossHp}
+                  size="sm"
+                  aria-label="카이만 보스 체력"
+                  className="w-40 bg-black/40 [&>*]:bg-destructive"
+                />
+              )}
             </div>
           )}
           {hud && (

@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 
 import {
   BOSS_CLEAR_SCORE,
+  BOSS_PATTERN_MS,
   BOSS_PATTERNS,
+  BOSS_REWARD_LEVELS,
   CHARGE_WINDUP_MS,
   createState,
   DROP_CHANCES,
@@ -12,6 +14,7 @@ import {
   type GameState,
   getBossHomeY,
   getBossPattern,
+  getBossPhase,
   getDifficulty,
   getPlaneY,
   getStageConfig,
@@ -40,7 +43,7 @@ function playing(overrides: Partial<GameState> = {}): GameState {
 }
 
 function enemy(overrides: Partial<Enemy> = {}): Enemy {
-  return { id: 99, kind: "straight", x: 200, y: 300, r: 15, vx: 0, vy: 0, hp: 1, fireInMs: 1e9, flashMs: 0, ...overrides };
+  return { id: 99, kind: "straight", x: 200, y: 300, r: 15, vx: 0, vy: 0, hp: 1, maxHp: 1, fireInMs: 1e9, flashMs: 0, ...overrides };
 }
 
 describe("이동", () => {
@@ -97,16 +100,22 @@ describe("총알 → 적", () => {
     expect(state.score).toBeGreaterThan(0);
   });
 
-  it("보스는 맞아도 죽지 않는다", () => {
-    const boss = enemy({ kind: "boss", r: 44, y: 200 });
-    const state = playing({
-      stage: 5,
-      enemies: [boss],
-      bullets: [{ x: 200, y: 200, r: 3, vx: 0, vy: 0, weapon: "basic", damage: 1, hitIds: [] }],
-    });
+  it("보스는 맞은 피해만큼 체력이 깎이고, 0이 되면 격파되어 다음 스테이지로 넘어가며 무기 레벨이 오른다", () => {
+    const boss = enemy({ kind: "boss", r: 44, y: 200, hp: 5, maxHp: 100 });
+    const bullet = (damage: number) => ({ x: 200, y: 200, r: 3, vx: 0, vy: 0, weapon: "pierce" as const, damage, hitIds: [] });
+    const state = playing({ stage: 5, weaponLevel: 3, enemies: [boss], bullets: [bullet(2)] });
     step(state, 16, IDLE, noLuck);
-    expect(state.enemies).toContain(boss);
+    expect(boss.hp).toBe(3);
+    // 관통탄도 보스는 뚫지 못한다
     expect(state.bullets).toHaveLength(0);
+    expect(state.stage).toBe(5);
+
+    state.bullets.push(bullet(3));
+    step(state, 16, IDLE, noLuck);
+    expect(state.stage).toBe(6);
+    expect(state.score).toBeGreaterThanOrEqual(BOSS_CLEAR_SCORE);
+    expect(state.weaponLevel).toBe(3 + BOSS_REWARD_LEVELS);
+    expect(state.explosions.length).toBeGreaterThanOrEqual(5);
   });
 });
 
@@ -265,7 +274,6 @@ describe("스테이지", () => {
     expect(late.spawnIntervalMs).toBeGreaterThanOrEqual(260);
     expect(late.enemyFireIntervalMs).toBeGreaterThanOrEqual(550);
     expect(late.enemyHp).toBeLessThanOrEqual(10);
-    expect(late.bossSurviveMs).toBeLessThanOrEqual(38_000);
   });
 
   it("목표만큼 격추하면 다음 스테이지로 넘어가고 배너가 뜬다", () => {
@@ -275,18 +283,19 @@ describe("스테이지", () => {
     expect(state.bannerMs).toBe(STAGE_BANNER_MS);
   });
 
-  it("보스 스테이지는 정해진 시간을 버티면 넘어간다", () => {
-    const state = playing({ stage: 5, stageTimeMs: getStageConfig(5).bossSurviveMs - 10 });
-    step(state, 16, IDLE);
-    expect(state.stage).toBe(6);
-    expect(state.score).toBeGreaterThanOrEqual(BOSS_CLEAR_SCORE);
+  it("보스 스테이지는 시간이 지나도 보스를 격파하기 전에는 넘어가지 않고, 뒤 보스일수록 체력이 많다", () => {
+    const state = playing({ stage: 5, hp: 1e6 });
+    for (let t = 0; t < 60_000; t += 50) step(state, 50, IDLE, noLuck);
+    expect(state.stage).toBe(5);
+    expect(getStageConfig(10).bossHp).toBeGreaterThan(getStageConfig(5).bossHp);
+    expect(getStageConfig(15).bossHp).toBeGreaterThan(getStageConfig(10).bossHp);
   });
 });
 
 describe("보스 패턴", () => {
   /** 자리 잡은 보스와, 죽지도 스테이지를 넘기지도 않는 상태 */
   function bossFight(overrides: Partial<GameState> = {}) {
-    const state = playing({ stage: 5, hp: 1e6, stageTimeMs: -1e9, ...overrides });
+    const state = playing({ stage: 5, hp: 1e6, ...overrides });
     const boss = enemy({ kind: "boss", r: 44, x: 200, y: getBossHomeY(state), vx: 80, fireInMs: 0 });
     state.enemies = [boss];
     return { state, boss };
@@ -300,6 +309,22 @@ describe("보스 패턴", () => {
       seen.add(getBossPattern(state));
     }
     expect(seen).toEqual(new Set(BOSS_PATTERNS));
+  });
+
+  it("체력이 1/3 아래로 떨어지면 3페이즈가 되어 패턴이 더 빨리 바뀐다", () => {
+    expect(getBossPhase({ hp: 100, maxHp: 100 })).toBe(1);
+    expect(getBossPhase({ hp: 50, maxHp: 100 })).toBe(2);
+    expect(getBossPhase({ hp: 10, maxHp: 100 })).toBe(3);
+
+    const { state, boss } = bossFight({ bossPatternIndex: BOSS_PATTERNS.indexOf("ring") });
+    boss.hp = 10;
+    boss.maxHp = 100;
+    let elapsed = 0;
+    while (getBossPattern(state) === "ring" && elapsed < 10_000) {
+      step(state, 16, IDLE);
+      elapsed += 16;
+    }
+    expect(elapsed).toBeLessThan(BOSS_PATTERN_MS.ring * 0.7);
   });
 
   it("원형 확산은 보스 한가운데서 사방으로 퍼진다", () => {

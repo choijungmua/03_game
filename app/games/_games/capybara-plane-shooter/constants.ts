@@ -83,8 +83,14 @@ export const PLANE_SHOOTER_SOUNDS = {
     { kind: "tone", wave: "triangle", from: 784, to: 784, ms: 110, level: 0.13 },
     { at: 110, kind: "tone", wave: "triangle", from: 1175, to: 1175, ms: 260, level: 0.14 },
   ],
-  /** 빠밤빠밤!: 보스 버티기 성공 */
-  bossClear: GAME_SOUNDS.success,
+  /** 콰광 뒤 빠밤빠밤!: 카이만 보스 격파 */
+  bossDefeat: [...GAME_SOUNDS.explosion, ...delay(GAME_SOUNDS.success, 300)],
+  /** 그르렁↑ 뒤 삐삐: 보스가 다음 페이즈로 (체력 2/3·1/3) */
+  bossPhase: [
+    { kind: "tone", wave: "sawtooth", from: 90, to: 180, ms: 380, level: 0.09, attack: 40 },
+    { kind: "noise", filter: "lowpass", q: 1, from: 300, to: 900, ms: 380, level: 0.18, attack: 40 },
+    ...delay(GAME_SOUNDS.warning, 380),
+  ],
   /** 웨엥웨엥: 보스 스테이지 진입 경보 */
   bossStage: [
     { kind: "tone", wave: "sawtooth", from: 440, to: 660, ms: 300, level: 0.06 },
@@ -144,7 +150,7 @@ export const EFFECTS = {
     enemyDown: { power: 2, ms: 110 },
     damage: { power: 7, ms: 260 },
     chargeDash: { power: 5, ms: 320 },
-    bossClear: { power: 4, ms: 280 },
+    bossClear: { power: 9, ms: 450 },
     gameOver: { power: 10, ms: 520 },
   },
   burst: {
