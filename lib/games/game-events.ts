@@ -20,15 +20,19 @@ function getSessionId() {
 }
 
 function post(slug: string, kind: "visits" | "records" | "shares", body: object): Promise<void> {
-  return fetchApi(
-    `/api/games/${slug}/${kind}`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ sessionId: getSessionId(), ...body }),
-      keepalive: true,
-    },
-    EVENT_TIMEOUT_MS,
+  // 요청을 만드는 동안 난 동기 예외(crypto.randomUUID가 없는 HTTPS 아닌 주소 등)도 거부로 바꿔 삼킨다.
+  // 부른 쪽(한 판 끝 finishRound)으로 던져지면 결과 화면으로 못 넘어가고 게임이 멈춘다
+  return Promise.resolve().then(() =>
+    fetchApi(
+      `/api/games/${slug}/${kind}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId: getSessionId(), ...body }),
+        keepalive: true,
+      },
+      EVENT_TIMEOUT_MS,
+    ),
   ).then(
     () => undefined,
     () => undefined,

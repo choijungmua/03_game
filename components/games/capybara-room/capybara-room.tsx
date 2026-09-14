@@ -205,11 +205,11 @@ export function CapybaraRoom<S extends BoardRoomState>({
                   )
                 )}
               </div>
-              {/* 에러는 줄을 늘리지 않고 카드 아래(판 위)에 띄운다 */}
+              {/* 에러는 줄을 늘리지 않고 카드 아래(판 위)에 띄운다. 판 윗줄을 덮으므로 누른 건 아래 판으로 지나가게 한다 */}
               {error && (
                 <p
                   role="alert"
-                  className="absolute inset-x-0 top-full mt-2 rounded-xl bg-background/90 px-3 py-2 text-center text-caption-1 text-error shadow-lg backdrop-blur"
+                  className="pointer-events-none absolute inset-x-0 top-full mt-2 rounded-xl bg-background/90 px-3 py-2 text-center text-caption-1 text-error shadow-lg backdrop-blur"
                 >
                   {error}
                 </p>

@@ -38,6 +38,16 @@ describe("게임 이벤트 → 백엔드", () => {
     expect(fetchMock.mock.calls[2][1].body).toBe(JSON.stringify({ sessionId, method: "clipboard" }));
   });
 
+  it("crypto.randomUUID가 없는 환경(HTTPS 아닌 주소)에서도 예외를 던지지 않는다 — 던지면 한 판 끝 결과 화면으로 못 넘어간다", async () => {
+    vi.stubGlobal("crypto", {});
+    let sent: Promise<void> | undefined;
+    expect(() => {
+      sent = submitGameRecord("reaction-time", 1, {});
+    }).not.toThrow();
+    await expect(sent).resolves.toBeUndefined();
+    expect(() => recordGameVisit("reaction-time")).not.toThrow();
+  });
+
   it("요청이 실패해도 삼킨다", async () => {
     vi.stubGlobal("fetch", vi.fn(() => Promise.reject(new Error("offline"))));
     await expect(submitGameRecord("reaction-time", 1, {})).resolves.toBeUndefined();
