@@ -4,9 +4,11 @@ import { ChevronDown } from "lucide-react";
 import { useEffect, useEffectEvent, useRef, useState } from "react";
 
 import { AdSlot } from "@/components/ads/ad-slot";
+import { GameControls } from "@/components/games/game-controls";
 import { ShareButton } from "@/components/games/share-button";
 import { cn } from "@/lib";
 import { GAME_TITLES } from "@/lib/games/constants";
+import { submitGameRecord } from "@/lib/games/supabase";
 import { useInView } from "@/lib/games/use-in-view";
 
 import { ClickSpeedLeaderboard } from "./leaderboard";
@@ -148,6 +150,7 @@ export function ClickSpeed() {
     const record = { id: String(now), count, cps: calculateCps(count, seconds), seconds, at: now };
     const rank = getRank(records, record);
     saveRecords(insertRecord(records, record));
+    void submitGameRecord("click-speed", record.count, record);
 
     setResult({ count, cps: record.cps, seconds, recordId: record.id, rank });
   });
@@ -162,6 +165,12 @@ export function ClickSpeed() {
   function startCountdown() {
     setCountdownIndex(0);
     setPhase("countdown");
+  }
+
+  function cancelRound() {
+    setCount(0);
+    setRipples([]);
+    setPhase("idle");
   }
 
   function registerTap(x: number, y: number) {
@@ -258,6 +267,8 @@ export function ClickSpeed() {
           text={shareText}
         />
       )}
+
+      <GameControls onCancelRound={phase === "countdown" || phase === "playing" ? cancelRound : undefined} />
 
       {phase === "idle" && (
         <div className="flex w-full max-w-md flex-col items-center gap-8 text-center">

@@ -15,6 +15,7 @@ import {
 import { AdSlot } from "@/components/ads/ad-slot";
 import { Progress } from "@/components/feedback/progress";
 import { EmoteBubble, EmotePicker, TurnTimer, useEmoteShowing } from "@/components/games/capybara-room";
+import { GameControls, LEAVE_CONFIRM_MESSAGE } from "@/components/games/game-controls";
 import { Button } from "@/components/inputs/button";
 import { Input } from "@/components/inputs/input";
 import { Dialog } from "@/components/overlay/dialog";
@@ -334,7 +335,7 @@ export function CapybaraAlkkagi() {
           </div>
         </div>
       ) : (
-        <div className="absolute inset-0 flex flex-col items-center gap-3 pt-[max(1rem,env(safe-area-inset-top))] pb-[max(1rem,env(safe-area-inset-bottom))]">
+        <div className="absolute inset-0 flex flex-col items-center gap-3 pt-[calc(max(1rem,env(safe-area-inset-top))_+_3.5rem)] pb-[max(1rem,env(safe-area-inset-bottom))]">
           {/* 위·아래 영역은 높이를 고정한다 — 안의 내용(초대 버튼↔남은 시간, 에러, 버튼 줄)이 바뀌어도 판 크기와 위치가 그대로다 */}
           <div className="relative z-10 w-full shrink-0 px-4">
             <div className={cn(CARD, "relative mx-auto flex w-full max-w-md flex-col gap-2 px-4 py-3")}>
@@ -542,6 +543,10 @@ export function CapybaraAlkkagi() {
           </div>
         </div>
       )}
+
+      <GameControls
+        leaveConfirm={view?.you && view.joined.white && !state?.endReason ? LEAVE_CONFIRM_MESSAGE : undefined}
+      />
 
       <Dialog open={isOver} onOpenChange={(open) => !open && leave()}>
         <Dialog.Content showCloseButton={false} closeOnOverlayClick={false} className="text-center">

@@ -72,3 +72,53 @@ describe("CapybaraLogDodge 시작 화면", () => {
     expect(gameScreen()).toHaveAttribute("data-phase", "playing");
   });
 });
+
+describe("일시정지", () => {
+  beforeEach(() => {
+    mockIntersectionObserver();
+    window.localStorage.clear();
+  });
+
+  afterEach(() => {
+    window.history.replaceState({}, "", "/");
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+
+  async function startPlaying() {
+    vi.useFakeTimers();
+    render(<CapybaraLogDodge />);
+    fireEvent.click(gameScreen());
+    await act(async () => {
+      vi.advanceTimersByTime(COUNTDOWN_STEP_MS * COUNTDOWN_VALUES.length);
+    });
+    expect(gameScreen()).toHaveAttribute("data-phase", "playing");
+  }
+
+  it("시작 화면에는 일시정지 버튼 없이 로비 링크만 있다", () => {
+    render(<CapybaraLogDodge />);
+    expect(screen.queryByRole("button", { name: "일시정지" })).toBeNull();
+    expect(screen.getByRole("link", { name: "로비로 돌아가기" })).toHaveAttribute("href", "/");
+  });
+
+  it("플레이 중 일시정지 버튼·Esc로 멈추고 이어하기로 돌아온다", async () => {
+    await startPlaying();
+    fireEvent.click(screen.getByRole("button", { name: "일시정지" }));
+    expect(gameScreen()).toHaveAttribute("data-paused", "true");
+    expect(gameScreen()).toHaveAttribute("data-phase", "playing");
+
+    fireEvent.click(screen.getByRole("button", { name: "이어하기" }));
+    expect(gameScreen()).toHaveAttribute("data-paused", "false");
+
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(gameScreen()).toHaveAttribute("data-paused", "true");
+  });
+
+  it("멈춘 상태에서 처음부터를 누르면 카운트다운부터 다시 한다", async () => {
+    await startPlaying();
+    fireEvent.click(screen.getByRole("button", { name: "일시정지" }));
+    fireEvent.click(screen.getByRole("button", { name: "처음부터" }));
+    expect(gameScreen()).toHaveAttribute("data-phase", "countdown");
+    expect(gameScreen()).toHaveAttribute("data-paused", "false");
+  });
+});

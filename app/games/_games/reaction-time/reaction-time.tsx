@@ -4,9 +4,11 @@ import { ChevronDown } from "lucide-react";
 import { useEffect, useEffectEvent, useRef, useState } from "react";
 
 import { AdSlot } from "@/components/ads/ad-slot";
+import { GameControls } from "@/components/games/game-controls";
 import { ShareButton } from "@/components/games/share-button";
 import { cn } from "@/lib";
 import { GAME_TITLES } from "@/lib/games/constants";
+import { submitGameRecord } from "@/lib/games/supabase";
 import { useInView } from "@/lib/games/use-in-view";
 
 import { ReactionLeaderboard } from "./leaderboard";
@@ -83,6 +85,7 @@ export function ReactionTime() {
     const record = { id: String(now), ms: now - startAt, at: now };
     const rank = getRank(records, record);
     saveRecords(insertRecord(records, record));
+    void submitGameRecord("reaction-time", record.ms, record);
 
     setResult({ ms: record.ms, recordId: record.id, rank });
     setPhase("result");
@@ -188,6 +191,10 @@ export function ReactionTime() {
           text={shareText}
         />
       )}
+
+      <GameControls
+        onCancelRound={phase === "countdown" || phase === "running" ? () => setPhase("idle") : undefined}
+      />
 
       {phase === "idle" && (
         <div className="flex w-full max-w-md flex-col items-center gap-8 text-center">
