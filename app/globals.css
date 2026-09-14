@@ -43,6 +43,9 @@
     --color-strong: var(--bg-strong);
     --color-border-default: var(--border);
     --color-border-active: var(--ring);
+    --color-capybara: var(--capybara);
+    --color-capybara-dark: var(--capybara-dark);
+    --color-capybara-light: var(--capybara-light);
     --animate-scale-press: scale-press 0.2s ease-out;
     --animate-check-draw: check-draw 0.2s ease-out forwards;
     --animate-check-zoom: check-zoom 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
@@ -113,6 +116,10 @@
     --success: oklch(0.696 0.17 162.48);
     --warning: oklch(0.769 0.188 70.08);
     --overlay: oklch(0 0 0 / 55%);
+    /* 카피바라 캐릭터 털색 (capybara-idle-down 이미지에서 뽑음). 캐릭터 색이라 다크 테마에서도 같다 */
+    --capybara: #c67c4e;
+    --capybara-dark: #653f2c;
+    --capybara-light: #f4a877;
     --text-normal: oklch(0.371 0 0);
     --text-alternative: oklch(0.439 0 0);
     --text-placeholder: oklch(0.708 0 0);
