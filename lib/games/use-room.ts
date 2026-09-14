@@ -175,15 +175,14 @@ export function useRoom<S extends RoomState, A extends string>(slug: string) {
     window.history.replaceState(null, "", window.location.pathname);
   }
 
-  return { view, error, pending, copied, clockOffset, create, join, act, sendEmote, copyInvite, leave, setError };
+  return { slug, view, error, pending, copied, clockOffset, create, join, act, sendEmote, copyInvite, leave, setError };
 }
 
-/** 참가할 수 있는 방 목록. enabled일 동안(방 밖에 있을 때) 3초마다 새로 받는다 */
-export function useOpenRooms(slug: string, enabled: boolean) {
+/** 참가할 수 있는 방 목록. 쓰는 화면이 떠 있는 동안 3초마다 새로 받는다 */
+export function useOpenRooms(slug: string) {
   const [rooms, setRooms] = useState<OpenRoom[]>([]);
 
   useEffect(() => {
-    if (!enabled) return;
     let inFlight = false;
     const load = () => {
       if (inFlight) return;
@@ -201,7 +200,7 @@ export function useOpenRooms(slug: string, enabled: boolean) {
     load();
     const id = setInterval(load, POLL_MS * 3);
     return () => clearInterval(id);
-  }, [slug, enabled]);
+  }, [slug]);
 
   return rooms;
 }

@@ -13,14 +13,14 @@ import {
 
 import { AdSlot } from "@/components/ads/ad-slot";
 import { Progress } from "@/components/feedback/progress";
-import { EmoteBubble, EmotePicker, TurnTimer, useEmoteShowing } from "@/components/games/capybara-room";
+import { EmoteBubble, EmotePicker, OpenRoomList, TurnTimer, useEmoteShowing } from "@/components/games/capybara-room";
 import { GameControls, LEAVE_CONFIRM_MESSAGE } from "@/components/games/game-controls";
 import { Button } from "@/components/inputs/button";
 import { Dialog } from "@/components/overlay/dialog";
 import { cn } from "@/lib";
 import { GAME_TITLES } from "@/lib/games/constants";
 import { opponent, type RoomView, type Stone, type Vector } from "@/lib/games/rooms";
-import { useOpenRooms, useRoom } from "@/lib/games/use-room";
+import { useRoom } from "@/lib/games/use-room";
 
 import {
   type AlkkagiState,
@@ -82,9 +82,7 @@ export function CapybaraAlkkagi() {
   const { view, error, pending, copied, clockOffset, create, join, act, sendEmote, copyInvite, leave } = useRoom<
     AlkkagiState,
     AlkkagiAction
-  >("capybara-alkkagi");
-  const openRooms = useOpenRooms("capybara-alkkagi", !view);
-  const emoteShowing = useEmoteShowing(view?.emote ?? null);
+  >("capybara-alkkagi");  const emoteShowing = useEmoteShowing(view?.emote ?? null);
   const [aim, setAim] = useState<Aim | null>(null);
   /** 샷 애니메이션 중 보여줄 알 위치. null이면 서버 상태 그대로 */
   const [frame, setFrame] = useState<Piece[] | null>(null);
@@ -302,36 +300,7 @@ export function CapybaraAlkkagi() {
               방 만들기
             </Button>
 
-            <section aria-labelledby="open-rooms" className="flex flex-col gap-2">
-              <h2 id="open-rooms" className="text-caption-1 font-semibold text-text-caption">
-                참가할 수 있는 방
-              </h2>
-              {openRooms.length === 0 ? (
-                <p className="py-6 text-center text-caption-1 text-text-caption">기다리는 방이 없어요. 방을 만들어 보세요</p>
-              ) : (
-                <ul className="flex max-h-64 flex-col gap-2 overflow-y-auto overscroll-contain">
-                  {openRooms.map((room) => (
-                    <li key={room.code}>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        disabled={pending}
-                        onClick={() => join(room.code)}
-                        className="h-12 w-full justify-between"
-                      >
-                        <span>
-                          방{" "}
-                          <strong translate="no" className="tracking-widest">
-                            {room.code}
-                          </strong>
-                        </span>
-                        <span>참가</span>
-                      </Button>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </section>
+            <OpenRoomList room={{ slug: "capybara-alkkagi", pending, join }} />
 
             {error && (
               <p role="alert" className="text-center text-caption-1 text-error">

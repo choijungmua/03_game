@@ -13,6 +13,7 @@ const STONE_NAME: Record<Stone, string> = { black: "갈색 카피바라", white:
 function renderRoom(view: RoomView<GomokuState>, sendEmote = vi.fn()) {
   const onPlay = vi.fn();
   const room: CapybaraRoomProps<GomokuState>["room"] = {
+    slug: "capybara-gomoku",
     view,
     error: "",
     pending: false,

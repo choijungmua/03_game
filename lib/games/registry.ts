@@ -53,6 +53,7 @@ export const GAMES: GameEntry[] = [
     pageName: "baduk",
     component: dynamic(() => import("@/app/games/_games/capybara-baduk")),
     seo: () => import("@/app/games/_games/capybara-baduk/seo"),
+    hideAbout: true,
   },
   {
     slug: "capybara-gomoku",
@@ -63,6 +64,7 @@ export const GAMES: GameEntry[] = [
     pageName: "gomoku",
     component: dynamic(() => import("@/app/games/_games/capybara-gomoku")),
     seo: () => import("@/app/games/_games/capybara-gomoku/seo"),
+    hideAbout: true,
   },
   {
     slug: "capybara-alkkagi",
