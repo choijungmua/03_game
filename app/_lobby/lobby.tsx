@@ -391,10 +391,12 @@ function drawOutfit(
   const anchorsOf = (slot: WardrobeSlot) => (sitting ? SLOT_INFO[slot].anchors : (WORLD_ANCHORS[wardrobeView][slot] ?? []));
   const put = (slot: WardrobeSlot, anchor: WardrobeAnchor) => {
     const id = outfit[slot];
-    const item = id ? outfitImage(wardrobeSrc(slot, id, wardrobeView)) : undefined;
+    const item = id ? outfitImage(wardrobeSrc(slot, id)) : undefined;
     if (!ready(item)) return;
-    const width = (size * anchor.width) / 100;
-    const height = (width * item.naturalHeight) / item.naturalWidth;
+    const fullWidth = (size * anchor.width) / 100;
+    const height = (fullWidth * item.naturalHeight) / item.naturalWidth;
+    // 옆모습은 앞모습 옷을 가로로만 좁혀 쓴다
+    const width = fullWidth * (anchor.squeeze ?? 1);
     const centerX = left + (size * (flip ? 100 - anchor.x : anchor.x)) / 100;
     const itemTop = top + (size * anchor.bottom) / 100 - height;
     // 짝(신발·장갑) 반전과 왼쪽 보기 반전이 겹치면 원래 방향

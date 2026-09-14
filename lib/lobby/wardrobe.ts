@@ -13,6 +13,8 @@ export interface WardrobeAnchor {
   bottom: number;
   width: number;
   mirror?: boolean;
+  /** 가로만 이 비율로 좁힌다 (높이는 width 기준 그대로). 앞모습 옷을 옆모습에 쓸 때 */
+  squeeze?: number;
 }
 
 interface WardrobeItem {
@@ -125,13 +127,14 @@ export const OVER_HEAD_LAYERS: readonly WardrobeSlot[] = ["gloves", "glasses", "
 export const HEAD_ELLIPSE = { x: 50, y: 28, rx: 40, ry: 23 } as const;
 export const HEAD_CLIP = `ellipse(${HEAD_ELLIPSE.rx}% ${HEAD_ELLIPSE.ry}% at ${HEAD_ELLIPSE.x}% ${HEAD_ELLIPSE.y}%)`;
 
-/** 옷 그림 방향. 옆모습은 오른쪽을 본 그림이고 왼쪽은 좌우 반전해 쓴다 */
+/** 스프라이트가 보여 주는 몸 방향. 옆모습 자리는 오른쪽을 본 그림 기준이고 왼쪽은 좌우 반전해 쓴다 */
 export type WardrobeView = "front" | "back" | "side";
 export const VIEW_OF: Record<Direction, WardrobeView> = { down: "front", up: "back", left: "side", right: "side" };
 
 /**
  * 로비 맵의 서기·걷기·때리기·긁기·졸기 스프라이트(모두 같은 몸 상자 x21–78%, y9–97%)에 얹는 자리.
- * front는 옷장 자리(SLOT_INFO)를 서 있는 몸 상자로 옮긴 값, side는 오른쪽을 본 그림 기준. 그 방향 그림이 없는 옷은 그리지 않는다.
+ * 옷 그림은 방향과 상관없이 앞모습 한 장을 쓴다 — 뒷모습은 그대로(뒤에서 봐도 옷 윤곽이 거의 같다), 옆모습은 squeeze로 좁힌다.
+ * front는 옷장 자리(SLOT_INFO)를 서 있는 몸 상자로 옮긴 값. 뒤에서는 안경이 안 보여서 back에 없다.
  * 앉은 정면(idle-down)은 옷장 미리보기와 같은 그림이라 SLOT_INFO 자리를 그대로 쓴다
  */
 export const WORLD_ANCHORS: Record<WardrobeView, Partial<Record<WardrobeSlot, readonly WardrobeAnchor[]>>> = {
@@ -165,13 +168,13 @@ export const WORLD_ANCHORS: Record<WardrobeView, Partial<Record<WardrobeSlot, re
     ],
   },
   side: {
-    hat: [{ x: 50, bottom: 23, width: 34 }],
-    glasses: [{ x: 66, bottom: 40, width: 22 }],
-    top: [{ x: 45, bottom: 85, width: 46 }],
-    bottom: [{ x: 45, bottom: 88, width: 46 }],
-    onepiece: [{ x: 45, bottom: 90, width: 44 }],
-    shoes: [{ x: 50, bottom: 101, width: 22 }],
-    gloves: [{ x: 60, bottom: 70, width: 12 }],
+    hat: [{ x: 50, bottom: 23, width: 36, squeeze: 0.9 }],
+    glasses: [{ x: 68, bottom: 42, width: 26, squeeze: 0.7 }],
+    top: [{ x: 46, bottom: 87, width: 70, squeeze: 0.8 }],
+    bottom: [{ x: 46, bottom: 90, width: 70, squeeze: 0.8 }],
+    onepiece: [{ x: 46, bottom: 92, width: 66, squeeze: 0.8 }],
+    shoes: [{ x: 50, bottom: 101, width: 22, squeeze: 0.9 }],
+    gloves: [{ x: 60, bottom: 64, width: 13 }],
   },
 };
 /** 서 있는 몸 상자의 머리 타원 (이미지 기준 %, side는 오른쪽을 본 그림 기준) */
@@ -181,8 +184,7 @@ export const WORLD_HEAD_ELLIPSE: Record<WardrobeView, { x: number; y: number; rx
   side: { x: 55, y: 30, rx: 23, ry: 22 },
 };
 
-export const wardrobeSrc = (slot: WardrobeSlot, id: string, view: WardrobeView = "front") =>
-  `/assets/images/characters/capybara/wardrobe/${slot}/${id}${view === "front" ? "" : `-${view}`}.webp`;
+export const wardrobeSrc = (slot: WardrobeSlot, id: string) => `/assets/images/characters/capybara/wardrobe/${slot}/${id}.webp`;
 
 /** 입거나(id) 벗는다(null). 한벌옷은 상의·하의와 함께 입을 수 없어서 서로 벗긴다 */
 export function wear(outfit: Outfit, slot: WardrobeSlot, id: string | null): Outfit {
