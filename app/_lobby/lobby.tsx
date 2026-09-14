@@ -7,6 +7,15 @@ import { useEffect, useEffectEvent, useRef, useState } from "react";
 
 import { cn } from "@/lib";
 
+import {
+  BUILDING_ASSETS,
+  GROUND_ASSETS,
+  type GroundId,
+  lobbyAssetSrc,
+  SPRITE_ASSETS,
+  type SpriteAsset,
+  type SpriteId,
+} from "@/lib/lobby/assets";
 import { ATTACK_COOLDOWN_MS, ATTACK_MS, type PresenceResponse } from "@/lib/lobby/presence";
 import {
   type Building,
@@ -31,19 +40,7 @@ import {
 
 type Pose = "stand" | "walk1" | "walk2";
 type SpriteKey = `${Pose}-${Facing}` |`sit-${Direction}` | `punch-${Direction}` | "stun" | `scratch-${1 | 2 | 3}`;
-type LobbyImage =
-  | "onsen"
-  | "log-seat"
-  | "lantern"
-  | "reeds"
-  | "grass-bush"
-  | "rocks"
-  | "tree-tropical"
-  | "palm"
-  | "fence"
-  | "lotus"
-  | "banana-bush";
-type Texture = "meadow" | "mud" | "water" | "deck";
+type Texture = GroundId;
 
 interface CapybaraLook {
   pose: Pose;
@@ -114,7 +111,6 @@ const SYNC_MS = 150;
 /** 텍스처 한 장이 덮는 월드 크기(px) — 타일의 배수여야 칸마다 이어진다 */
 const TEXTURE_SIZE = 192;
 const CHARACTER_BASE = "/assets/images/characters/capybara";
-const LOBBY_BASE = "/assets/images/lobby";
 
 const KEY_VECTORS: Partial<Record<string, [number, number]>> = {
   ArrowUp: [0, -1],
@@ -143,13 +139,7 @@ const TEXTURE_OF: Record<Tile, Texture> = {
   water: "water",
   deck: "deck",
 };
-/** 텍스처가 아직 없을 때 잠깐 쓰는 단색 */
-const TEXTURE_FALLBACK: Record<Texture, string> = {
-  meadow: "#8cbf3f",
-  mud: "#9a5a33",
-  water: "#79b59a",
-  deck: "#a8683f",
-};
+const GROUND_BY_ID = new Map(GROUND_ASSETS.map((asset) => [asset.id, asset]));
 
 function loadImage(src: string) {
   const image = new Image();
@@ -220,7 +210,7 @@ function drawChunk(
         TILE,
       );
     } else {
-      ctx.fillStyle = TEXTURE_FALLBACK[kind];
+      ctx.fillStyle = GROUND_BY_ID.get(kind)?.fallbackColor ?? "#8cbf3f";
       ctx.fillRect(x, y, TILE, TILE);
     }
     if (kind === "meadow") {
@@ -281,7 +271,7 @@ function drawBuilding(
   now: number,
   animate: boolean,
 ) {
-  const width = (BUILDING_WIDTH + 0.8) * TILE;
+  const width = BUILDING_ASSETS[building.variant].width * TILE;
   const centerX = (building.tx + BUILDING_WIDTH / 2) * TILE;
   const bottom = building.frontY + TILE * 0.5;
   if (!ready(image)) return;
@@ -506,15 +496,12 @@ export function Lobby({ games }: { games: DoorGame[] }) {
     sprites.set("stun", loadImage(`${CHARACTER_BASE}/capybara-stun.webp`));
     for (const n of [1, 2, 3] as const) sprites.set(`scratch-${n}`, loadImage(`${CHARACTER_BASE}/capybara-scratch-${n}.webp`));
 
-    const images = new Map<LobbyImage, HTMLImageElement>(
-      (
-        ["onsen", "log-seat", "lantern", "reeds", "grass-bush", "rocks", "tree-tropical", "palm", "fence", "lotus", "banana-bush"] as const
-      ).map((name) => [name, loadImage(`${LOBBY_BASE}/${name}.webp`)]),
+    // 로비 에셋은 lib/lobby/assets 레지스트리에서 읽는다 (에셋 하나 = 폴더 하나)
+    const images = new Map<SpriteId, { asset: SpriteAsset; image: HTMLImageElement }>(
+      SPRITE_ASSETS.map((asset) => [asset.id, { asset, image: loadImage(lobbyAssetSrc(asset)) }]),
     );
-    const textures = new Map<Texture, HTMLImageElement>(
-      (["meadow", "mud", "water", "deck"] as const).map((name) => [name, loadImage(`${LOBBY_BASE}/texture-${name}.webp`)]),
-    );
-    const buildingImages = [1, 2, 3].map((n) => loadImage(`${LOBBY_BASE}/hut-${n}.webp`));
+    const textures = new Map<Texture, HTMLImageElement>(GROUND_ASSETS.map((asset) => [asset.id, loadImage(lobbyAssetSrc(asset))]));
+    const buildingImages = BUILDING_ASSETS.map((asset) => loadImage(lobbyAssetSrc(asset)));
     const icons = new Map(world.doors.map((door) => [door.slug, loadImage(`/assets/images/games/${door.slug}/icon.webp`)]));
 
     // 타일은 청크(16×16) 단위로 한 번만 계산하고, 바닥은 청크마다 캔버스 한 장으로 구워 둔다
@@ -888,8 +875,12 @@ export function Lobby({ games }: { games: DoorGame[] }) {
 
       const inView = (x: number, y: number, margin: number) =>
         x > left - margin && x < left + view.width + margin && y > top - margin && y < top + view.height + margin * 3;
-      const sprite = (image: HTMLImageElement | undefined, x: number, bottom: number, width: number) => {
-        if (ready(image)) drawImageBottom(ctx, image, x, bottom, width);
+      /** 에셋 정의의 폭·바닥 보정대로 그린다. scale은 같은 에셋을 크기만 조금씩 다르게 흩뿌릴 때 */
+      const sprite = (id: SpriteId, x: number, bottom: number, scale = 1) => {
+        const entry = images.get(id);
+        if (entry && ready(entry.image)) {
+          drawImageBottom(ctx, entry.image, x, bottom + (entry.asset.offsetY ?? 0), entry.asset.width * TILE * scale);
+        }
       };
 
       // 발 위치(y) 순서로 그려서 오두막·나무·통나무 뒤로 걸어가면 가려진다
@@ -902,18 +893,17 @@ export function Lobby({ games }: { games: DoorGame[] }) {
           const noise = hash2(9, tx, ty);
           if (tile === "tree") {
             const kind = noise < 0.55 ? "tree-tropical" : "palm";
-            const width = TILE * (kind === "palm" ? 1.7 : 2.1) * (0.9 + noise * 0.25);
-            drawables.push({ y: bottom - TILE * 0.2, draw: () => sprite(images.get(kind), x, bottom, width) });
+            drawables.push({ y: bottom - TILE * 0.2, draw: () => sprite(kind, x, bottom, 0.9 + noise * 0.25) });
           } else if (tile === "fence") {
-            drawables.push({ y: bottom, draw: () => sprite(images.get("fence"), x, bottom + 2, TILE * 1.12) });
+            drawables.push({ y: bottom, draw: () => sprite("fence", x, bottom) });
           } else if (tile === "rock") {
-            drawables.push({ y: bottom, draw: () => sprite(images.get("rocks"), x, bottom + 2, TILE * 1.2) });
+            drawables.push({ y: bottom, draw: () => sprite("rocks", x, bottom) });
           } else if (tile === "water" && noise < 0.1) {
             // 수련은 물 위에 납작하게 떠 있어서 바닥처럼 먼저 그린다
-            sprite(images.get("lotus"), x, bottom - 6, TILE * 1.1);
+            sprite("lotus", x, bottom);
           } else if (tile === "grass" && noise < 0.035) {
             const kind = noise < 0.015 ? "banana-bush" : "grass-bush";
-            drawables.push({ y: bottom - 8, draw: () => sprite(images.get(kind), x, bottom - 6, TILE * (kind === "banana-bush" ? 1.3 : 0.9)) });
+            drawables.push({ y: bottom - 8, draw: () => sprite(kind, x, bottom) });
           }
         }
       }
@@ -937,7 +927,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
         drawables.push({
           y: spring.y + SPRING_RADIUS * TILE * 0.6,
           draw: () => {
-            sprite(images.get("onsen"), spring.x, spring.y + SPRING_RADIUS * TILE, (SPRING_RADIUS * 2 + 1.2) * TILE);
+            sprite("onsen", spring.x, spring.y + SPRING_RADIUS * TILE);
             drawSteam(ctx, spring.x, spring.y, now, !reducedMotion);
           },
         });
@@ -945,13 +935,13 @@ export function Lobby({ games }: { games: DoorGame[] }) {
       for (const seat of world.seats) {
         if (!inView(seat.seatX, seat.seatY, TILE * 3)) continue;
         const bottom = seat.seatY + TILE * 0.38;
-        drawables.push({ y: bottom, draw: () => sprite(images.get("log-seat"), seat.seatX, bottom + 4, TILE * 2.2) });
+        drawables.push({ y: bottom, draw: () => sprite("log-seat", seat.seatX, bottom) });
       }
       for (const prop of world.props) {
         const x = (prop.tx + 0.5) * TILE;
         if (!inView(x, prop.ty * TILE, TILE * 4)) continue;
         const bottom = (prop.ty + 0.9) * TILE;
-        drawables.push({ y: bottom, draw: () => sprite(images.get(prop.kind), x, bottom, prop.kind === "lantern" ? TILE : TILE * 1.1) });
+        drawables.push({ y: bottom, draw: () => sprite(prop.kind, x, bottom) });
       }
       for (const remote of remotes.values()) {
         const look: CapybaraLook = {

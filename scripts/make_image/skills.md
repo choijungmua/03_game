@@ -35,14 +35,25 @@ ggpli의 모든 카피바라 에셋은 **기본 카피바라 이미지(idle 4방
 ## 로비 에셋
 
 테마는 **카피바라 온천 습지 마을** (카피바라가 사는 남미 강가 습지 + 일본 동물원 카피바라 유자 온천).
-`public/assets/images/lobby/` (원본 `assets-src/lobby/`) — 카피바라 인형과 같은 털·펠트 봉제인형 질감 3D 미니어처, 약간 위에서 본 3/4 시점, 투명 배경
-- `onsen.webp`: 이끼 돌 테두리 유자 온천 (김은 코드로 그림)
-- `log-seat`, `lantern`, `reeds`, `grass-bush`, `rocks`: 소품 시트 1장에서 자름
-- `tree-tropical`, `palm`, `fence`(갈대 울타리), `lotus`, `banana-bush`: 자연 시트 1장에서 자름. 붙어 있는 소품은 알파 연결 요소(flood fill)로 나눈다
-- `hut-{1,2,3}.webp`: 게임 오두막 3종 (1 초가 원두막+나무 아케이드 간판, 2 카피바라 귀 풀 굴집+나무 휴대용 게임기 간판, 3 바나나잎 대나무 원두막+나무 TV 간판). 간판 화면은 비워 둔다 (게임 표시는 지붕 위 아이콘 하나)
+카피바라 인형과 같은 털·펠트 봉제인형 질감 3D 미니어처, 약간 위에서 본 3/4 시점, 투명 배경
+
+**에셋 하나 = 폴더 하나.** 분류(`ground` 바닥 텍스처 · `nature` 자연물 · `props` 마을 소품 · `buildings` 오두막)마다 에셋 id 폴더를 둔다
+
+```
+lib/lobby/assets/<분류>/<id>/index.ts              # 정의: 그릴 폭(타일)·바닥 보정(px)·대체 색
+public/assets/images/lobby/<분류>/<id>/image.webp  # 게임용 이미지
+assets-src/lobby/<분류>/<id>/source.png            # 생성 원본
+```
+
+새 로비 에셋 추가: 위 세 파일을 만들고 `lib/lobby/assets/index.ts` 레지스트리 배열에 한 줄 추가 (오두막은 `BUILDING_ASSETS`에 넣으면 종류가 자동으로 늘어난다). `lib/lobby/assets/assets.test.ts`가 이미지 누락·id 중복을 잡는다
+
+- `props/onsen`: 이끼 돌 테두리 유자 온천 (김은 코드로 그림)
+- `props/log-seat`, `props/lantern`, `nature/reeds`, `nature/grass-bush`, `nature/rocks`: 소품 시트 1장에서 자름
+- `nature/tree-tropical`, `nature/palm`, `props/fence`(갈대 울타리), `nature/lotus`, `nature/banana-bush`: 자연 시트 1장에서 자름. 붙어 있는 소품은 알파 연결 요소(flood fill)로 나눈다
+- `buildings/hut-{1,2,3}`: 게임 오두막 3종 (1 초가 원두막+나무 아케이드 간판, 2 카피바라 귀 풀 굴집+나무 휴대용 게임기 간판, 3 바나나잎 대나무 원두막+나무 TV 간판). 간판 화면은 비워 둔다 (게임 표시는 지붕 위 아이콘 하나)
 - 게임 아이콘: `public/assets/images/games/<slug>/icon.webp` (원본 `assets-src/games/<slug>/icon.png`) — 오두막 지붕 위에 뜨는, 그 게임을 알리는 소품 하나. 로비에서 게임을 알리는 표시는 이것 하나뿐이다 (간판 화면에 로고 넣지 않음). 마을 테마에 맞게 나무·잎사귀·조약돌·코코넛 같은 자연 소재 + 펠트 질감 (반응속도=나무 스톱워치, 클릭=나무·이끼 마우스, 몰래 먹기=잎 접시 위 수박, 슈팅=나무·대나무 비행기, 바둑=코코넛 그릇 조약돌, 오목=통나무 판 조약돌, 알까기=통나무 판 위 튕기는 조약돌). 투명 배경, 가장자리까지 자른 뒤 384px 이하. 없으면 아이콘 없이 오두막만 보인다
 - 이전 포털 에셋은 `assets-src/lobby/_archive-portal/`에 보관 (사용 안 함)
-- `texture-{meadow,mud,water,deck}.webp`: 192×192 바닥 텍스처 (2×2 시트 1장 → 칸마다 반 칸 밀어 가장자리 블렌딩, 데크는 판자 줄이라 그대로). 월드 192px(4타일)마다 반복
+- `ground/{meadow,mud,water,deck}`: 192×192 바닥 텍스처 (2×2 시트 1장 → 칸마다 반 칸 밀어 가장자리 블렌딩, 데크는 판자 줄이라 그대로). 월드 192px(4타일)마다 반복
 - 이전 영국 광장 에셋은 `assets-src/lobby/_archive-british-square/`에 보관 (사용 안 함)
 
 **화풍 일치:** 로비 에셋은 카피바라 기준이다. 새로 만들 때 `assets-src/characters/capybara/capybara-idle-down.png`를 참고 이미지(`-i`)로 넣고 프롬프트에 "첨부 카피바라 인형과 같은 털·펠트 봉제인형 질감"을 적는다. 도시·석조·네온처럼 카피바라가 살지 않을 곳의 소재는 쓰지 않는다
