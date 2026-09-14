@@ -165,15 +165,16 @@ describe("ReactionTime", () => {
   });
 
   describe("측정", () => {
-    it("1이 끝나면 초록 화면에서 0ms부터 1ms 단위로 올라간다", async () => {
+    it("1이 끝나면 초록 화면에서 0ms부터 화면 프레임마다 올라간다", async () => {
       render(<ReactionTime />);
       await startAndFinishCountdown();
       expect(getArea()).toHaveAttribute("data-phase", "running");
       expect(getArea()).toHaveClass("bg-success");
       expect(screen.getByTestId("timer")).toHaveTextContent("0");
 
-      await advance(37);
-      expect(screen.getByTestId("timer")).toHaveTextContent("37");
+      // 가짜 타이머의 requestAnimationFrame은 16ms마다 돈다
+      await advance(48);
+      expect(screen.getByTestId("timer")).toHaveTextContent("48");
       expect(getAdSlot()).toBeNull();
     });
 

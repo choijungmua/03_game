@@ -9,6 +9,7 @@ import { ShareButton } from "@/components/games/share-button";
 import { cn } from "@/lib";
 import { GAME_TITLES } from "@/lib/games/constants";
 import { submitGameRecord } from "@/lib/games/supabase";
+import { useFrameText } from "@/lib/games/use-frame-text";
 import { useInView } from "@/lib/games/use-in-view";
 
 import { ReactionLeaderboard } from "./leaderboard";
@@ -31,17 +32,13 @@ function stopPropagation(event: React.SyntheticEvent) {
 }
 
 function RunningTimer({ startAt }: { startAt: number }) {
-  const [elapsedMs, setElapsedMs] = useState(0);
-
-  useEffect(() => {
-    const id = setInterval(() => setElapsedMs(Date.now() - startAt), 1);
-    return () => clearInterval(id);
-  }, [startAt]);
+  const valueRef = useRef<HTMLSpanElement>(null);
+  useFrameText(valueRef, () => String(Date.now() - startAt));
 
   return (
     <p className="flex items-baseline gap-2 font-black tabular-nums">
-      <span data-testid="timer" className="text-[8rem] leading-none sm:text-[11rem]">
-        {elapsedMs}
+      <span ref={valueRef} data-testid="timer" className="text-[8rem] leading-none sm:text-[11rem]">
+        0
       </span>
       <span className="text-title-1">ms</span>
     </p>

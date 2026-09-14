@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { useEffect, useEffectEvent, useRef, useState } from "react";
+import { memo, useEffect, useEffectEvent, useRef, useState } from "react";
 
 import { AdSlot } from "@/components/ads/ad-slot";
 import { Progress } from "@/components/feedback/progress";
@@ -76,6 +76,146 @@ const OWNER_STATUS_MESSAGE: Record<OwnerState, string> = {
 function preventDefault(event: React.SyntheticEvent) {
   event.preventDefault();
 }
+
+interface StageProps {
+  ownerState: OwnerState;
+  foodStage: FoodStage;
+  pose: CapybaraPose;
+  munching: boolean;
+}
+
+/**
+ * 주방 무대(배경·주인·수박·카피바라 그림). 게이지는 누르는 동안 80ms마다 바뀌지만 무대는 그때 바뀌지 않으므로
+ * memo로 묶어 그림 10장을 매번 다시 그리지 않는다
+ */
+const SneakStage = memo(function SneakStage({ ownerState, foodStage, pose, munching }: StageProps) {
+  const ownerImage = ownerState === "looking" ? "looking" : "away";
+
+  return (
+    <>
+      {/* 세로 화면에서 무대 위아래 빈 곳을 같은 배경을 흐리게 깔아 채운다 */}
+      <Image
+        src={`${ASSET}/background/back.webp`}
+        alt=""
+        aria-hidden="true"
+        fill
+        sizes="100vw"
+        draggable={false}
+        className="pointer-events-none scale-110 object-cover opacity-70 blur-2xl"
+      />
+
+      {/* 가로 화면에서는 16:9 무대가 화면을 꽉 덮도록(넘치는 쪽은 가운데 기준으로 잘림) 정중앙에 고정한다 */}
+      <div className="@container absolute top-1/2 left-1/2 aspect-video w-full -translate-x-1/2 -translate-y-1/2 landscape:w-[max(100%,calc(100dvh*16/9))]">
+        <Image
+          src={`${ASSET}/background/back.webp`}
+          alt="창밖으로 나무가 보이는 주방"
+          fill
+          priority
+          sizes="100vw"
+          draggable={false}
+          className="pointer-events-none object-cover"
+        />
+
+        <div data-testid="owner" data-state={ownerState} className="absolute inset-0">
+          {(["away", "looking"] as const).map((key) => (
+            <Image
+              key={key}
+              src={OWNER_IMAGES[key].src}
+              alt={ownerImage === key ? OWNER_IMAGES[key].alt : ""}
+              aria-hidden={ownerImage === key ? undefined : true}
+              width={1086}
+              height={1448}
+              loading="eager"
+              sizes={SPRITE_SIZES}
+              draggable={false}
+              className={cn(
+                "pointer-events-none absolute h-auto",
+                ownerImage === key ? "opacity-100" : "opacity-0",
+              )}
+              style={OWNER_BOX}
+            />
+          ))}
+          {ownerState === "turning" && (
+            <span
+              data-testid="owner-warning"
+              aria-hidden="true"
+              className="absolute top-[13%] left-[49.7%] flex size-[5cqw] -translate-x-1/2 animate-bounce items-center justify-center rounded-full bg-warning text-[3.4cqw] font-black text-neutral-950 shadow-lg"
+            >
+              !
+            </span>
+          )}
+        </div>
+
+        <Image
+          src={`${ASSET}/background/front.webp`}
+          alt=""
+          aria-hidden="true"
+          fill
+          sizes="100vw"
+          draggable={false}
+          className="pointer-events-none object-cover"
+        />
+
+        <div data-testid="food" data-stage={foodStage} className="absolute inset-0">
+          <span className="absolute top-[84%] left-[43.75%] h-[2.5%] w-[12.5%] rounded-full bg-black/15 blur-sm" />
+          {(["full", "half", "empty"] as const).map((stage) => (
+            <Image
+              key={stage}
+              src={`${ASSET}/food/watermelon-${stage}.png`}
+              alt={foodStage === stage ? FOOD_IMAGES[stage] : ""}
+              aria-hidden={foodStage === stage ? undefined : true}
+              width={1254}
+              height={1254}
+              loading="eager"
+              sizes={SPRITE_SIZES}
+              draggable={false}
+              className={cn(
+                "pointer-events-none absolute h-auto",
+                foodStage === stage ? "opacity-100" : "opacity-0",
+                munching && "animate-plate-shake",
+              )}
+              style={FOOD_BOX}
+            />
+          ))}
+        </div>
+
+        <div data-testid="capybara" data-pose={pose} className="absolute inset-0">
+          <span className="absolute top-[86.5%] left-[61.35%] h-[3.5%] w-[18%] rounded-full bg-black/15 blur-sm" />
+          {(["idle", "eating", "caught"] as const).map((key) => (
+            <Image
+              key={key}
+              src={`${ASSET}/capybara/capybara-${key}.png`}
+              alt={pose === key ? CAPYBARA_IMAGES[key] : ""}
+              aria-hidden={pose === key ? undefined : true}
+              width={1254}
+              height={1254}
+              loading="eager"
+              sizes={SPRITE_SIZES}
+              draggable={false}
+              className={cn(
+                "pointer-events-none absolute h-auto origin-bottom",
+                pose === key ? "opacity-100" : "opacity-0",
+                munching && key === "eating" && "animate-munch",
+              )}
+              style={CAPYBARA_BOXES[key]}
+            />
+          ))}
+          {munching &&
+            (["와구", "와구", "냠"] as const).map((word, i) => (
+              <span
+                key={i}
+                aria-hidden="true"
+                className="absolute top-[52%] animate-munch-pop text-[2.6cqw] font-black text-white opacity-0 [paint-order:stroke] [-webkit-text-stroke:0.4cqw_rgb(0_0_0/0.55)]"
+                style={{ left: `${56 + i * 4}%`, animationDelay: `${i * 200}ms` }}
+              >
+                {word}
+              </span>
+            ))}
+        </div>
+      </div>
+    </>
+  );
+});
 
 export function CapybaraSneak() {
   const [status, setStatus] = useState<GameStatus>("ready");
@@ -304,8 +444,6 @@ export function CapybaraSneak() {
     setPaused(true);
   }
 
-  const foodStage = getFoodStage(gauge);
-  const ownerImage = ownerState === "looking" ? "looking" : "away";
   const isOver = status === "success" || status === "fail";
   const isShrinking = trend === "down" && gauge > 0;
   const pose: CapybaraPose =
@@ -325,126 +463,7 @@ export function CapybaraSneak() {
         {OWNER_STATUS_MESSAGE[ownerState]}
       </p>
 
-      {/* 세로 화면에서 무대 위아래 빈 곳을 같은 배경을 흐리게 깔아 채운다 */}
-      <Image
-        src={`${ASSET}/background/back.webp`}
-        alt=""
-        aria-hidden="true"
-        fill
-        sizes="100vw"
-        draggable={false}
-        className="pointer-events-none scale-110 object-cover opacity-70 blur-2xl"
-      />
-
-      {/* 가로 화면에서는 16:9 무대가 화면을 꽉 덮도록(넘치는 쪽은 가운데 기준으로 잘림) 정중앙에 고정한다 */}
-      <div className="@container absolute top-1/2 left-1/2 aspect-video w-full -translate-x-1/2 -translate-y-1/2 landscape:w-[max(100%,calc(100dvh*16/9))]">
-        <Image
-          src={`${ASSET}/background/back.webp`}
-          alt="창밖으로 나무가 보이는 주방"
-          fill
-          priority
-          sizes="100vw"
-          draggable={false}
-          className="pointer-events-none object-cover"
-        />
-
-        <div data-testid="owner" data-state={ownerState} className="absolute inset-0">
-          {(["away", "looking"] as const).map((key) => (
-            <Image
-              key={key}
-              src={OWNER_IMAGES[key].src}
-              alt={ownerImage === key ? OWNER_IMAGES[key].alt : ""}
-              aria-hidden={ownerImage === key ? undefined : true}
-              width={1086}
-              height={1448}
-              loading="eager"
-              sizes={SPRITE_SIZES}
-              draggable={false}
-              className={cn(
-                "pointer-events-none absolute h-auto",
-                ownerImage === key ? "opacity-100" : "opacity-0",
-              )}
-              style={OWNER_BOX}
-            />
-          ))}
-          {ownerState === "turning" && (
-            <span
-              data-testid="owner-warning"
-              aria-hidden="true"
-              className="absolute top-[13%] left-[49.7%] flex size-[5cqw] -translate-x-1/2 animate-bounce items-center justify-center rounded-full bg-warning text-[3.4cqw] font-black text-neutral-950 shadow-lg"
-            >
-              !
-            </span>
-          )}
-        </div>
-
-        <Image
-          src={`${ASSET}/background/front.webp`}
-          alt=""
-          aria-hidden="true"
-          fill
-          sizes="100vw"
-          draggable={false}
-          className="pointer-events-none object-cover"
-        />
-
-        <div data-testid="food" data-stage={foodStage} className="absolute inset-0">
-          <span className="absolute top-[84%] left-[43.75%] h-[2.5%] w-[12.5%] rounded-full bg-black/15 blur-sm" />
-          {(["full", "half", "empty"] as const).map((stage) => (
-            <Image
-              key={stage}
-              src={`${ASSET}/food/watermelon-${stage}.png`}
-              alt={foodStage === stage ? FOOD_IMAGES[stage] : ""}
-              aria-hidden={foodStage === stage ? undefined : true}
-              width={1254}
-              height={1254}
-              loading="eager"
-              sizes={SPRITE_SIZES}
-              draggable={false}
-              className={cn(
-                "pointer-events-none absolute h-auto",
-                foodStage === stage ? "opacity-100" : "opacity-0",
-                munching && "animate-plate-shake",
-              )}
-              style={FOOD_BOX}
-            />
-          ))}
-        </div>
-
-        <div data-testid="capybara" data-pose={pose} className="absolute inset-0">
-          <span className="absolute top-[86.5%] left-[61.35%] h-[3.5%] w-[18%] rounded-full bg-black/15 blur-sm" />
-          {(["idle", "eating", "caught"] as const).map((key) => (
-            <Image
-              key={key}
-              src={`${ASSET}/capybara/capybara-${key}.png`}
-              alt={pose === key ? CAPYBARA_IMAGES[key] : ""}
-              aria-hidden={pose === key ? undefined : true}
-              width={1254}
-              height={1254}
-              loading="eager"
-              sizes={SPRITE_SIZES}
-              draggable={false}
-              className={cn(
-                "pointer-events-none absolute h-auto origin-bottom",
-                pose === key ? "opacity-100" : "opacity-0",
-                munching && key === "eating" && "animate-munch",
-              )}
-              style={CAPYBARA_BOXES[key]}
-            />
-          ))}
-          {munching &&
-            (["와구", "와구", "냠"] as const).map((word, i) => (
-              <span
-                key={i}
-                aria-hidden="true"
-                className="absolute top-[52%] animate-munch-pop text-[2.6cqw] font-black text-white opacity-0 [paint-order:stroke] [-webkit-text-stroke:0.4cqw_rgb(0_0_0/0.55)]"
-                style={{ left: `${56 + i * 4}%`, animationDelay: `${i * 200}ms` }}
-              >
-                {word}
-              </span>
-            ))}
-        </div>
-      </div>
+      <SneakStage ownerState={ownerState} foodStage={getFoodStage(gauge)} pose={pose} munching={munching} />
 
       <div
         data-testid="gauge-panel"
