@@ -28,7 +28,7 @@ import { CAPYBARA_EMOTES, emoteChat, emoteImage, parseEmoteChat } from "@/lib/ga
 
 import { BUBBLE_LINE, BUBBLE_TEXT_WIDTH, EMOTE_SIZE } from "./constants";
 import { EmotePicker } from "./emote-picker";
-import { SettingsMenu, SoundToggle, TOOLBAR } from "./lobby-settings";
+import { SoundToggle } from "./lobby-settings";
 import {
   ATTACK_COOLDOWN_MS,
   ATTACK_MS,
@@ -1559,17 +1559,14 @@ export function Lobby({ games }: { games: DoorGame[] }) {
         </p>
       </form>
 
-      {/* 오른쪽 위 세로 줄: 카피바라 옷장 → 설정·효과음 툴바 */}
-      <div className="absolute right-3 top-[max(0.75rem,env(safe-area-inset-top))] flex flex-col items-end gap-2">
+      {/* 오른쪽 위 세로 줄: 카피바라 옷장 → 효과음. 설정 버튼은 나중에 이 줄에 다시 넣는다 */}
+      <div className="absolute right-3 top-[max(0.75rem,env(safe-area-inset-top))] flex flex-col items-center gap-2">
         <Wardrobe
           onChange={(outfit) => {
             outfitRef.current = outfit;
           }}
         />
-        <div className={TOOLBAR}>
-          <SettingsMenu settings={settings} onChange={updateSettings} />
-          <SoundToggle settings={settings} onChange={updateSettings} />
-        </div>
+        <SoundToggle settings={settings} onChange={updateSettings} />
       </div>
 
       <div className="pointer-events-none absolute inset-x-0 bottom-0 flex flex-col items-center gap-2 px-4 pb-[max(1.25rem,env(safe-area-inset-bottom))]">
