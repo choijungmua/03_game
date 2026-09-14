@@ -7,7 +7,7 @@ import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { Checkbox } from "@/components/inputs/checkbox";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib";
-import type { LobbySettings } from "@/lib/lobby/settings";
+import { type LobbySettings, toggledSound, withVolume } from "@/lib/lobby/settings";
 
 import { FRAME_SRC } from "./constants";
 import { flashButton, isShortcutKey } from "./shortcut";
@@ -67,7 +67,7 @@ export function SoundToggle({ settings, onChange }: SettingsProps) {
     event.preventDefault();
     // 아이콘 오버레이의 group이 감싼 div라서 거기에 표시한다
     flashButton(rootRef.current);
-    onChange({ ...settings, muted: !settings.muted });
+    onChange(toggledSound(settings));
   });
   useEffect(() => {
     window.addEventListener("keydown", onShortcut);
@@ -88,10 +88,10 @@ export function SoundToggle({ settings, onChange }: SettingsProps) {
             openPeek();
             if (!peek) return;
           }
-          onChange({ ...settings, muted: !settings.muted });
+          onChange(toggledSound(settings));
         }}
         aria-label="효과음"
-        aria-pressed={!settings.muted}
+        aria-pressed={volume > 0}
         aria-keyshortcuts="M"
         // 크기는 오른쪽 아래 앉기·때리기 버튼(모바일 size-14, md 이상 size-18)과 같게. 헤드폰 위치는 버튼 기준 %라 같이 커진다
         className="relative size-14 md:size-18 rounded-full bg-card/90 shadow-md backdrop-blur focus-visible:outline-2 focus-visible:outline-primary"
@@ -153,8 +153,8 @@ export function SoundToggle({ settings, onChange }: SettingsProps) {
             max={100}
             step={5}
             value={volume}
-            // 음소거 중에 음량을 올리면 소리도 같이 켠다
-            onChange={(event) => onChange({ ...settings, volume: Number(event.currentTarget.value) / 100, muted: false })}
+            // 음소거 중에 음량을 올리면 소리도 같이 켜고, 0으로 내리면 끄되 직전 음량은 남긴다 (게임 멈춤 창과 같은 규칙)
+            onChange={(event) => onChange(withVolume(settings, Number(event.currentTarget.value) / 100))}
             // 게이지는 카피바라 털색: 찬 쪽 털색, 빈 쪽 밝은 털색, 손잡이는 주둥이색.
             // 누르는 영역은 알약 높이(44px) 전체, 보이는 막대는 가운데 8px만(bg-clip-content). 터치 기기는 손잡이를 키운다
             className="h-11 w-28 cursor-pointer touch-none appearance-none rounded-full bg-clip-content py-[18px] focus-visible:outline-2 focus-visible:outline-offset-0 focus-visible:outline-capybara-dark [&::-moz-range-thumb]:size-4 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:border-0 [&::-moz-range-thumb]:bg-capybara-dark [&::-webkit-slider-thumb]:size-4 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-capybara-dark [&::-webkit-slider-thumb]:shadow-md pointer-coarse:[&::-moz-range-thumb]:size-6 pointer-coarse:[&::-webkit-slider-thumb]:size-6"

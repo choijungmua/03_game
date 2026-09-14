@@ -6,7 +6,8 @@ import { memo, useEffect, useEffectEvent, useRef, useState } from "react";
 import { AdSlot } from "@/components/ads/ad-slot";
 import { Progress } from "@/components/feedback/progress";
 import { GameControls } from "@/components/games/game-controls";
-import { Button } from "@/components/inputs/button";
+import { Button, buttonVariants } from "@/components/inputs/button";
+import { LobbyLink } from "@/components/navigation/lobby-link";
 import { Dialog } from "@/components/overlay/dialog";
 import { cn } from "@/lib";
 import { GAME_SOUNDS, GAME_TITLES } from "@/lib/games/constants";
@@ -598,8 +599,13 @@ export function CapybaraSneak() {
             className="h-12 w-full text-title-3 font-bold">
             다시 하기
           </Button>
+          {/* 창이 화면을 덮어 왼쪽 위 뒤로 버튼을 누를 수 없으니 창 안에서도 나갈 수 있게 한다 */}
+          <LobbyLink className={cn(buttonVariants({ variant: "ghost" }), "h-12 w-full")}>로비로</LobbyLink>
 
-          <AdSlot placement="capybara-sneak-result" />
+          {/* 광고는 버튼과 충분히 떼어 둔다 (실수 클릭 방지) */}
+          <div className="mt-6">
+            <AdSlot placement="capybara-sneak-result" />
+          </div>
         </Dialog.Content>
       </Dialog>
     </div>

@@ -9,11 +9,14 @@ export function useLockPageScroll(active: boolean) {
     if (!active) return;
 
     const html = document.documentElement;
-    const previous = html.style.overflow;
+    const previous = { overflow: html.style.overflow, gutter: html.style.scrollbarGutter };
     if (window.scrollY > 0) window.scrollTo(0, 0);
+    // 스크롤바가 있던 페이지는 막는 순간 스크롤바가 사라져 화면 폭이 늘고 내용이 옆으로 튄다 — 그 자리를 비워 둔다
+    if (html.scrollHeight > window.innerHeight) html.style.scrollbarGutter = "stable";
     html.style.overflow = "hidden";
     return () => {
-      html.style.overflow = previous;
+      html.style.overflow = previous.overflow;
+      html.style.scrollbarGutter = previous.gutter;
     };
   }, [active]);
 }
