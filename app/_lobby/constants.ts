@@ -12,8 +12,8 @@ export const EMOTES_PER_PAGE = 8;
 export const FRAME_SRC = "/assets/images/ui/lobby/frame.webp";
 /** 물가에서 뜨는 낚시 버튼 그림 (나무 테·펠트 판 위 낚싯대와 찌) */
 export const FISH_BUTTON_SRC = "/assets/images/ui/lobby/fish.webp";
-/** 오른쪽 위 낚시 가방 버튼 그림 (나무 테·펠트 판 위 잎 바구니) */
-export const FISH_BAG_SRC = "/assets/images/ui/lobby/fish-bag.webp";
+/** 오른쪽 위 낚시 가방 버튼 그림 (나무 테·펠트 판 위 카피바라 얼굴 백팩) */
+export const FISH_BAG_SRC = "/assets/images/ui/lobby/bag.webp";
 /** 단축키(F·Space·P·M)로 누른 버튼에 hover 아이콘을 잠깐 띄우는 시간(ms) */
 export const SHORTCUT_FLASH_MS = 300;
 
