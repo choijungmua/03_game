@@ -10,6 +10,10 @@ export const EMOTE_PICKER_ICON = 3;
 export const EMOTES_PER_PAGE = 8;
 /** 앉기·때리기 버튼과 같은 나무 테두리 (punch.webp에서 테두리만 오려낸 그림). 프로필·효과음 원 위에 덮는다 */
 export const FRAME_SRC = "/assets/images/ui/lobby/frame.webp";
+/** 물가에서 뜨는 낚시 버튼 그림 (나무 테·펠트 판 위 낚싯대 든 카피바라) */
+export const FISH_BUTTON_SRC = "/assets/images/ui/lobby/fish.webp";
+/** 오른쪽 위 낚시 가방 버튼 그림 (나무 테·펠트 판 위 카피바라 얼굴 백팩) */
+export const FISH_BAG_SRC = "/assets/images/ui/lobby/bag.webp";
 /** 단축키(F·Space·P·M)로 누른 버튼에 hover 아이콘을 잠깐 띄우는 시간(ms) */
 export const SHORTCUT_FLASH_MS = 300;
 
@@ -24,7 +28,7 @@ export const KEYBOARD_ROWS = [
 export const LOBBY_KEY_GUIDE = [
   { keys: ["W", "A", "S", "D", "↑", "←", "↓", "→"], label: "걷기" },
   { keys: ["F", "J"], label: "때리기" },
-  { keys: ["Space"], label: "통나무 앞에서 앉기 · 물가에서 낚시" },
+  { keys: ["Space"], label: "통나무 앞에서 앉기 · 물가에서 계속 낚시(한 번 더 누르면 그만)" },
   { keys: ["Enter"], label: "채팅 · 오두막 문 앞이면 바로 입장" },
   { keys: [","], label: "이모티콘" },
   { keys: ["P"], label: "프로필(옷장)" },

@@ -50,6 +50,7 @@ import {
 import {
   applyFishEvent,
   type FishCatch,
+  fishCatchSrc,
   type FishEvent,
   type FishingLine,
   type FishInventory,
@@ -64,7 +65,7 @@ import { markLobbyExit } from "@/components/navigation/lobby-link";
 
 import { CAPYBARA_EMOTES, emoteChat, emoteImage, parseEmoteChat } from "@/lib/games/emotes";
 
-import { BUBBLE_LINE, BUBBLE_TEXT_WIDTH, EMOTE_SIZE, FRAME_SRC, SITE_LINKS } from "./constants";
+import { BUBBLE_LINE, BUBBLE_TEXT_WIDTH, EMOTE_SIZE, FISH_BUTTON_SRC, SITE_LINKS } from "./constants";
 import { EmotePicker } from "./emote-picker";
 import { FishBag } from "./fish-bag";
 import { KeyboardGuide } from "./keyboard-guide";
@@ -780,10 +781,31 @@ function drawBobber(ctx: CanvasRenderingContext2D, x: number, y: number) {
   ctx.fill();
 }
 
-/** 낚은 것 그림: 물고기는 꼬리·몸통·눈(입이 +x 쪽), 장화는 장화 모양. angle만큼 돌려 버둥대게 한다 */
+/** 낚은 것 펠트 그림 (가방 창과 같은 그림). 처음 그릴 때 한 번만 불러온다 */
+const catchImages = new Map<FishCatch, HTMLImageElement>();
+const catchImage = (name: FishCatch) => {
+  let image = catchImages.get(name);
+  if (!image) {
+    image = loadImage(fishCatchSrc(name));
+    catchImages.set(name, image);
+  }
+  return image;
+};
+
+/** 낚은 것 그림: 펠트 그림(입이 +x 쪽)을 angle만큼 돌려 버둥대게 한다. 그림을 아직 못 받았으면 꼬리·몸통·눈 도형으로 */
 function drawCatch(ctx: CanvasRenderingContext2D, name: FishCatch, x: number, y: number, angle: number) {
   const { color, size } = FISH_LOOKS[name];
   const half = size / 2;
+  const image = catchImage(name);
+  if (ready(image)) {
+    const side = size * 1.6; // 그림 칸에 여백이 있어 도형보다 조금 크게
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(angle);
+    ctx.drawImage(image, -side / 2, -side / 2, side, side);
+    ctx.restore();
+    return;
+  }
   ctx.save();
   ctx.translate(x, y);
   ctx.rotate(angle);
@@ -973,7 +995,7 @@ function facingOf(dx: number, dy: number): Facing {
 export function Lobby({ games }: { games: DoorGame[] }) {
   const router = useRouter();
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  /** Space(앉기·낚시 버튼): 통나무 앞이면 앉기·일어나기, 물가면 찌 던지기·당기기 */
+  /** Space(앉기·낚시 버튼): 통나무 앞이면 앉기·일어나기, 물가면 계속 낚기 시작·그만하기 */
   const spaceRequest = useRef(false);
   const attackRequest = useRef(false);
   const joystickRef = useRef<HTMLDivElement>(null);
@@ -1003,7 +1025,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
   const [seatNearby, setSeatNearby] = useState(false);
   const [waterNearby, setWaterNearby] = useState(false);
   const [fishing, setFishing] = useState(false);
-  /** 자동 낚시: 입질이 오면 알아서 당기고 다시 던진다. 걷기·때리기·기절이면 꺼진다. 게임 루프는 ref로 읽는다 */
+  /** 계속 낚기: 물가에서 Space로 던지면 켜져서 입질마다 알아서 당기고 다시 던진다. Space를 다시 누르거나 걷기·때리기·기절이면 꺼진다. 게임 루프는 ref로 읽는다 */
   const [autoFishing, setAutoFishing] = useState(false);
   const autoFishingRef = useRef(false);
   /** 낚시 가방. 게임 루프가 낚을 때마다 저장하고 새 값을 넣는다 */
@@ -1602,17 +1624,17 @@ export function Lobby({ games }: { games: DoorGame[] }) {
         const water = me.fishing || me.sitting ? null : nearestWater(tileAt, me.x, me.y, FISH_REACH);
         if (isStunned) {
           // 기절 중엔 무시
-        } else if (me.fishing) {
-          // 당기기: 찌가 쑥 들어간 뒤(입질)에 당겨야 낚인다. 늦으면 아래에서 먼저 놓친다. 끌어올리는 중엔 무시
-          if (me.fishing.reelAt === Infinity) {
-            const bit = now >= me.fishing.biteAt;
-            reelLine(now, bit);
-            if (!bit) showNotice("너무 빨리 당겼어요. 찌가 쑥 들어가면 당겨요");
-          }
+        } else if (me.fishing || autoFishingRef.current) {
+          // 계속 낚는 중에 Space: 그만 낚는다. 입질이 와 있으면 그 물고기는 낚고 멈춘다 (이미 당겼으면 reelLine이 무시)
+          if (me.fishing) reelLine(now, now >= me.fishing.biteAt);
+          stopAuto();
         } else if (me.sitting) {
           standUp();
         } else if (nearestSeat() < 0 && water) {
+          // 한 번 던지면 멈출 때까지 입질마다 알아서 당기고 다시 던진다 (아래 게임 루프)
           castLine(water, now);
+          autoFishingRef.current = true;
+          setAutoFishing(true);
         } else {
           const index = nearestSeat();
           if (index >= 0 && !seatTaken(index)) {
@@ -2211,37 +2233,38 @@ export function Lobby({ games }: { games: DoorGame[] }) {
               <span className="rounded-full bg-card/85 px-2 py-0.5 text-caption-3 font-semibold text-text-strong">{sitting ? "일어나기" : "앉기"}</span>
             </button>
           )}
-          {(waterNearby || fishing) && (
+          {(waterNearby || fishing || autoFishing) && (
             <button
               ref={fishButtonRef}
               type="button"
               onClick={() => {
                 spaceRequest.current = true;
               }}
-              aria-pressed={fishing}
-              aria-label={fishing ? "낚싯대 당기기" : "낚시하기"}
+              aria-pressed={autoFishing}
+              aria-label={autoFishing ? "낚시 그만하기" : "낚시하기 (멈출 때까지 계속 낚아요)"}
               aria-keyshortcuts="Space"
               className="group flex flex-col items-center gap-0.5 rounded-full focus-visible:outline-2 focus-visible:outline-primary"
             >
-              {/* 그림 버튼이 아직 없어서 옷장 버튼처럼 나무 테 안에 아이콘을 둔다 */}
-              <span className="relative flex size-14 items-center md:size-18 justify-center rounded-full bg-card/90 text-text-strong shadow-md transition-transform duration-100 motion-safe:group-active:scale-90 group-hover:text-primary group-data-flash:text-primary">
-                <Fish className="size-8" aria-hidden />
-                <NextImage src={FRAME_SRC} alt="" fill unoptimized sizes="72px" draggable={false} />
+              {/* 누르면 그림과 아이콘이 같이 줄어들게 감싼 쪽에 scale을 준다 */}
+              <span className="relative block size-14 transition-transform md:size-18 duration-100 motion-safe:group-active:scale-90">
+                <NextImage
+                  src={FISH_BUTTON_SRC}
+                  alt=""
+                  width={256}
+                  height={256}
+                  unoptimized
+                  draggable={false}
+                  className={cn("size-full drop-shadow-md", autoFishing && "brightness-90")}
+                />
+                {/* 마우스를 올리거나 키보드 포커스면 나무 테 안쪽 판 위에 물고기 아이콘 (앉기·때리기와 같은 방식) */}
+                <span
+                  aria-hidden
+                  className="absolute inset-[16%] flex items-center justify-center rounded-full bg-overlay text-white opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-visible:opacity-100 group-data-flash:opacity-100 motion-reduce:transition-none"
+                >
+                  <Fish className="size-7" />
+                </span>
               </span>
-              <span className="rounded-full bg-card/85 px-2 py-0.5 text-caption-3 font-semibold text-text-strong">{fishing ? "당기기" : "낚시"}</span>
-            </button>
-          )}
-          {(waterNearby || fishing || autoFishing) && (
-            <button
-              type="button"
-              onClick={() => {
-                autoFishingRef.current = !autoFishingRef.current;
-                setAutoFishing(autoFishingRef.current);
-              }}
-              aria-pressed={autoFishing}
-              className="min-h-9 rounded-full bg-card/85 px-3 text-caption-3 font-semibold text-text-strong shadow-sm transition-colors focus-visible:outline-2 focus-visible:outline-primary aria-pressed:bg-primary aria-pressed:text-white"
-            >
-              자동 낚시 {autoFishing ? "켬" : "끔"}
+              <span className="rounded-full bg-card/85 px-2 py-0.5 text-caption-3 font-semibold text-text-strong">{autoFishing ? "그만" : "낚시"}</span>
             </button>
           )}
           <button
