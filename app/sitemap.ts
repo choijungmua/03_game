@@ -1,17 +1,18 @@
 import type { MetadataRoute } from "next";
 
-import { GAMES } from "@/lib/games/registry";
+import { getAllGameSeo } from "@/lib/games/registry";
+import { absoluteUrl } from "@/lib/seo/site";
 
-const SITE_URL = "https://ggpli.com";
-
-export default function sitemap(): MetadataRoute.Sitemap {
-  const staticPages = ["", "/list", "/privacy", "/terms"].map((path) => ({
-    url: `${SITE_URL}${path}`,
+export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
+  // /list는 관리자용 noindex 페이지라 넣지 않는다
+  const staticPages = ["/", "/games", "/privacy", "/terms", "/contact"].map((path) => ({
+    url: absoluteUrl(path),
   }));
 
-  const gamePages = GAMES.map((game) => ({
-    url: `${SITE_URL}/games/${game.slug}`,
-  }));
+  const gamePages = (await getAllGameSeo()).flatMap(({ game, seo }) => [
+    { url: absoluteUrl(`/games/${game.slug}`), lastModified: seo.updatedAt },
+    { url: absoluteUrl(`/games/${game.slug}/guide`), lastModified: seo.updatedAt },
+  ]);
 
   return [...staticPages, ...gamePages];
 }

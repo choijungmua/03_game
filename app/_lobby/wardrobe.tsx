@@ -18,7 +18,7 @@ import {
   wear,
 } from "@/lib/lobby/wardrobe";
 
-const CAPYBARA_SRC = "/assets/images/characters/capybara/capybara-idle-down.webp";
+export const CAPYBARA_SRC = "/assets/images/characters/capybara/capybara-idle-down.webp";
 
 /** 오른쪽 위 카피바라 얼굴 버튼. 누르면 그 자리에서 커지며 옷 입히기 창이 열린다 */
 export function Wardrobe({ onChange }: { onChange: (outfit: Outfit) => void }) {
@@ -82,7 +82,8 @@ export function Wardrobe({ onChange }: { onChange: (outfit: Outfit) => void }) {
   };
 
   return (
-    <div className="absolute right-4 top-[max(1rem,env(safe-area-inset-top))] flex justify-end">
+    // z-10: 열린 옷 입히기 창이 아래 효과음 버튼 위에 그려지게
+    <div className="relative z-10 flex justify-end">
       <button
         ref={openButtonRef}
         type="button"

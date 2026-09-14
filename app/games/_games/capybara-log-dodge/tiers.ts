@@ -23,7 +23,7 @@ export const LOG_DODGE_TIERS: readonly LogDodgeTier[] = [
   {
     label: "산사태 속 평온",
     minSeconds: 40,
-    description: "쪼개지는 통나무도 태연하게 피했어요",
+    description: "점프·숙이기에 쪼개지는 통나무까지 태연하게 넘겼어요",
     bgClass: "bg-primary",
     fgClass: "text-white",
     image: `${CHARACTER_BASE}/capybara-stand-down.webp`,
@@ -31,7 +31,7 @@ export const LOG_DODGE_TIERS: readonly LogDodgeTier[] = [
   {
     label: "통나무 서퍼",
     minSeconds: 25,
-    description: "튕기는 통나무까지 넘긴 실력이에요",
+    description: "머리 위 통나무와 튕기는 통나무까지 넘긴 실력이에요",
     bgClass: "bg-success",
     fgClass: "text-neutral-950",
     image: `${CHARACTER_BASE}/capybara-walk1-down.webp`,
@@ -39,7 +39,7 @@ export const LOG_DODGE_TIERS: readonly LogDodgeTier[] = [
   {
     label: "굴러다니는 카피바라",
     minSeconds: 12,
-    description: "통나무 벽의 틈을 찾기 시작했어요",
+    description: "바닥 통나무 점프 타이밍을 익히기 시작했어요",
     bgClass: "bg-warning",
     fgClass: "text-neutral-950",
     image: `${CHARACTER_BASE}/capybara-punch-down.webp`,
@@ -47,7 +47,7 @@ export const LOG_DODGE_TIERS: readonly LogDodgeTier[] = [
   {
     label: "통나무 밑 납작 카피바라",
     minSeconds: 0,
-    description: "통나무가 오는 방향의 반대로 달려 보세요",
+    description: "통나무 모양을 보고 좌우·점프·숙이기 중 하나를 골라 보세요",
     bgClass: "bg-destructive",
     fgClass: "text-neutral-950",
     image: `${CHARACTER_BASE}/capybara-stun.webp`,

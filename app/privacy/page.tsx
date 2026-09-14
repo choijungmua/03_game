@@ -1,10 +1,12 @@
-import type { Metadata } from "next";
 import Link from "next/link";
 
-export const metadata: Metadata = {
-  title: "개인정보처리방침 · ggpli",
+import { pageMetadata } from "@/lib/seo/site";
+
+export const metadata = pageMetadata({
+  title: "privacy",
   description: "ggpli 개인정보처리방침",
-};
+  path: "/privacy",
+});
 
 export default function PrivacyPage() {
   return (
@@ -63,7 +65,27 @@ export default function PrivacyPage() {
         </section>
 
         <section className="space-y-2">
-          <h2 className="text-base font-semibold text-foreground">5. 방침 변경</h2>
+          <h2 className="text-base font-semibold text-foreground">5. 로비 채팅과 위치 정보</h2>
+          <p>
+            로비에서 다른 이용자와 함께 보이도록 캐릭터 위치·옷차림·채팅 내용이 서버로 전송됩니다. 이 정보는 서버
+            메모리에만 잠시 머물며, 채팅은 약 5초 뒤, 접속 정보는 연결이 끊기고 약 10초 뒤 사라지고 따로 저장하지
+            않습니다. 채팅에 이름·연락처 등 개인정보를 적지 마세요.
+          </p>
+        </section>
+
+        <section className="space-y-2">
+          <h2 className="text-base font-semibold text-foreground">6. 문의</h2>
+          <p>
+            개인정보와 관련한 문의는{" "}
+            <Link href="/contact" className="text-foreground underline underline-offset-2">
+              문의 페이지
+            </Link>
+            의 메일 주소로 보내 주세요.
+          </p>
+        </section>
+
+        <section className="space-y-2">
+          <h2 className="text-base font-semibold text-foreground">7. 방침 변경</h2>
           <p>이 방침이 변경되면 이 페이지에 시행일과 함께 게시합니다.</p>
         </section>
       </article>

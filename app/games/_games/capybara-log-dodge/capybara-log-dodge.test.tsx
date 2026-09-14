@@ -52,6 +52,25 @@ describe("CapybaraLogDodge 시작 화면", () => {
     expect(gameScreen()).toHaveAttribute("data-phase", "playing");
     expect(document.querySelector("[data-ad-placement]")).not.toBeInTheDocument();
   });
+
+  it("플레이 중에는 점프·숙이기 버튼이 있고, 눌러도 게임이 끝나거나 드래그가 시작되지 않는다", async () => {
+    vi.useFakeTimers();
+    render(<CapybaraLogDodge />);
+    fireEvent.click(gameScreen());
+    await act(async () => {
+      vi.advanceTimersByTime(COUNTDOWN_STEP_MS * COUNTDOWN_VALUES.length);
+    });
+    const jump = screen.getByRole("button", { name: "점프" });
+    const duck = screen.getByRole("button", { name: "숙이기" });
+    fireEvent.pointerDown(jump);
+    fireEvent.click(jump);
+    fireEvent.pointerDown(duck);
+    fireEvent.pointerUp(duck);
+    fireEvent.keyDown(window, { key: "ArrowUp" });
+    fireEvent.keyDown(window, { key: "ArrowDown" });
+    fireEvent.keyUp(window, { key: "ArrowDown" });
+    expect(gameScreen()).toHaveAttribute("data-phase", "playing");
+  });
 });
 
 describe("일시정지", () => {

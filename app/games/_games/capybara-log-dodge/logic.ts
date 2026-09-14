@@ -1,5 +1,6 @@
 // 카피바라 통나무 피하기 규칙. 화면·입력과 분리해 테스트한다
 // 좌표는 기기와 상관없는 고정 게임 세계(GAME_WIDTH × GAME_HEIGHT). 카피바라는 아래쪽에서 위로 달리고 통나무는 위에서 굴러 내려온다
+// 피하는 방법은 세 가지: 좌우 이동, 점프(바닥 통나무), 숙이기(머리 높이 통나무)
 
 export const GAME_WIDTH = 450;
 export const GAME_HEIGHT = 800;
@@ -10,6 +11,12 @@ export const CAPYBARA_HALF_WIDTH = 15;
 export const CAPYBARA_HALF_HEIGHT = 18;
 /** 좌우 최대 이동 속도(px/s). 드래그도 이 속도를 넘지 못한다 (웨이브 사이 도달 가능성 계산 기준) */
 export const MOVE_SPEED = 620;
+/** 점프 한 번 체공 시간. 이 동안 바닥 통나무를 넘는다 */
+export const JUMP_MS = 560;
+/** 숙이기를 뗀 뒤에도 이만큼은 숙인 채로 있다 (짧게 눌러도 가로대를 지나가게) */
+export const DUCK_MS = 320;
+/** 전체 폭 통나무가 이 거리(px) 안으로 다가오면 "점프!"/"숙여!" 안내를 띄운다 */
+export const CUE_DISTANCE = 240;
 
 export const LOG_THICKNESS = 34;
 /** 가로 통나무 벽의 틈. 카피바라 폭의 3배 이상 */
@@ -24,11 +31,31 @@ export const PEAK_MS = 60_000;
 const MAX_STEP_MS = 50;
 const SPLIT_Y = 300;
 const SPLIT_WIDTH = 160;
+/** 허들·가로대는 다른 통나무보다 조금 느리게 내려와 타이밍을 볼 여유를 준다 */
+export const FULL_WIDTH_SPEED_RATIO = 0.85;
 
-export type LogKind = "roll" | "wall" | "bounce" | "split";
+export type LogKind = "roll" | "hurdle" | "wall" | "beam" | "bounce" | "split";
+/** low는 점프로 넘고, high는 숙여서 지나가고, full은 좌우로만 피한다 */
+export type LogHeight = "low" | "high" | "full";
+
+export const LOG_HEIGHTS: Record<LogKind, LogHeight> = {
+  roll: "low",
+  hurdle: "low",
+  wall: "full",
+  beam: "high",
+  bounce: "full",
+  split: "full",
+};
 
 /** 난이도 곡선에서 이 시간이 지나야 등장한다 */
-export const LOG_UNLOCK_MS: Record<LogKind, number> = { roll: 0, wall: 8_000, bounce: 18_000, split: 30_000 };
+export const LOG_UNLOCK_MS: Record<LogKind, number> = {
+  roll: 0,
+  hurdle: 4_000,
+  wall: 8_000,
+  beam: 12_000,
+  bounce: 18_000,
+  split: 30_000,
+};
 
 export interface Log {
   id: number;
@@ -59,6 +86,10 @@ export interface GameState {
   hitBy: LogKind | null;
   /** 좌(-1)·정지(0)·우(1) — 스프라이트 방향 */
   lean: -1 | 0 | 1;
+  /** 남은 체공 시간. 0이면 땅에 있음 */
+  jumpMs: number;
+  /** 남은 숙이기 시간. 0이면 서 있음 */
+  duckMs: number;
   random: () => number;
 }
 
@@ -66,6 +97,10 @@ export interface GameInput {
   direction: number;
   /** 드래그 목표 x. 없으면 null */
   targetX: number | null;
+  /** 이번 프레임에 점프를 눌렀는지 (체공 중이면 무시) */
+  jump: boolean;
+  /** 숙이기를 누르고 있는지 */
+  duck: boolean;
 }
 
 /** 같은 seed면 같은 통나무 순서가 나오는 난수 (mulberry32) */
@@ -119,6 +154,8 @@ export function createState(random: () => number = Math.random): GameState {
     lastNearMissAt: null,
     hitBy: null,
     lean: 0,
+    jumpMs: 0,
+    duckMs: 0,
     random,
   };
 }
@@ -129,12 +166,20 @@ function between(random: () => number, min: number, max: number) {
 
 type LogSeed = Omit<Log, "id" | "closest">;
 
-/** 한 웨이브에 나올 통나무들. 모두 화면 위에서 같은 줄로 출발하고, 가로로는 반드시 MIN_GAP 이상 빈 곳이 남는다 */
+/**
+ * 한 웨이브에 나올 통나무들. 모두 화면 위에서 같은 줄로 출발한다.
+ * 좌우로만 피하는(full) 통나무 사이에는 반드시 MIN_GAP 이상 틈이 있고, 화면 폭 전체를 막는 건 점프·숙이기로 지나가는 통나무뿐이다
+ */
 export function createWave(random: () => number, elapsedMs: number): LogSeed[] {
   const { fallSpeed } = getDifficulty(elapsedMs);
   const kinds = (Object.keys(LOG_UNLOCK_MS) as LogKind[]).filter((kind) => elapsedMs >= LOG_UNLOCK_MS[kind]);
   const kind = kinds[Math.floor(random() * kinds.length)];
   const y = -LOG_THICKNESS;
+
+  if (kind === "hurdle" || kind === "beam") {
+    // 화면 폭 전체를 막는 통나무 — 바닥(허들)은 점프, 머리 높이(가로대)는 숙이기로만 지나간다
+    return [{ kind, x: GAME_WIDTH / 2, y, w: GAME_WIDTH, h: LOG_THICKNESS, vx: 0, vy: fallSpeed * FULL_WIDTH_SPEED_RATIO }];
+  }
 
   if (kind === "wall") {
     const gapWidth = between(random, MIN_GAP, MIN_GAP * 1.5);
@@ -203,6 +248,11 @@ function addLogs(state: GameState, seeds: LogSeed[]) {
   }
 }
 
+/** 지금 자세로 이 높이의 통나무를 지나갈 수 있는지 */
+function clears(state: GameState, height: LogHeight) {
+  return (height === "low" && state.jumpMs > 0) || (height === "high" && state.duckMs > 0);
+}
+
 /** 한 프레임 진행. realDtMs는 실제 경과 시간 — 슬로모션이면 게임 시간은 느리게 흐른다 */
 export function step(state: GameState, realDtMs: number, input: GameInput) {
   if (state.hitBy) return;
@@ -212,7 +262,7 @@ export function step(state: GameState, realDtMs: number, input: GameInput) {
   const dt = slowmo ? realDt * NEAR_MISS_TIME_SCALE : realDt;
   state.elapsedMs += dt;
 
-  // 이동: 드래그 목표가 있으면 그쪽으로, 없으면 방향키. 둘 다 MOVE_SPEED 상한
+  // 이동: 드래그 목표가 있으면 그쪽으로, 없으면 방향키. 둘 다 MOVE_SPEED 상한. 점프·숙이기 중에도 좌우로 움직일 수 있다
   const maxMove = (MOVE_SPEED * dt) / 1000;
   const wanted = input.targetX !== null ? input.targetX - state.x : input.direction * maxMove;
   const move = Math.max(-maxMove, Math.min(maxMove, wanted));
@@ -220,6 +270,16 @@ export function step(state: GameState, realDtMs: number, input: GameInput) {
   state.x = Math.max(CAPYBARA_HALF_WIDTH, Math.min(GAME_WIDTH - CAPYBARA_HALF_WIDTH, state.x + move));
   const moved = state.x - prevX;
   state.lean = Math.abs(moved) < 0.01 ? 0 : moved < 0 ? -1 : 1;
+
+  // 점프는 땅에 있을 때만 시작하고, 체공 중에 누른 숙이기는 착지하자마자 이어진다
+  state.jumpMs = Math.max(0, state.jumpMs - dt);
+  state.duckMs = Math.max(0, state.duckMs - dt);
+  if (input.jump && state.jumpMs === 0) {
+    state.jumpMs = JUMP_MS;
+    state.duckMs = 0;
+  } else if (input.duck && state.jumpMs === 0) {
+    state.duckMs = DUCK_MS;
+  }
 
   state.waveInMs -= dt;
   if (state.waveInMs <= 0) {
@@ -255,7 +315,7 @@ export function step(state: GameState, realDtMs: number, input: GameInput) {
     const logBottom = log.y + log.h / 2;
     const horizontalGap = Math.abs(log.x - state.x) - log.w / 2 - CAPYBARA_HALF_WIDTH;
 
-    if (logBottom >= capTop && logTop <= capBottom) {
+    if (logBottom >= capTop && logTop <= capBottom && !clears(state, LOG_HEIGHTS[log.kind])) {
       if (horizontalGap < 0) {
         state.hitBy = log.kind;
         return;
@@ -279,9 +339,22 @@ export function step(state: GameState, realDtMs: number, input: GameInput) {
   addLogs(state, pieces);
 }
 
+/** 곧 닿을 허들·가로대에 맞는 동작. 화면 안내("점프!"/"숙여!")에 쓴다 */
+export function getCue(state: GameState): "jump" | "duck" | null {
+  const capTop = CAPYBARA_Y - CAPYBARA_HALF_HEIGHT;
+  for (const log of state.logs) {
+    if (log.kind !== "hurdle" && log.kind !== "beam") continue;
+    const distance = capTop - (log.y + log.h / 2);
+    if (distance >= 0 && distance < CUE_DISTANCE) return log.kind === "hurdle" ? "jump" : "duck";
+  }
+  return null;
+}
+
 const DEATH_LINES: Record<LogKind, string> = {
   roll: "굴러온 통나무에 정면으로 박았어요",
+  hurdle: "바닥 통나무에 걸려 넘어졌어요 — 점프로 넘어 보세요",
   wall: "통나무 벽의 틈을 못 찾았어요",
+  beam: "머리 높이 통나무에 이마를 박았어요 — 숙여서 지나가 보세요",
   bounce: "튕겨 온 통나무에 옆구리를 맞았어요",
   split: "쪼개진 통나무 조각에 맞았어요",
 };

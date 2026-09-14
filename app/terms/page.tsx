@@ -1,10 +1,12 @@
-import type { Metadata } from "next";
 import Link from "next/link";
 
-export const metadata: Metadata = {
-  title: "이용약관 · ggpli",
+import { pageMetadata } from "@/lib/seo/site";
+
+export const metadata = pageMetadata({
+  title: "terms",
   description: "ggpli 서비스 이용약관",
-};
+  path: "/terms",
+});
 
 export default function TermsPage() {
   return (
@@ -50,8 +52,8 @@ export default function TermsPage() {
         <section className="space-y-2">
           <h2 className="text-base font-semibold text-foreground">제5조 (금지 행위)</h2>
           <p>
-            자동화 프로그램으로 기록을 조작하거나, 광고를 부정하게 클릭하거나, 서비스 운영을 방해하는 행위를 해서는 안
-            됩니다.
+            자동화 프로그램으로 기록을 조작하거나, 광고를 부정하게 클릭하거나, 로비 채팅에 욕설·광고·개인정보를 올리거나,
+            서비스 운영을 방해하는 행위를 해서는 안 됩니다.
           </p>
         </section>
 
@@ -66,6 +68,17 @@ export default function TermsPage() {
         <section className="space-y-2">
           <h2 className="text-base font-semibold text-foreground">제7조 (약관 변경)</h2>
           <p>약관이 변경되면 이 페이지에 시행일과 함께 게시하며, 게시한 날부터 효력이 생깁니다.</p>
+        </section>
+
+        <section className="space-y-2">
+          <h2 className="text-base font-semibold text-foreground">제8조 (문의)</h2>
+          <p>
+            서비스 이용과 관련한 문의·신고는{" "}
+            <Link href="/contact" className="text-foreground underline underline-offset-2">
+              문의 페이지
+            </Link>
+            에서 안내하는 메일 주소로 보내 주세요.
+          </p>
         </section>
       </article>
     </main>

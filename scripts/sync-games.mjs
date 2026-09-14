@@ -2,10 +2,12 @@
 // 게임을 registry에 추가한 뒤 실행: pnpm games:sync  (입장 수 visit_count는 건드리지 않음)
 import { register } from "node:module";
 
-// registry.ts의 next/dynamic은 Node에서 못 불러오므로 빈 함수로 바꿔 slug·title만 읽는다
+// registry.ts의 next/dynamic은 Node에서 못 불러오므로 빈 함수로 바꿔 slug·title만 읽는다.
+// 확장자 없는 상대 import(./constants)는 Node ESM이 못 찾으므로 .ts를 붙여준다
 register(
   `data:text/javascript,${encodeURIComponent(`export async function resolve(specifier, context, next) {
   if (specifier === "next/dynamic") return { url: "data:text/javascript,export default () => null", shortCircuit: true };
+  if (/^\\.{1,2}\\//.test(specifier) && !/\\.[cm]?[jt]sx?$/.test(specifier)) return next(specifier + ".ts", context);
   return next(specifier, context);
 }`)}`,
 );
