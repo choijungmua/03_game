@@ -47,6 +47,7 @@ import {
   MINIMAP_COLORS,
   MINIMAP_REFRESH_MS,
   MINIMAP_TILES,
+  NAME_CONFIRM_MS,
   REMOTE_GONE_MS,
   REMOTE_RENDER_DELAY_MS,
 } from "@/lib/lobby/constants";
@@ -72,6 +73,7 @@ import {
   type Satiety,
 } from "@/lib/lobby/feeding";
 import { pushSnapshot, sampleSnapshots, type Snapshot } from "@/lib/lobby/interpolation";
+import { loadLobbyProfile, type LobbyProfile, saveLobbyProfile } from "@/lib/lobby/profile";
 import { type LobbySettings, playSound, saveLobbySettings, useLobbySettings } from "@/lib/lobby/settings";
 import { markLobbyExit } from "@/components/navigation/lobby-link";
 
@@ -91,6 +93,7 @@ import { EmotePicker } from "./emote-picker";
 import { FishBag } from "./fish-bag";
 import { KeyboardGuide } from "./keyboard-guide";
 import { SoundToggle } from "./lobby-settings";
+import { ProfileName } from "./profile-name";
 import {
   ATTACK_COOLDOWN_MS,
   ATTACK_MS,
@@ -1160,6 +1163,10 @@ export function Lobby({ games }: { games: DoorGame[] }) {
   const minimapRef = useRef<HTMLCanvasElement>(null);
   /** 입은 옷. 게임 루프가 매 프레임 읽어서 그리고 서버에 보낸다 */
   const outfitRef = useRef<Outfit>({});
+  /** 기기별 프로필 id·내가 정한 이름표. 게임 루프가 서버에 보내고, 이름 바꾸기 창이 고친다 */
+  const profileRef = useRef<LobbyProfile>({ id: "", name: "" });
+  /** 이름 바꾸기 버튼에 보일 지금 이름표 (서버가 받아들인 값) */
+  const [myName, setMyName] = useState("");
   /** 보낼 채팅. 게임 루프가 가져가 말풍선을 띄우고 다음 동기화에 실어 보낸다 */
   const chatRequest = useRef<string | null>(null);
   const chatInputRef = useRef<HTMLInputElement>(null);
@@ -1209,6 +1216,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
 
     const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     outfitRef.current = loadOutfit();
+    profileRef.current = loadLobbyProfile();
     // 캔버스는 쓰는 굵기의 폰트를 스스로 내려받지 않아서, 안 받아 둔 굵기는 대체 폰트로 그려진다
     for (const weight of [500, 600, 700]) document.fonts.load(`${weight} 13px ${CANVAS_FONT}`, "가A").catch(() => {});
     setFishInventory(loadFishInventory());
@@ -1613,6 +1621,9 @@ export function Lobby({ games }: { games: DoorGame[] }) {
     /** 마지막으로 보낸 위치·방향·앉기·옷. 같으면 HEARTBEAT_MS가 지날 때까지 다시 보내지 않는다 */
     let lastSentKey = "";
     let lastSentAt = -Infinity;
+    /** 마지막으로 보낸 내 이름과 그 이름을 처음 보낸 시각. 서버가 거절했는지 NAME_CONFIRM_MS 뒤에 확인한다 */
+    let lastSentName = "";
+    let nameSentAt = -Infinity;
 
     const send = () => {
       if (!socket || socket.readyState !== WebSocket.OPEN || socket.bufferedAmount > MAX_BUFFERED_BYTES) return;
@@ -1629,7 +1640,8 @@ export function Lobby({ games }: { games: DoorGame[] }) {
         lastChatAt.current = now;
       }
       const outfit = outfitRef.current;
-      const key = `${me.x},${me.y},${me.facing},${me.sitting},${JSON.stringify(outfit)}`;
+      const profile = profileRef.current;
+      const key = `${me.x},${me.y},${me.facing},${me.sitting},${JSON.stringify(outfit)},${profile.name}`;
       if (!attackQueued && chatQueued === null && key === lastSentKey && now - lastSentAt < HEARTBEAT_MS) return;
       const request: PresenceRequest = {
         token,
@@ -1640,17 +1652,25 @@ export function Lobby({ games }: { games: DoorGame[] }) {
         attack: attackQueued,
         outfit,
         ...(chatQueued !== null && { chat: chatQueued }),
+        // 서버가 받아들인 채팅·이모티콘·낚시를 이 프로필 id로 이력에 남긴다
+        ...(profile.id && { profileId: profile.id }),
+        ...(profile.name && { name: profile.name }),
       };
       attackQueued = false;
       chatQueued = null;
       lastSentKey = key;
       lastSentAt = now;
+      if (profile.name !== lastSentName) {
+        lastSentName = profile.name;
+        nameSentAt = now;
+      }
       socket.send(JSON.stringify(request));
     };
 
     const receive = (data: Partial<LobbyMessage>) => {
       if (!data.you || !Array.isArray(data.players)) return;
       const received = performance.now();
+      if (me.name !== data.you.name) setMyName(data.you.name);
       me.name = data.you.name;
 
       if (data.you.stunMs > 0) {
@@ -1878,6 +1898,14 @@ export function Lobby({ games }: { games: DoorGame[] }) {
           send();
           playSound("swing", settingsRef.current);
         }
+      }
+      // 바꾼 이름을 보냈는데 한참 지나도 이름표가 그대로면 접속 중인 다른 사람이 쓰는 이름이라 서버가 거절한 것이다.
+      // 거절된 이름은 지워서 계속 다시 보내지 않는다 (서버는 틱에 바뀐 게 없으면 메시지를 안 보내서 응답 대신 시간으로 판단)
+      const wantedName = profileRef.current.name;
+      if (wantedName && me.name && me.name !== wantedName && nameSentAt > 0 && now - nameSentAt > NAME_CONFIRM_MS) {
+        profileRef.current = { ...profileRef.current, name: "" };
+        saveLobbyProfile(profileRef.current);
+        showNotice(`“${wantedName}” 이름은 다른 친구가 쓰고 있어요`, 2500);
       }
       if (chatRequest.current !== null) {
         me.chat = chatRequest.current;
@@ -2366,6 +2394,12 @@ export function Lobby({ games }: { games: DoorGame[] }) {
     if (!next.muted && next.volume > 0 && (settings.muted || settings.volume <= 0)) playSound("chat", next);
   };
 
+  /** 이름 바꾸기: 저장해 두면 게임 루프가 다음 동기화에 서버로 보낸다. 이름표는 서버가 받아들인 뒤 바뀐다 */
+  const rename = (name: string) => {
+    profileRef.current = { ...profileRef.current, name };
+    saveLobbyProfile(profileRef.current);
+  };
+
   return (
     <>
       <canvas
@@ -2401,7 +2435,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
         </p>
       </form>
 
-      {/* 오른쪽 위 세로 줄: 카피바라 옷장 → 낚시 가방 → 효과음. 설정 버튼은 나중에 이 줄에 다시 넣는다 */}
+      {/* 오른쪽 위 세로 줄: 카피바라 옷장 → 낚시 가방 → 효과음 → 이름 바꾸기. 설정 버튼은 나중에 이 줄에 다시 넣는다 */}
       {/* 효과음 버튼의 헤드폰이 원 밖으로 삐져나오는 만큼 위(옷장)·오른쪽(화면 끝)을 띄운다. 두 버튼은 앉기·때리기와 같은 크기(모바일 size-14, md 이상 size-18) */}
       <div className="absolute right-5 top-[max(0.75rem,env(safe-area-inset-top))] flex flex-col items-center gap-6">
         <Wardrobe
@@ -2417,6 +2451,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
           }}
         />
         <SoundToggle settings={settings} onChange={updateSettings} />
+        <ProfileName name={myName} onRename={rename} />
       </div>
 
       {/* 왼쪽 아래 미니맵: 보기 전용이라 터치는 아래 로비 캔버스(조이스틱)로 지나간다 */}
