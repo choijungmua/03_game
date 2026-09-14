@@ -1,12 +1,15 @@
 "use client";
 
-import { Settings, Volume2, VolumeX } from "lucide-react";
+import { Settings } from "lucide-react";
+import NextImage from "next/image";
 import { useEffect, useRef, useState } from "react";
 
 import { Checkbox } from "@/components/inputs/checkbox";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib";
 import type { LobbySettings } from "@/lib/lobby/settings";
+
+import { CAPYBARA_SRC } from "./wardrobe";
 
 interface SettingsProps {
   settings: LobbySettings;
@@ -16,10 +19,15 @@ interface SettingsProps {
 /** 세로 툴바 안 아이콘 버튼. 모바일 터치 영역 44px을 지킨다 */
 const TOOL_BUTTON = "size-11 rounded-lg text-text-strong";
 
-/** 카피바라 아래 효과음 켜고 끄기. 마우스를 올리거나(키보드는 포커스) 하면 왼쪽에 음량 슬라이더가 나온다 */
+/**
+ * 헤드폰 위치: 둥근 버튼 기준 %. 얼굴을 확대해 보여 주는 버튼이라 원본 머리에 맞추면 머리띠·이어컵이 잘려서, 버튼 원에 맞춘다.
+ * 헤드폰 그림은 머리띠 활이 높아서, 원보다 넓게(이어컵은 원 가장자리) 두고 세로를 눌러 머리띠는 위 끝·이어컵은 눈 높이에 오게 한다
+ */
+const HEADPHONES = { src: "/assets/images/ui/lobby/headphones.webp", top: -5, width: 118, height: 85 };
+
+/** 카피바라 아래 효과음 켜고 끄기. 헤드폰을 끼면 켜짐, 벗으면 꺼짐. 마우스를 올리거나(키보드는 포커스) 하면 왼쪽에 음량 슬라이더가 나온다 */
 export function SoundToggle({ settings, onChange }: SettingsProps) {
   const volume = settings.muted ? 0 : Math.round(settings.volume * 100);
-  const Icon = volume === 0 ? VolumeX : Volume2;
   return (
     <div className="group relative">
       <button
@@ -27,15 +35,34 @@ export function SoundToggle({ settings, onChange }: SettingsProps) {
         onClick={() => onChange({ ...settings, muted: !settings.muted })}
         aria-label="효과음"
         aria-pressed={!settings.muted}
-        className={cn(
-          "flex size-11 items-center justify-center rounded-full bg-card/90 text-text-strong shadow-md backdrop-blur hover:bg-card focus-visible:outline-2 focus-visible:outline-primary",
-          volume === 0 && "text-text-caption",
-        )}
+        className="relative size-14 overflow-hidden rounded-full bg-card/90 shadow-md backdrop-blur focus-visible:outline-2 focus-visible:outline-primary"
       >
-        <Icon aria-hidden className="size-5" />
+        {/* 옷장 버튼과 같은 얼굴 확대 */}
+        <span aria-hidden className="relative block size-full origin-[50%_30%] scale-[1.9]">
+          <NextImage src={CAPYBARA_SRC} alt="" fill unoptimized sizes="112px" />
+        </span>
+        {/* 인라인 translate로 자리를 잡으니, 벗는 연출은 translate 대신 scale·opacity로 한다 */}
+        <NextImage
+          src={HEADPHONES.src}
+          alt=""
+          width={256}
+          height={256}
+          unoptimized
+          className={cn(
+            "absolute left-1/2 max-w-none object-fill transition-[opacity,scale] duration-150 motion-reduce:transition-none",
+            volume === 0 ? "scale-75 opacity-0" : "opacity-100",
+          )}
+          style={{
+            top: `${HEADPHONES.top}%`,
+            width: `${HEADPHONES.width}%`,
+            height: `${HEADPHONES.height}%`,
+            translate: "-50% 0",
+          }}
+        />
       </button>
-      {/* pr-2가 버튼과 슬라이더 사이 틈을 메워서, 마우스를 슬라이더로 옮기는 중에 hover가 끊기지 않는다 */}
-      <div className="pointer-events-none absolute right-full top-0 pr-2 opacity-0 transition-opacity duration-150 group-focus-within:pointer-events-auto group-focus-within:opacity-100 group-hover:pointer-events-auto group-hover:opacity-100 motion-reduce:transition-none">
+      {/* pr-2가 버튼과 슬라이더 사이 틈을 메워서, 마우스를 슬라이더로 옮기는 중에 hover가 끊기지 않는다.
+          키보드는 focus-visible일 때만 연다 (focus-within이면 마우스로 누른 뒤 포커스가 남아 슬라이더가 안 닫힌다) */}
+      <div className="pointer-events-none absolute right-full top-1.5 pr-2 opacity-0 transition-opacity duration-150 group-hover:pointer-events-auto group-hover:opacity-100 group-has-[:focus-visible]:pointer-events-auto group-has-[:focus-visible]:opacity-100 motion-reduce:transition-none">
         <label className="flex h-11 items-center gap-2 rounded-full bg-card/90 pl-4 pr-3 shadow-md backdrop-blur">
           <span className="sr-only">효과음 크기</span>
           <input

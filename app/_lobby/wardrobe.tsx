@@ -18,7 +18,7 @@ import {
   wear,
 } from "@/lib/lobby/wardrobe";
 
-const CAPYBARA_SRC = "/assets/images/characters/capybara/capybara-idle-down.webp";
+export const CAPYBARA_SRC = "/assets/images/characters/capybara/capybara-idle-down.webp";
 
 /** 오른쪽 위 카피바라 얼굴 버튼. 누르면 그 자리에서 커지며 옷 입히기 창이 열린다 */
 export function Wardrobe({ onChange }: { onChange: (outfit: Outfit) => void }) {
