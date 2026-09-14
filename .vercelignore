@@ -1,0 +1,11 @@
+/node_modules
+/coverage
+/.next/
+/out/
+/build
+.env*
+.vercel
+*.tsbuildinfo
+*.pem
+# 로컬 도구 폴더로 가는 심볼릭 링크 — 업로드되면 Vercel 빌드가 ENOENT로 실패
+/.codegraph

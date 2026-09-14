@@ -1,9 +1,9 @@
 schema: design.v1
-name: 03-game
+name: ggpli
 version: 0.2.0
 status: bootstrap
 updated_at: "2026-09-14"
-description: "Dark-first shadcn foundation with the reusable ZMZM component architecture adapted for 03_game."
+description: "Dark-first shadcn foundation with the reusable ZMZM component architecture adapted for ggpli."
 
 $schema: https://raw.githubusercontent.com/AgentsORG/DESIGN/main/schema/design.v1.schema.json
 
