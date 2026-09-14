@@ -104,6 +104,7 @@ interface CapybaraLook {
 
 interface Remote {
   id: string;
+  name: string;
   x: number;
   y: number;
   /** 마지막으로 받은 위치까지 fromX,Y에서 segMs 동안 일정한 속도로 옮겨 간다 */
@@ -879,6 +880,8 @@ export function Lobby({ games }: { games: DoorGame[] }) {
       facingSince: 0,
       chat: "",
       chatUntil: 0,
+      /** 서버가 정해 준 이름표. 첫 동기화 전엔 비어 있다 */
+      name: "",
     };
     const saved: Partial<{ x: number; y: number }> = JSON.parse(loadSession(positionKey) ?? "{}");
     if (typeof saved.x === "number" && typeof saved.y === "number" && !blocked(saved.x, saved.y)) {
@@ -1057,6 +1060,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
           const data: Partial<PresenceResponse> = await response.json();
           if (!response.ok || !data.you || !Array.isArray(data.players)) throw new Error("sync failed");
           const received = performance.now();
+          me.name = data.you.name;
 
           if (data.you.stunMs > 0) {
             if (me.stunUntil < received) {
@@ -1081,7 +1085,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
             const remote = remotes.get(player.id);
             if (chatUntil > 0 && (!remote || remote.chat !== player.chat || remote.chatUntil < received)) {
               const emote = parseEmoteChat(player.chat);
-              heard = `카피바라 ${player.id.slice(0, 4)}: ${emote === null ? player.chat : `${CAPYBARA_EMOTES[emote]} (이모티콘)`}`;
+              heard = `${player.name}: ${emote === null ? player.chat : `${CAPYBARA_EMOTES[emote]} (이모티콘)`}`;
             }
             if (remote) {
               // 다음 위치가 올 때까지(=지난 수신 간격) 걸쳐 옮긴다. 지수 감속으로 따라가면 받을 때마다 빨라졌다 느려져서 끊겨 보인다
@@ -1101,6 +1105,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
             } else {
               remotes.set(player.id, {
                 id: player.id,
+                name: player.name,
                 x: player.x,
                 y: player.y,
                 fromX: player.x,
@@ -1431,10 +1436,12 @@ export function Lobby({ games }: { games: DoorGame[] }) {
       }
       for (const remote of remotes.values()) {
         const labelY = remote.y - (remote.sitting ? SIT_SIZE : STAND_SIZE) - 8;
-        drawLabel(ctx, `카피바라 ${remote.id.slice(0, 4)}`, remote.x, labelY);
+        drawLabel(ctx, remote.name, remote.x, labelY);
         if (now < remote.chatUntil) drawSpeech(remote.chat, remote.x, labelY - 10);
       }
-      if (now < me.chatUntil) drawSpeech(me.chat, drawnX, drawnY - (me.sitting ? SIT_SIZE : STAND_SIZE) - 4);
+      const myLabelY = drawnY - (me.sitting ? SIT_SIZE : STAND_SIZE) - 8;
+      if (me.name) drawLabel(ctx, me.name, drawnX, myLabelY);
+      if (now < me.chatUntil) drawSpeech(me.chat, drawnX, me.name ? myLabelY - 10 : myLabelY + 4);
       for (const [id, until] of hitEffects) {
         const target = remotes.get(id);
         const progress = 1 - (until - now) / 450;
