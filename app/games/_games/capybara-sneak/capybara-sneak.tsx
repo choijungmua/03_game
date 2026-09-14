@@ -237,6 +237,8 @@ export function CapybaraSneak() {
   const isShrinking = trend === "down" && gauge > 0;
   const pose: CapybaraPose =
     status === "fail" ? "caught" : status === "success" || pressing ? "eating" : "idle";
+  // 게임 중 꾹 누르고 있으면 와구와구 씹고 접시가 들썩인다
+  const munching = status === "playing" && pressing;
 
   return (
     <div
@@ -329,6 +331,7 @@ export function CapybaraSneak() {
               className={cn(
                 "pointer-events-none absolute h-auto",
                 foodStage === stage ? "opacity-100" : "opacity-0",
+                munching && "animate-plate-shake",
               )}
               style={FOOD_BOX}
             />
@@ -348,10 +351,25 @@ export function CapybaraSneak() {
               loading="eager"
               sizes={SPRITE_SIZES}
               draggable={false}
-              className={cn("pointer-events-none absolute h-auto", pose === key ? "opacity-100" : "opacity-0")}
+              className={cn(
+                "pointer-events-none absolute h-auto origin-bottom",
+                pose === key ? "opacity-100" : "opacity-0",
+                munching && key === "eating" && "animate-munch",
+              )}
               style={CAPYBARA_BOXES[key]}
             />
           ))}
+          {munching &&
+            (["와구", "와구", "냠"] as const).map((word, i) => (
+              <span
+                key={i}
+                aria-hidden="true"
+                className="absolute top-[52%] animate-munch-pop text-[2.6cqw] font-black text-white opacity-0 [paint-order:stroke] [-webkit-text-stroke:0.4cqw_rgb(0_0_0/0.55)]"
+                style={{ left: `${56 + i * 4}%`, animationDelay: `${i * 200}ms` }}
+              >
+                {word}
+              </span>
+            ))}
         </div>
       </div>
 
