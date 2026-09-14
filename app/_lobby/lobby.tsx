@@ -37,6 +37,7 @@ import {
   REMOTE_GONE_MS,
   REMOTE_RENDER_DELAY_MS,
 } from "@/lib/lobby/constants";
+import { type FishInventory, loadFishInventory, recordCatch } from "@/lib/lobby/fishing";
 import { pushSnapshot, sampleSnapshots, type Snapshot } from "@/lib/lobby/interpolation";
 import { type LobbySettings, loadLobbySettings, playSound, saveLobbySettings } from "@/lib/lobby/settings";
 
@@ -44,6 +45,7 @@ import { CAPYBARA_EMOTES, emoteChat, emoteImage, parseEmoteChat } from "@/lib/ga
 
 import { BUBBLE_LINE, BUBBLE_TEXT_WIDTH, EMOTE_SIZE, FRAME_SRC, SITE_LINKS } from "./constants";
 import { EmotePicker } from "./emote-picker";
+import { FishBag } from "./fish-bag";
 import { SoundToggle } from "./lobby-settings";
 import {
   ATTACK_COOLDOWN_MS,
@@ -759,6 +761,8 @@ export function Lobby({ games }: { games: DoorGame[] }) {
   const [seatNearby, setSeatNearby] = useState(false);
   const [waterNearby, setWaterNearby] = useState(false);
   const [fishing, setFishing] = useState(false);
+  /** 낚시 가방. 게임 루프가 낚을 때마다 저장하고 새 값을 넣는다 */
+  const [fishInventory, setFishInventory] = useState<FishInventory>({});
   const [stunned, setStunned] = useState(false);
   const [notice, setNotice] = useState("");
   // 게임 루프 effect가 router 변경으로 다시 실행되면 캐릭터·멀티 상태가 초기화되므로 이벤트로 감싼다
@@ -776,6 +780,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
     for (const weight of [500, 600, 700]) document.fonts.load(`${weight} 13px ${CANVAS_FONT}`, "가A").catch(() => {});
     // 저장된 설정은 서버 렌더와 어긋나지 않게 화면에 붙은 뒤 읽는다
     settingsRef.current = loadLobbySettings();
+    setFishInventory(loadFishInventory());
     setSettings(settingsRef.current);
 
     const sprites = new Map<SpriteKey, HTMLImageElement>();
@@ -1298,6 +1303,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
             me.chat = `🎣 ${catchName}!`;
             me.chatUntil = now + CHAT_MS;
             showNotice(`${catchName} 낚았어요!`);
+            setFishInventory(recordCatch(catchName));
             playSound("fishCatch", settingsRef.current);
           } else {
             showNotice("너무 빨리 당겼어요. 찌가 쑥 들어가면 당겨요");
@@ -1748,7 +1754,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
         </p>
       </form>
 
-      {/* 오른쪽 위 세로 줄: 카피바라 옷장 → 효과음. 설정 버튼은 나중에 이 줄에 다시 넣는다 */}
+      {/* 오른쪽 위 세로 줄: 카피바라 옷장 → 낚시 가방 → 효과음. 설정 버튼은 나중에 이 줄에 다시 넣는다 */}
       {/* 효과음 버튼의 헤드폰이 원 밖으로 삐져나오는 만큼 위(옷장)·오른쪽(화면 끝)을 띄운다. 두 버튼은 앉기·때리기와 같은 크기(모바일 size-14, md 이상 size-18) */}
       <div className="absolute right-5 top-[max(0.75rem,env(safe-area-inset-top))] flex flex-col items-center gap-6">
         <Wardrobe
@@ -1756,6 +1762,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
             outfitRef.current = outfit;
           }}
         />
+        <FishBag inventory={fishInventory} />
         <SoundToggle settings={settings} onChange={updateSettings} />
       </div>
 
@@ -1771,7 +1778,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
         {settings.showHelp && (
           <p className="max-w-full text-balance rounded-lg bg-card/80 px-3 py-1.5 text-center text-caption-3 text-text-caption backdrop-blur">
             <span className="[@media(pointer:coarse)]:hidden">
-              방향키·WASD 걷기 · F 때리기 · 통나무 앞 Space 앉기 · 물가 Space 낚시 · Enter 채팅 · , 이모티콘 · P 프로필 · M 소리 · 오두막 문 앞에 가면 입장
+              방향키·WASD 걷기 · F 때리기 · 통나무 앞 Space 앉기 · 물가 Space 낚시 · Enter 채팅 · , 이모티콘 · P 프로필 · I 가방 · M 소리 · 오두막 문 앞에 가면 입장
             </span>
             <span className="hidden [@media(pointer:coarse)]:inline">화면을 누른 채 끌면 그쪽으로 걸어요 · 오두막 문 앞에 가면 입장</span>
           </p>

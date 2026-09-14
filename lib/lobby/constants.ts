@@ -8,6 +8,8 @@ export const DEFAULT_LOBBY_SETTINGS: LobbySettings = { muted: false, volume: 0.6
 export const LOBBY_SETTINGS_STORAGE_KEY = "ggpli:lobby-settings";
 /** 같은 탭에서 설정을 저장했다고 알리는 이벤트 (storage 이벤트는 다른 탭에만 온다). 게임 화면 소리 버튼이 바로 따라 바뀐다 */
 export const LOBBY_SETTINGS_CHANGE_EVENT = "ggpli:lobby-settings-change";
+/** 로비 낚시로 낚은 것별 횟수 (lib/lobby/fishing.ts). 이 기기에만 저장한다 */
+export const FISH_INVENTORY_STORAGE_KEY = "ggpli:lobby-fish-inventory";
 
 /** 다른 유저는 이만큼 과거 위치를 그린다. WebSocket 틱(50ms, presence.ts LOBBY_TICK_MS) 두 번치라 한 틱이 늦게 와도 멈칫하지 않는다 (150ms 폴링 때는 250ms였다) */
 export const REMOTE_RENDER_DELAY_MS = 100;
