@@ -1,6 +1,6 @@
 "use client";
 
-import { ChevronDown } from "lucide-react";
+import { ArrowDown, ArrowUp, ChevronDown } from "lucide-react";
 import Image from "next/image";
 import { useEffect, useEffectEvent, useRef, useState, useSyncExternalStore } from "react";
 
@@ -20,8 +20,11 @@ import {
   GAME_WIDTH,
   type GameState,
   getCourseDate,
+  getCue,
   getDeathLine,
+  JUMP_MS,
   type Log,
+  LOG_HEIGHTS,
   type LogKind,
   parseChallenge,
   seedFromText,
@@ -37,13 +40,24 @@ const HIT_PAUSE_MS = 700;
 const FLASH_MS = 700;
 const RUN_FRAME_MS = 90;
 const CAPYBARA_SIZE = 84;
+/** 점프 꼭대기에서 그림이 떠오르는 높이(px) */
+const JUMP_HEIGHT = 36;
+/** 머리 높이 통나무를 땅(그림자)보다 위로 띄워 그리는 높이(px) */
+const BEAM_LIFT = 26;
 const TILE_SIZE = 96;
 /** 배경이 아래로 흘러가는 속도(px/s) — 카피바라가 위로 달리는 느낌 */
 const SCROLL_SPEED = 180;
+/** 위·아래로 이만큼(CSS px) 쓸면 점프·숙이기 */
+const SWIPE_PX = 36;
+/** 이보다 짧고 적게 움직인 터치는 탭(점프)으로 본다 */
+const TAP_MS = 250;
+const TAP_PX = 10;
 
 const TITLE = "카피바라 통나무 피하기";
 const LEFT_KEYS = new Set(["ArrowLeft", "a", "A"]);
 const RIGHT_KEYS = new Set(["ArrowRight", "d", "D"]);
+const JUMP_KEYS = new Set(["ArrowUp", "w", "W", " "]);
+const DUCK_KEYS = new Set(["ArrowDown", "s", "S"]);
 
 const CHARACTER_BASE = "/assets/images/characters/capybara";
 const MEADOW_SRC = lobbyAssetSrc({ category: "ground", id: "meadow" });
@@ -69,6 +83,7 @@ interface Hud {
   nearMisses: number;
   nearMissFlash: boolean;
   passedFlash: boolean;
+  cue: ReturnType<typeof getCue>;
 }
 
 type Sprites = Record<string, HTMLImageElement>;
@@ -84,6 +99,8 @@ function loadSprites(): Sprites {
     for (const facing of RUN_FACINGS) add(`${frame}-${facing}`, `${CHARACTER_BASE}/capybara-${frame}-${facing}.webp`);
   }
   add("stun", `${CHARACTER_BASE}/capybara-stun.webp`);
+  // 숙이기: 뒤돌아 몸을 낮춘 앉은 뒷모습
+  add("duck", `${CHARACTER_BASE}/capybara-idle-up.webp`);
   add("log", lobbyAssetSrc({ category: "props", id: "log-seat" }));
   add("meadow", MEADOW_SRC);
   add("mud", lobbyAssetSrc({ category: "ground", id: "mud" }));
@@ -109,31 +126,57 @@ function drawTiled(ctx: CanvasRenderingContext2D, image: HTMLImageElement, left:
   }
 }
 
-function drawLog(ctx: CanvasRenderingContext2D, image: HTMLImageElement, log: Log) {
+function drawLog(ctx: CanvasRenderingContext2D, image: HTMLImageElement, log: Log, shadow: string) {
   if (!ready(image)) return;
-  // 긴 통나무 벽은 통나무 여러 개를 나란히 놓은 모양으로 그린다
+  const raised = LOG_HEIGHTS[log.kind] === "high";
+  const left = log.x - log.w / 2;
+  if (raised) {
+    // 머리 높이 통나무: 판정 자리에 그림자를 깔고 통나무는 위로 띄워 그린다
+    ctx.globalAlpha = 0.35;
+    ctx.fillStyle = shadow;
+    ctx.fillRect(left, log.y - log.h / 4, log.w, log.h / 2);
+    ctx.globalAlpha = 1;
+  }
+  // 긴 통나무는 통나무 여러 개를 나란히 놓은 모양으로 그린다
   const segment = log.h * (LOG_SOURCE.width / LOG_SOURCE.height);
   const count = Math.max(1, Math.round(log.w / segment));
   const width = log.w / count;
-  const left = log.x - log.w / 2;
+  const top = log.y - log.h / 2 - (raised ? BEAM_LIFT : 0);
   for (let i = 0; i < count; i += 1) {
-    ctx.drawImage(image, 0, 0, LOG_SOURCE.width, LOG_SOURCE.height, left + i * width, log.y - log.h / 2, width, log.h);
+    ctx.drawImage(image, 0, 0, LOG_SOURCE.width, LOG_SOURCE.height, left + i * width, top, width, log.h);
   }
 }
 
-function draw(ctx: CanvasRenderingContext2D, state: GameState, sprites: Sprites, clockMs: number, reducedMotion: boolean) {
+function drawCapybara(ctx: CanvasRenderingContext2D, state: GameState, sprites: Sprites, clockMs: number, reducedMotion: boolean, shadow: string) {
+  const jump = state.jumpMs > 0 ? Math.sin((1 - state.jumpMs / JUMP_MS) * Math.PI) : 0;
+  const ducking = state.duckMs > 0 && !state.hitBy;
+  const frame = reducedMotion ? "stand" : RUN_FRAMES[Math.floor(clockMs / RUN_FRAME_MS) % RUN_FRAMES.length];
+  const image = state.hitBy ? sprites.stun : ducking ? sprites.duck : sprites[`${frame}-${RUN_FACINGS[state.lean + 1]}`];
+  if (!ready(image)) return;
+
+  if (jump > 0) {
+    // 떠 있는 동안 발밑 그림자가 작아져 높이가 보인다
+    ctx.globalAlpha = 0.3;
+    ctx.fillStyle = shadow;
+    ctx.beginPath();
+    ctx.ellipse(state.x, CAPYBARA_Y + 22, 22 * (1 - jump * 0.35), 7 * (1 - jump * 0.35), 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+  }
+  const size = ducking ? CAPYBARA_SIZE * 0.78 : CAPYBARA_SIZE * (1 + jump * 0.12);
+  // 그림 발바닥이 판정 박스 아래쪽에 오게 둔다
+  ctx.drawImage(image, state.x - size / 2, CAPYBARA_Y + 26 - size - jump * JUMP_HEIGHT, size, size);
+}
+
+function draw(ctx: CanvasRenderingContext2D, state: GameState, sprites: Sprites, clockMs: number, reducedMotion: boolean, shadow: string) {
   const scroll = reducedMotion ? 0 : (state.elapsedMs / 1000) * SCROLL_SPEED;
   drawTiled(ctx, sprites.meadow, 0, GAME_WIDTH, scroll);
   drawTiled(ctx, sprites.mud, 60, GAME_WIDTH - 120, scroll);
 
-  for (const log of state.logs) drawLog(ctx, sprites.log, log);
-
-  const frame = reducedMotion ? "stand" : RUN_FRAMES[Math.floor(clockMs / RUN_FRAME_MS) % RUN_FRAMES.length];
-  const image = state.hitBy ? sprites.stun : sprites[`${frame}-${RUN_FACINGS[state.lean + 1]}`];
-  if (ready(image)) {
-    // 그림 발바닥이 판정 박스 아래쪽에 오게 둔다
-    ctx.drawImage(image, state.x - CAPYBARA_SIZE / 2, CAPYBARA_Y + 26 - CAPYBARA_SIZE, CAPYBARA_SIZE, CAPYBARA_SIZE);
-  }
+  // 바닥 통나무 → 카피바라 → 머리 위를 지나는 통나무 순서로 그린다
+  for (const log of state.logs) if (LOG_HEIGHTS[log.kind] !== "high") drawLog(ctx, sprites.log, log, shadow);
+  drawCapybara(ctx, state, sprites, clockMs, reducedMotion, shadow);
+  for (const log of state.logs) if (LOG_HEIGHTS[log.kind] === "high") drawLog(ctx, sprites.log, log, shadow);
 }
 
 function readHud(state: GameState, challengeMs: number | null): Hud {
@@ -142,6 +185,7 @@ function readHud(state: GameState, challengeMs: number | null): Hud {
     nearMisses: state.nearMisses,
     nearMissFlash: state.lastNearMissAt !== null && state.elapsedMs - state.lastNearMissAt < FLASH_MS,
     passedFlash: challengeMs !== null && state.elapsedMs >= challengeMs && state.elapsedMs - challengeMs < FLASH_MS * 2,
+    cue: getCue(state),
   };
 }
 
@@ -153,6 +197,18 @@ function formatCourseLabel(course: string | null) {
   if (!course) return "연습 코스";
   const [, month, day] = course.split("-");
   return `${Number(month)}월 ${Number(day)}일 코스`;
+}
+
+interface Drag {
+  pointerX: number;
+  pointerY: number;
+  startX: number;
+  targetX: number;
+  downAt: number;
+  /** 누른 뒤 가장 멀리 움직인 거리(CSS px) */
+  moved: number;
+  /** 이번 터치에서 위·아래 쓸기를 이미 썼는지 */
+  swiped: boolean;
 }
 
 export function CapybaraLogDodge() {
@@ -167,7 +223,9 @@ export function CapybaraLogDodge() {
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const keysRef = useRef({ left: false, right: false });
-  const dragRef = useRef<{ pointerX: number; startX: number; targetX: number } | null>(null);
+  /** 점프는 다음 프레임에 한 번 소비하고, 숙이기는 키·버튼·쓸기 중 하나라도 누르고 있으면 유지 */
+  const actionRef = useRef({ jump: false, duckKey: false, duckButton: false, duckSwipe: false });
+  const dragRef = useRef<Drag | null>(null);
   const stateRef = useRef<GameState | null>(null);
   /** 게임 좌표 1px이 화면에서 몇 CSS px인지. 드래그 거리를 게임 좌표로 바꿀 때 쓴다 */
   const scaleRef = useRef(1);
@@ -216,6 +274,8 @@ export function CapybaraLogDodge() {
     const ctx = canvas?.getContext("2d");
     if (!canvas || !ctx) return;
     const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    // 그림자 색은 하드코딩하지 않고 토큰 값을 읽는다 (플레이 영역은 .dark 범위)
+    const shadow = getComputedStyle(canvas).getPropertyValue("--background").trim();
     const sprites = loadSprites();
     const challengeMs = challenge === null ? null : challenge * 1000;
 
@@ -244,15 +304,19 @@ export function CapybaraLogDodge() {
       const state = stateRef.current;
       if (!state || !ctx) return;
       const { left, right } = keysRef.current;
+      const action = actionRef.current;
       // rAF는 백그라운드 탭에서 멈추고, step이 프레임 간격에 상한을 둬서 자연히 일시정지된다
       step(state, now - lastAt, {
         direction: left === right ? 0 : left ? -1 : 1,
         targetX: dragRef.current?.targetX ?? null,
+        jump: action.jump,
+        duck: action.duckKey || action.duckButton || action.duckSwipe,
       });
+      action.jump = false;
       lastAt = now;
       // 움직임 줄이기 설정이면 아슬아슬 슬로모션을 쓰지 않는다
       if (reducedMotion) state.slowmoMs = 0;
-      draw(ctx, state, sprites, Math.max(0, now - startAt), reducedMotion);
+      draw(ctx, state, sprites, Math.max(0, now - startAt), reducedMotion, shadow);
 
       const nextHud = readHud(state, challengeMs);
       const hudKey = Object.values(nextHud).join("|");
@@ -279,26 +343,48 @@ export function CapybaraLogDodge() {
 
   function startCountdown() {
     keysRef.current = { left: false, right: false };
+    actionRef.current = { jump: false, duckKey: false, duckButton: false, duckSwipe: false };
     setHud(null);
     setCountdownIndex(0);
     setPhase("countdown");
   }
 
-  // 드래그는 손가락이 움직인 거리만큼 카피바라를 옮긴다 (손가락이 카피바라를 가리지 않게)
+  // 좌우 드래그는 손가락이 움직인 거리만큼 카피바라를 옮기고(손가락이 카피바라를 가리지 않게),
+  // 위로 쓸거나 탭하면 점프, 아래로 쓸면 손을 뗄 때까지 숙인다
   function handlePointerDown(event: React.PointerEvent<HTMLDivElement>) {
     const state = stateRef.current;
     if (phase !== "playing" || !state) return;
     event.currentTarget.setPointerCapture(event.pointerId);
-    dragRef.current = { pointerX: event.clientX, startX: state.x, targetX: state.x };
+    dragRef.current = {
+      pointerX: event.clientX,
+      pointerY: event.clientY,
+      startX: state.x,
+      targetX: state.x,
+      downAt: performance.now(),
+      moved: 0,
+      swiped: false,
+    };
   }
 
   function handlePointerMove(event: React.PointerEvent<HTMLDivElement>) {
     const drag = dragRef.current;
     if (phase !== "playing" || !drag) return;
-    drag.targetX = drag.startX + (event.clientX - drag.pointerX) / scaleRef.current;
+    const dx = event.clientX - drag.pointerX;
+    const dy = event.clientY - drag.pointerY;
+    drag.moved = Math.max(drag.moved, Math.hypot(dx, dy));
+    drag.targetX = drag.startX + dx / scaleRef.current;
+    if (drag.swiped || Math.abs(dy) < SWIPE_PX || Math.abs(dy) < Math.abs(dx)) return;
+    drag.swiped = true;
+    if (dy < 0) actionRef.current.jump = true;
+    else actionRef.current.duckSwipe = true;
   }
 
   function handlePointerUp() {
+    const drag = dragRef.current;
+    if (phase === "playing" && drag && !drag.swiped && drag.moved < TAP_PX && performance.now() - drag.downAt < TAP_MS) {
+      actionRef.current.jump = true;
+    }
+    actionRef.current.duckSwipe = false;
     dragRef.current = null;
   }
 
@@ -307,14 +393,29 @@ export function CapybaraLogDodge() {
     if (phase === "idle" || phase === "result") startCountdown();
   }
 
+  function releaseDuckButton() {
+    actionRef.current.duckButton = false;
+  }
+
   const handleKey = useEffectEvent((event: KeyboardEvent) => {
     const pressed = event.type === "keydown";
-    if (LEFT_KEYS.has(event.key) || RIGHT_KEYS.has(event.key)) {
-      if (phase !== "playing") return;
-      event.preventDefault();
-      if (LEFT_KEYS.has(event.key)) keysRef.current.left = pressed;
-      else keysRef.current.right = pressed;
-      return;
+    if (phase === "playing") {
+      if (LEFT_KEYS.has(event.key) || RIGHT_KEYS.has(event.key)) {
+        event.preventDefault();
+        if (LEFT_KEYS.has(event.key)) keysRef.current.left = pressed;
+        else keysRef.current.right = pressed;
+        return;
+      }
+      if (DUCK_KEYS.has(event.key)) {
+        event.preventDefault();
+        actionRef.current.duckKey = pressed;
+        return;
+      }
+      if (JUMP_KEYS.has(event.key)) {
+        event.preventDefault();
+        if (pressed && !event.repeat) actionRef.current.jump = true;
+        return;
+      }
     }
 
     if (!pressed || event.repeat || (event.key !== " " && event.key !== "Enter")) return;
@@ -343,7 +444,7 @@ export function CapybaraLogDodge() {
         ? cn(tier.bgClass, tier.fgClass)
         : "bg-background text-foreground";
 
-  let shareText = "굴러오는 통나무를 피해 온천까지 달리는 카피바라, 오늘의 코스 몇 초 버틸 수 있어요?";
+  let shareText = "굴러오는 통나무를 좌우로 피하고, 점프로 넘고, 숙여서 지나가는 카피바라. 오늘의 코스 몇 초 버틸 수 있어요?";
   if (phase === "result" && result && tier) {
     if (challenge === null) {
       shareText = `${TITLE} ${formatCourseLabel(result.course)}에서 ${resultSeconds}초 버텨서 '${tier.label}' 등급! 내 기록 깰 수 있어?`;
@@ -362,9 +463,16 @@ export function CapybaraLogDodge() {
   const liveMessage =
     phase === "countdown"
       ? `${COUNTDOWN_VALUES[countdownIndex]}`
-      : phase === "result" && result && tier
-        ? `${result.rank}위, ${resultSeconds}초, ${tier.label} 등급`
-        : "";
+      : phase === "playing" && hud?.cue
+        ? hud.cue === "jump"
+          ? "점프"
+          : "숙이기"
+        : phase === "result" && result && tier
+          ? `${result.rank}위, ${resultSeconds}초, ${tier.label} 등급`
+          : "";
+
+  const actionButtonClass =
+    "flex min-h-14 min-w-24 cursor-pointer touch-none select-none items-center justify-center gap-1.5 rounded-full bg-black/45 px-5 text-title-3 font-bold text-white transition-colors active:bg-black/65 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white";
 
   return (
     <div
@@ -403,7 +511,7 @@ export function CapybaraLogDodge() {
             />
             <h1 className="px-12 text-title-1 font-bold text-text-strong">{TITLE}</h1>
             <p className="text-caption-1 text-balance text-text-caption">
-              비탈 위에서 통나무가 굴러 내려와요. 화면을 좌우로 드래그하거나 방향키로 카피바라를 움직여 피하세요. 한 번 맞으면 끝, 오래 버틸수록 통나무가 빨라지고 벽·튕기는 통나무·쪼개지는 통나무가 나와요. 아슬아슬하게 스치면 잠깐 느려져요.
+              비탈 위에서 통나무가 굴러 내려와요. 좌우로 드래그해 피하고, 바닥에 깔린 통나무는 탭하거나 위로 쓸어 점프, 머리 높이로 날아오는 통나무는 아래로 쓸어 숙이세요. 키보드는 방향키(←→ 이동, ↑·Space 점프, ↓ 숙이기)예요. 한 번 맞으면 끝, 아슬아슬하게 스치면 잠깐 느려져요.
             </p>
           </header>
 
@@ -454,7 +562,7 @@ export function CapybaraLogDodge() {
           >
             {COUNTDOWN_VALUES[countdownIndex]}
           </span>
-          <p className="text-title-3 font-semibold opacity-80">좌우로 움직여 통나무를 피하세요</p>
+          <p className="text-title-3 font-semibold text-balance opacity-80">좌우로 피하고 · 바닥 통나무는 점프 · 머리 높이 통나무는 숙이기</p>
         </div>
       )}
 
@@ -495,6 +603,47 @@ export function CapybaraLogDodge() {
               )}
             </div>
           )}
+          {hud?.cue && (
+            <p
+              data-testid="action-cue"
+              className="pointer-events-none absolute inset-x-0 bottom-[34%] animate-in zoom-in-75 text-center text-[2.5rem] font-black text-warning drop-shadow-lg"
+            >
+              {hud.cue === "jump" ? "점프!" : "숙여!"}
+            </p>
+          )}
+          <div className="absolute inset-x-0 bottom-0 flex justify-between gap-4 px-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
+            <button
+              type="button"
+              className={actionButtonClass}
+              onPointerDown={(event) => {
+                event.stopPropagation();
+                actionRef.current.duckButton = true;
+              }}
+              onPointerUp={releaseDuckButton}
+              onPointerLeave={releaseDuckButton}
+              onPointerCancel={releaseDuckButton}
+              onClick={stopPropagation}
+            >
+              <ArrowDown aria-hidden="true" className="size-5" />
+              숙이기
+            </button>
+            <button
+              type="button"
+              className={actionButtonClass}
+              onPointerDown={(event) => {
+                event.stopPropagation();
+                actionRef.current.jump = true;
+              }}
+              onClick={(event) => {
+                event.stopPropagation();
+                // 키보드로 버튼을 누른 경우(포인터 없이 click만 온다)
+                if (event.detail === 0) actionRef.current.jump = true;
+              }}
+            >
+              점프
+              <ArrowUp aria-hidden="true" className="size-5" />
+            </button>
+          </div>
         </div>
       )}
 
