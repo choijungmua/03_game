@@ -52,8 +52,11 @@ export interface LobbyMessage extends PresenceResponse {
 }
 
 // 아래 값은 백엔드와 같아야 한다 (클라이언트가 쿨타임·말풍선을 미리 그린다)
-/** 서버가 근처 플레이어를 밀어 주는 간격. 클라이언트도 이 간격으로 내 상태를 보낸다 */
-export const LOBBY_TICK_MS = 50;
+/**
+ * 서버가 근처 플레이어를 밀어 주는 간격. 클라이언트도 이 간격으로 내 상태를 보낸다 (초당 30번).
+ * 50ms였을 때는 보내는 주기·서버 틱 대기만 평균 50ms, 최악 100ms가 붙어 남의 움직임이 늦게 보였다
+ */
+export const LOBBY_TICK_MS = 33;
 /** 로비 정원이 차서 서버가 연결을 끊을 때의 코드 */
 export const LOBBY_FULL_CODE = 1013;
 export const ATTACK_MS = 320;

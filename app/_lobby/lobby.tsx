@@ -68,6 +68,7 @@ import { CAPYBARA_EMOTES, emoteChat, emoteImage, parseEmoteChat } from "@/lib/ga
 import { BUBBLE_LINE, BUBBLE_TEXT_WIDTH, EMOTE_SIZE, FISH_BUTTON_SRC, SITE_LINKS } from "./constants";
 import { EmotePicker } from "./emote-picker";
 import { FishBag } from "./fish-bag";
+import { KeyboardGuide } from "./keyboard-guide";
 import { SoundToggle } from "./lobby-settings";
 import {
   ATTACK_COOLDOWN_MS,
@@ -215,8 +216,11 @@ const ENTER_CHARGE_MS = 900;
 const SEAT_REACH = TILE * 1.4;
 /** 로비 WebSocket 주소 (http→ws, https→wss) */
 const LOBBY_WS_URL = `${API_URL.replace(/^http/, "ws")}/api/lobby/ws`;
-/** 가만히 있어도 이 간격으로 한 번은 보낸다 (서버가 10초 조용한 플레이어를 지우지 않게) */
-const HEARTBEAT_MS = 2000;
+/**
+ * 가만히 있으면 이 간격으로만 한 번 보낸다. 서버는 WebSocket이 열려 있으면 조용해도 지우지 않고(연결 확인은 30초 ping),
+ * 멈춰 있는 동안 서버에 일을 시키지 않으려고 길게 둔다 — 만일을 위한 안전망일 뿐이다 (전에는 2초)
+ */
+const HEARTBEAT_MS = 25_000;
 const RECONNECT_MIN_MS = 1000;
 const RECONNECT_MAX_MS = 8000;
 /** 못 보내고 쌓인 데이터가 이만큼 넘으면(느린 연결) 이번엔 건너뛴다 */
@@ -1025,8 +1029,6 @@ export function Lobby({ games }: { games: DoorGame[] }) {
   const [fishInventory, setFishInventory] = useState<FishInventory>({});
   const [stunned, setStunned] = useState(false);
   const [notice, setNotice] = useState("");
-  /** 하단 조작법 안내. 평소엔 숨기고 \ 키로 켜고 끈다 */
-  const [helpOpen, setHelpOpen] = useState(false);
   /** 로비 이미지를 받은 비율(%). 100이 되기 전엔 로딩창을 덮고 게임 루프를 돌리지 않는다 */
   const [loadProgress, setLoadProgress] = useState(0);
   // 게임 루프 effect가 router 변경으로 다시 실행되면 캐릭터·멀티 상태가 초기화되므로 이벤트로 감싼다
@@ -1127,9 +1129,11 @@ export function Lobby({ games }: { games: DoorGame[] }) {
     };
 
     // 타일은 청크(16×16) 단위로 한 번만 계산하고, 바닥은 청크마다 캔버스 한 장으로 구워 둔다
-    const chunks = new Map<string, Chunk>();
+    const chunks = new Map<number, Chunk>();
     const chunkAt = (cx: number, cy: number) => {
-      const key = `${cx},${cy}`;
+      // 매 프레임 보이는 타일마다(1080p 약 1,400번) 불린다 — 문자열 키를 만들지 않고 숫자 키로 찾는다.
+      // ponytail: cy가 ±50,000청크(80만 타일) 안일 때만 겹치지 않는다. 세계가 그보다 넓어지면 키를 바꿀 것
+      const key = cx * 100_003 + cy;
       let chunk = chunks.get(key);
       if (!chunk) {
         // ponytail: 오래 돌아다니면 통째로 비운다. 메모리가 문제면 LRU로
@@ -1318,8 +1322,8 @@ export function Lobby({ games }: { games: DoorGame[] }) {
     const onKeyDown = (event: KeyboardEvent) => {
       // 채팅 입력 중엔 WASD·F·Space가 글자로 들어가야 한다
       if (event.target instanceof HTMLInputElement) return;
+      // \ 키 조작법 창은 KeyboardGuide가 연다. 여는 순간 처음 안내 글은 치운다
       if (isShortcutKey(event, "Backslash")) {
-        setHelpOpen((open) => !open);
         setNotice("");
         return;
       }
@@ -1652,6 +1656,8 @@ export function Lobby({ games }: { games: DoorGame[] }) {
           me.attackUntil = now + ATTACK_MS;
           me.lastAttackAt = now;
           attackQueued = true;
+          // 다음 전송 주기를 기다리지 않고 바로 보낸다 — 맞는 사람·구경하는 사람에게 한 주기 늦게 보이지 않게
+          send();
           playSound("swing", settingsRef.current);
         }
       }
@@ -1659,6 +1665,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
         me.chat = chatRequest.current;
         me.chatUntil = now + CHAT_MS;
         chatQueued = chatRequest.current;
+        send();
         playSound("chat", settingsRef.current);
         chatRequest.current = null;
       }
@@ -2172,12 +2179,9 @@ export function Lobby({ games }: { games: DoorGame[] }) {
         >
           {status}
         </p>
-        {helpOpen && (
-          <p className="max-w-full text-balance rounded-lg bg-card/80 px-3 py-1.5 text-center text-caption-3 text-text-caption backdrop-blur">
-            방향키·WASD 걷기 · F 때리기 · 통나무 앞 Space 앉기 · 물가 Space 계속 낚시(한 번 더 누르면 그만) · Enter 채팅 · , 이모티콘 · P 프로필 · I 가방 · M 소리 · 오두막 문 앞에 가면 입장 · \ 닫기
-          </p>
-        )}
       </div>
+
+      <KeyboardGuide />
 
       {/* 터치 조이스틱: 누른 자리에 나타난다. 위치는 게임 루프가 DOM에 직접 쓴다 */}
       <div ref={joystickRef} hidden aria-hidden="true" className="pointer-events-none fixed left-0 top-0 size-32">

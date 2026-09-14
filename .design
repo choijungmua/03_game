@@ -1,8 +1,8 @@
 schema: design.v1
 name: ggpli
-version: 0.2.0
+version: 0.3.0
 status: bootstrap
-updated_at: "2026-09-14"
+updated_at: "2026-09-15"
 description: "Dark-first shadcn foundation with the reusable ZMZM component architecture adapted for ggpli."
 
 $schema: https://raw.githubusercontent.com/AgentsORG/DESIGN/main/schema/design.v1.schema.json
@@ -19,14 +19,14 @@ agent:
     Prefer existing shadcn components and semantic tokens. Never hardcode a value when a matching token exists.
 
 overview: |
-  The repository uses a dark-first, blue-accented product foundation adapted from the local ZMZM reference.
+  The repository uses a dark-first, capybara-brown-accented product foundation adapted from the local ZMZM reference.
   Shared UI is grouped by role, while route-only UI belongs in colocated _components folders.
   Game-specific art direction remains intentionally undecided.
 
 intent:
   reference: "ZMZM's restrained Korean product UI structure adapted to a dark shadcn base-nova foundation"
   direction: dark-product-foundation
-  signature: "Cool blue interaction accents on quiet charcoal surfaces."
+  signature: "Warm capybara-brown (--capybara) interaction accents on quiet charcoal surfaces."
   treatment: utilitarian
   density: comfortable
   trust: high
@@ -50,7 +50,7 @@ tokens:
     card-foreground: "oklch(0.145 0 0)"
     popover: "oklch(1 0 0)"
     popover-foreground: "oklch(0.145 0 0)"
-    primary: "oklch(0.707 0.165 254.624)"
+    primary: "#c67c4e"
     primary-foreground: "oklch(0.145 0 0)"
     secondary: "oklch(0.97 0 0)"
     secondary-foreground: "oklch(0.205 0 0)"
@@ -159,7 +159,7 @@ themes:
           card-foreground: "oklch(0.985 0 0)"
           popover: "oklch(0.205 0 0)"
           popover-foreground: "oklch(0.985 0 0)"
-          primary: "oklch(0.707 0.165 254.624)"
+          primary: "#c67c4e"
           primary-foreground: "oklch(0.145 0 0)"
           secondary: "oklch(0.269 0 0)"
           secondary-foreground: "oklch(0.985 0 0)"

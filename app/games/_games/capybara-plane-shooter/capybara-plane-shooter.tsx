@@ -47,6 +47,7 @@ import {
   createState,
   DASHER_WINDUP_MS,
   EXPLOSION_MS,
+  GAME_SPEED,
   type GameInput,
   type GameState,
   getBossHomeY,
@@ -802,18 +803,20 @@ export function CapybaraPlaneShooter() {
         }
 
         const { left, right } = keysRef.current;
-        const input: GameInput = {
-          direction: left === right ? 0 : left ? -1 : 1,
-          targetX: dragRef.current?.targetX ?? null,
-          skill: skillRef.current,
-        };
+        const direction = left === right ? 0 : left ? -1 : 1;
+        const targetX = dragRef.current?.targetX ?? null;
+        const skill = skillRef.current;
         skillRef.current = null;
-        const before = takeFrameSnapshot(state);
-        step(state, frameMs, input);
-        // 게이지가 모자라 스킬이 안 나갔으면 삐빅 (썼으면 비용만큼 줄어 이전보다 작다)
-        if (input.skill && state.skillGauge >= before.skillGauge) playGameSound(GAME_SOUNDS.wrong);
-        playStepSounds(before, state, now, lastPlayed);
-        applyStepEffects(before, state, effects, reducedMotion);
+        // 게임 속도 GAME_SPEED배: 한 프레임에 step을 여러 번 돈다. 격추당하거나 맞아서 잠깐 멈추면 남은 반복은 건너뛴다
+        for (let substep = 0; substep < GAME_SPEED && state.hp > 0 && effects.hitStopMs <= 0; substep += 1) {
+          const input: GameInput = { direction, targetX, skill: substep === 0 ? skill : null };
+          const before = takeFrameSnapshot(state);
+          step(state, frameMs, input);
+          // 게이지가 모자라 스킬이 안 나갔으면 삐빅 (썼으면 비용만큼 줄어 이전보다 작다)
+          if (input.skill && state.skillGauge >= before.skillGauge) playGameSound(GAME_SOUNDS.wrong);
+          playStepSounds(before, state, now, lastPlayed);
+          applyStepEffects(before, state, effects, reducedMotion);
+        }
 
         if (state.hp <= 0) {
           deathMs = 0;
