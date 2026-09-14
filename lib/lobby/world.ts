@@ -58,9 +58,17 @@ const WALKABLE: ReadonlySet<Tile> = new Set<Tile>(["meadow", "grass", "mud", "de
 export const BUILDING_WIDTH = 6;
 export const BUILDING_DEPTH = 5;
 export const BUILDING_VARIANTS = BUILDING_ASSETS.length;
-export const SPRING_RADIUS = 2.6;
-/** 온천 가운데(타일) */
-const SPRING_TY = 2;
+/** 온천(돌 테두리까지) 가로·세로 반지름(타일). 그림이 원근으로 납작한 타원이라 막는 영역도 타원이다 */
+export const SPRING_RX = 4.6;
+export const SPRING_RY = 3.6;
+/** 목욕 중 발이 다닐 수 있는 물 안쪽 반지름(타일). 그림의 물 타원(3.2 × 1.8)보다 조금 안쪽 */
+export const BATH_RX = 2.9;
+export const BATH_RY = 1.5;
+/** 온천 가운데(타일). 위 가운데 오두막 문·아래 가로 데크와 한 칸 넘게 띄운다 */
+const SPRING_TY = 1;
+
+/** 온천 가운데에서 (dx, dy)px 떨어진 점이 반지름 rx·ry(타일) 타원의 몇 배 거리인지. 1보다 작으면 안쪽 */
+export const ellipseDistance = (dx: number, dy: number, rx: number, ry: number) => Math.hypot(dx / (rx * TILE), dy / (ry * TILE));
 /** 가운데 대표 오두막 정면 y(타일) */
 const CENTER_FRONT = -5;
 /** 날개 오두막: 첫 오두막 가운데 x, 간격, 정면 y(앞줄·뒷줄 번갈아 → 오두막이 한 줄로 늘어서지 않는다) */
@@ -259,10 +267,12 @@ export function createWorld(seed: string, games: readonly DoorGame[]): World {
     // 마을 안쪽
     if (insideX && ty > TOP && ty < BOTTOM) {
       if (buildingAt(tx, ty)) return "building";
-      if (Math.hypot(cx, cy - SPRING_TY) < SPRING_RADIUS) return "spring";
+      const springDistance = ellipseDistance(cx * TILE, (cy - SPRING_TY) * TILE, SPRING_RX + 1, SPRING_RY + 1);
+      if (ellipseDistance(cx * TILE, (cy - SPRING_TY) * TILE, SPRING_RX, SPRING_RY) < 1) return "spring";
       const decoration = special.get(`${tx},${ty}`);
       if (decoration) return decoration;
-      if (DECK_ROWS.includes(ty) || deckSpur(tx, ty)) return "deck";
+      // 온천 둘레 한 칸은 풀밭으로 비워 둔다 (가운데 오두막 데크 갈래길이 온천 밑으로 지나가지 않게)
+      if (DECK_ROWS.includes(ty) || (deckSpur(tx, ty) && springDistance >= 1)) return "deck";
       if (ty > DECK_ROWS[1] && Math.abs(cx) < 2.5) return "deck"; // 남문으로 가는 데크
       return "meadow";
     }
