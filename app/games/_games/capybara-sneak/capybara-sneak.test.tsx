@@ -360,4 +360,65 @@ describe("CapybaraSneak", () => {
       expect(gaugeValue()).toBe(0);
     });
   });
+
+  describe("일시정지", () => {
+    function pauseButton() {
+      return screen.getByRole("button", { name: "일시정지" });
+    }
+
+    it("시작 전에는 일시정지 버튼 없이 로비 링크만 있다", () => {
+      render(<CapybaraSneak />);
+      expect(screen.queryByRole("button", { name: "일시정지" })).toBeNull();
+      expect(screen.getByRole("link", { name: "로비로 돌아가기" })).toHaveAttribute("href", "/");
+    });
+
+    it("멈춘 동안에는 게이지도 주인도 움직이지 않고, 이어하면 다시 움직인다", async () => {
+      render(<CapybaraSneak />);
+      press();
+      await advance(EAT_DELAY_MS);
+      const eaten = gaugeValue();
+      expect(eaten).toBeGreaterThan(0);
+
+      fireEvent.click(pauseButton());
+      await advance(10_000);
+      expect(gaugeValue()).toBe(eaten);
+      expect(ownerState()).toBe("away");
+      expect(screen.queryByText("들켰다!")).toBeNull();
+
+      fireEvent.click(screen.getByRole("button", { name: "이어하기" }));
+      release();
+      await advance(TURNING_AT);
+      expect(ownerState()).toBe("turning");
+    });
+
+    it("주인이 보고 있을 때 멈췄다 이어해도 바로 들키지 않는다", async () => {
+      expect(EAT_DELAY_MS).toBeLessThan(TURNING_AT);
+      render(<CapybaraSneak />);
+      press();
+      release();
+      await advance(LOOKING_AT);
+      expect(ownerState()).toBe("looking");
+
+      fireEvent.click(pauseButton());
+      expect(ownerState()).toBe("away");
+
+      fireEvent.click(screen.getByRole("button", { name: "이어하기" }));
+      press();
+      await advance(EAT_DELAY_MS);
+      expect(gaugeValue()).toBeGreaterThan(0);
+      expect(screen.queryByText("들켰다!")).toBeNull();
+    });
+
+    it("멈춘 상태에서 처음부터를 누르면 창이 닫히고 시작 전으로 돌아간다", async () => {
+      render(<CapybaraSneak />);
+      press();
+      await advance(EAT_DELAY_MS);
+      fireEvent.click(pauseButton());
+
+      fireEvent.click(screen.getByRole("button", { name: "처음부터" }));
+      expect(screen.queryByRole("dialog")).toBeNull();
+      expect(gaugeValue()).toBe(0);
+      expect(screen.queryByRole("button", { name: "일시정지" })).toBeNull();
+    });
+  });
 });

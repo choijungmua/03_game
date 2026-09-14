@@ -5,6 +5,7 @@ import { useEffect, useEffectEvent, useRef, useState } from "react";
 
 import { AdSlot } from "@/components/ads/ad-slot";
 import { Progress } from "@/components/feedback/progress";
+import { GameControls } from "@/components/games/game-controls";
 import { Button } from "@/components/inputs/button";
 import { Dialog } from "@/components/overlay/dialog";
 import { cn } from "@/lib";
@@ -80,6 +81,7 @@ export function CapybaraSneak() {
   const [gauge, setGauge] = useState(0);
   const [trend, setTrend] = useState<GaugeTrend>("up");
   const [pressing, setPressing] = useState(false);
+  const [paused, setPaused] = useState(false);
 
   // 먹기·감소·주인 타이머는 화면이 다시 그려지기 전에도 여러 번 돌 수 있어서,
   // 판정은 렌더링 결과 대신 항상 최신 값을 담은 ref로 한다
@@ -124,7 +126,7 @@ export function CapybaraSneak() {
 
   // 게임 중에만 주인이 등 돌림 → "!" 경고 → 돌아봄(가끔은 흘끗) → 다시 등 돌림을 반복한다
   useEffect(() => {
-    if (status !== "playing") return;
+    if (status !== "playing" || paused) return;
 
     const timers: ReturnType<typeof setTimeout>[] = [];
 
@@ -148,11 +150,11 @@ export function CapybaraSneak() {
 
     scheduleAway();
     return () => timers.forEach(clearTimeout);
-  }, [status]);
+  }, [status, paused]);
 
   // 누르고 딜레이가 지나면 첫 입, 그 뒤로는 손을 뗄 때까지 일정 간격으로 한 입씩 먹는다
   useEffect(() => {
-    if (!pressing || status !== "playing") return;
+    if (!pressing || status !== "playing" || paused) return;
 
     let interval: ReturnType<typeof setInterval> | undefined;
     const delay = setTimeout(() => {
@@ -164,11 +166,11 @@ export function CapybaraSneak() {
       clearTimeout(delay);
       if (interval !== undefined) clearInterval(interval);
     };
-  }, [pressing, status]);
+  }, [pressing, status, paused]);
 
   // 손을 떼고 잠깐 여유를 준 뒤, 다시 누를 때까지 일정 간격으로 게이지가 줄어든다
   useEffect(() => {
-    if (pressing || status !== "playing") return;
+    if (pressing || status !== "playing" || paused) return;
 
     let interval: ReturnType<typeof setInterval> | undefined;
     const grace = setTimeout(() => {
@@ -180,10 +182,11 @@ export function CapybaraSneak() {
       clearTimeout(grace);
       if (interval !== undefined) clearInterval(interval);
     };
-  }, [pressing, status]);
+  }, [pressing, status, paused]);
 
   // 결과 팝업 안에서 누른 것도 React 트리를 따라 올라오지만, 게임이 끝났으면 무시된다
   function startPress() {
+    if (paused) return;
     if (statusRef.current === "success" || statusRef.current === "fail") return;
     if (statusRef.current === "ready") changeStatus("playing");
     setPressing(true);
@@ -229,6 +232,16 @@ export function CapybaraSneak() {
     setGauge(0);
     setTrend("up");
     setPressing(false);
+    setPaused(false);
+  }
+
+  // 주인은 등 돌린 상태로 되돌린다 — scheduleAway()는 away에서 시작한다고 보고 짜여 있어,
+  // looking 중에 멈췄다 이어하면 첫 입에 바로 들키기 때문
+  function pauseGame() {
+    ownerRef.current = "away";
+    setOwnerState("away");
+    setPressing(false);
+    setPaused(true);
   }
 
   const foodStage = getFoodStage(gauge);
@@ -358,7 +371,7 @@ export function CapybaraSneak() {
       <div
         data-testid="gauge-panel"
         data-trend={trend}
-        className="absolute inset-x-0 top-[max(1rem,env(safe-area-inset-top))] mx-auto w-[min(32rem,calc(100%-2rem))] rounded-2xl bg-background/85 px-4 py-3 shadow-lg backdrop-blur"
+        className="absolute inset-x-0 top-[max(1rem,env(safe-area-inset-top))] mx-auto w-[min(32rem,calc(100%-8rem))] rounded-2xl bg-background/85 px-4 py-3 shadow-lg backdrop-blur"
       >
         <div className="mb-2 flex items-center justify-between text-caption-1 font-semibold text-text-strong">
           <span>먹기 게이지</span>
@@ -379,6 +392,14 @@ export function CapybaraSneak() {
           </p>
         )}
       </div>
+
+      <GameControls
+        pause={
+          status === "playing"
+            ? { paused, onPause: pauseGame, onResume: () => setPaused(false), onRestart: restart }
+            : undefined
+        }
+      />
 
       <Dialog open={isOver} onOpenChange={(open) => !open && restart()}>
         <Dialog.Content showCloseButton={false} closeOnOverlayClick={false} className="text-center">
