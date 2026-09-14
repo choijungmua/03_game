@@ -26,6 +26,7 @@ import {
   INVINCIBLE_MS,
   isShieldUp,
   MAX_BULLETS,
+  MAX_SHOTS,
   MAX_HP,
   MAX_WEAPON_LEVEL,
   PEAK_STAGE,
@@ -430,9 +431,30 @@ describe("스테이지", () => {
     const late = getStageConfig(200);
     expect(late.shotSpeed).toBeLessThanOrEqual(420);
     expect(late.enemySpeed).toBeLessThanOrEqual(360);
-    expect(late.spawnIntervalMs).toBeGreaterThanOrEqual(260);
-    expect(late.enemyFireIntervalMs).toBeGreaterThanOrEqual(550);
-    expect(late.enemyHp).toBeLessThanOrEqual(10);
+    expect(late.spawnIntervalMs).toBeGreaterThanOrEqual(200);
+    expect(late.enemyFireIntervalMs).toBeGreaterThanOrEqual(380);
+    expect(late.enemyHp).toBeLessThanOrEqual(60);
+    expect(late.enemyShotCount).toBeLessThanOrEqual(5);
+  });
+
+  it("뒤 스테이지 적은 훨씬 단단하고, 쏘는 적은 부채꼴로 여러 발을 쏜다", () => {
+    expect(getStageConfig(PEAK_STAGE).enemyHp).toBeGreaterThanOrEqual(getStageConfig(1).enemyHp * 20);
+    expect(getStageConfig(1).enemyShotCount).toBe(1);
+    expect(getStageConfig(PEAK_STAGE).enemyShotCount).toBe(5);
+
+    const state = playing({ stage: PEAK_STAGE, enemies: [enemy({ kind: "shooter", r: 18, fireInMs: 0 })] });
+    step(state, 16, IDLE);
+    expect(state.shots).toHaveLength(5);
+  });
+
+  it("화면에 적 탄이 너무 많으면 적이 더 쏘지 않는다", () => {
+    const shot = { x: 10, y: 10, r: 5, vx: 0, vy: 0, fromBoss: false };
+    const state = playing({
+      enemies: [enemy({ kind: "shooter", r: 18, fireInMs: 0 })],
+      shots: Array.from({ length: MAX_SHOTS }, () => ({ ...shot })),
+    });
+    step(state, 16, IDLE);
+    expect(state.shots).toHaveLength(MAX_SHOTS);
   });
 
   it("목표만큼 격추하면 다음 스테이지로 넘어가고 배너가 뜬다", () => {
