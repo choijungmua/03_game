@@ -6,6 +6,8 @@ import { GAMES, getGame } from "@/lib/games/registry";
 import { breadcrumbJsonLd, gameJsonLd, JsonLd } from "@/lib/seo/json-ld";
 import { pageMetadata } from "@/lib/seo/site";
 
+import { GameVisitTracker } from "./visit-tracker";
+
 interface GamePageProps {
   params: Promise<{ slug: string }>;
 }
@@ -39,6 +41,7 @@ export default async function GamePage({ params }: GamePageProps) {
   const Game = game.component;
   return (
     <main>
+      <GameVisitTracker slug={slug} />
       <JsonLd data={gameJsonLd(game, seo)} />
       <JsonLd
         data={breadcrumbJsonLd([
