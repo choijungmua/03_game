@@ -10,7 +10,7 @@ import { CAPYBARA_EMOTES, EMOTE_SHOW_MS, emoteImage, type RoomEmote } from "@/li
 import type { Stone } from "@/lib/games/rooms";
 import { playGameSound } from "@/lib/lobby/settings";
 
-import { ROOM_SOUNDS } from "./constants";
+import { EMOTE_PICKER_SELECTOR, ROOM_SOUNDS } from "./constants";
 
 const PAGE_SIZE = 8;
 const PAGE_COUNT = Math.ceil(CAPYBARA_EMOTES.length / PAGE_SIZE);
@@ -73,11 +73,27 @@ export function EmotePicker({ onSend, disabled }: { onSend(id: number): void; di
   const [open, setOpen] = useState(false);
   const [page, setPage] = useState(0);
   const start = page * PAGE_SIZE;
+  // 막히면(이모티콘이 떠 있음·대국 끝) 판을 닫는다. 열린 채 숨겨 두면 풀리는 순간 저절로 다시 떠서 판 아래쪽 알을 가린다
+  if (disabled && open) setOpen(false);
+
+  useEffect(() => {
+    if (!open) return;
+    // 판 바깥(알·판 등)을 누르면 닫는다. 열어 둔 것을 잊고 알을 누르면 눌리지 않은 것처럼 보인다
+    const close = (event: Event) => {
+      if (event.target instanceof Element && event.target.closest(EMOTE_PICKER_SELECTOR)) return;
+      setOpen(false);
+    };
+    document.addEventListener("pointerdown", close);
+    return () => document.removeEventListener("pointerdown", close);
+  }, [open]);
 
   return (
     <>
       {open && !disabled && (
-        <div className="absolute inset-x-0 bottom-full z-20 mb-3 flex flex-col gap-2 rounded-2xl bg-background/95 p-2 shadow-lg backdrop-blur">
+        <div
+          data-emote-picker=""
+          className="absolute inset-x-0 bottom-full z-20 mb-3 flex flex-col gap-2 rounded-2xl bg-background/95 p-2 shadow-lg backdrop-blur"
+        >
           <div className="grid grid-cols-4 gap-1">
             {CAPYBARA_EMOTES.slice(start, start + PAGE_SIZE).map((text, offset) => (
               <button
@@ -122,6 +138,7 @@ export function EmotePicker({ onSend, disabled }: { onSend(id: number): void; di
       <Button
         type="button"
         variant="outline"
+        data-emote-picker=""
         aria-expanded={open && !disabled}
         disabled={disabled}
         onClick={() => {
