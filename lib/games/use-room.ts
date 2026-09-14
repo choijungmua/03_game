@@ -3,7 +3,7 @@ import { useEffect, useEffectEvent, useRef, useState } from "react";
 
 import { API_URL } from "@/lib/api-url";
 
-import type { OpenRoom, RoomAction, RoomResult, RoomState, Vector } from "./rooms";
+import type { RoomAction, RoomResult, RoomState, RoomSummary, Vector } from "./rooms";
 
 type RoomSuccess<S> = Extract<RoomResult<S>, { ok: true }>;
 
@@ -185,13 +185,13 @@ export function useRoom<S extends RoomState, A extends string>(slug: string) {
   };
 }
 
-/** 참가할 수 있는 방 목록. 쓰는 화면이 떠 있는 동안 3초마다 새로 받는다 */
-export function useOpenRooms(slug: string) {
+/** 방 목록(기다리는 방·게임 중인 방). 쓰는 화면이 떠 있는 동안 3초마다 새로 받는다 */
+export function useRoomList(slug: string) {
   const rooms = useQuery({
-    queryKey: ["open-rooms", slug],
+    queryKey: ["room-list", slug],
     queryFn: async () => {
       const response = await fetch(`${API_URL}/api/games/${slug}/rooms`, { cache: "no-store" });
-      const data: Partial<{ rooms: OpenRoom[] }> = await response.json().catch(() => ({}));
+      const data: Partial<{ rooms: RoomSummary[] }> = await response.json().catch(() => ({}));
       return Array.isArray(data.rooms) ? data.rooms : [];
     },
     refetchInterval: POLL_MS * 3,

@@ -2,6 +2,7 @@
 
 // 캔버스용 new Image()와 이름이 겹치지 않게 NextImage로 가져온다
 import NextImage from "next/image";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { type FormEvent, useEffect, useEffectEvent, useRef, useState } from "react";
 
@@ -23,13 +24,13 @@ import {
   type SpriteId,
 } from "@/lib/lobby/assets";
 import { Input } from "@/components/inputs/input";
-import { DEFAULT_LOBBY_SETTINGS } from "@/lib/lobby/constants";
+import { DEFAULT_LOBBY_SETTINGS, REMOTE_GONE_MS, REMOTE_RENDER_DELAY_MS } from "@/lib/lobby/constants";
+import { pushSnapshot, sampleSnapshots, type Snapshot } from "@/lib/lobby/interpolation";
 import { type LobbySettings, loadLobbySettings, playSound, saveLobbySettings } from "@/lib/lobby/settings";
 
 import { CAPYBARA_EMOTES, emoteChat, emoteImage, parseEmoteChat } from "@/lib/games/emotes";
 
-import { BUBBLE_LINE, BUBBLE_TEXT_WIDTH, EMOTE_SIZE } from "./constants";
-import { SiteLinks } from "./site-sheet";
+import { BUBBLE_LINE, BUBBLE_TEXT_WIDTH, EMOTE_SIZE, SITE_LINKS } from "./constants";
 import { EmotePicker } from "./emote-picker";
 import { SoundToggle } from "./lobby-settings";
 import {
@@ -113,13 +114,10 @@ interface Remote {
   name: string;
   x: number;
   y: number;
-  /** 마지막으로 받은 위치까지 fromX,Y에서 segMs 동안 일정한 속도로 옮겨 간다 */
-  fromX: number;
-  fromY: number;
-  toX: number;
-  toY: number;
-  receivedAt: number;
-  segMs: number;
+  /** 받은 위치들. 매 프레임 조금 과거(REMOTE_RENDER_DELAY_MS)를 보간해 그린다 (lib/lobby/interpolation.ts) */
+  snapshots: Snapshot[];
+  /** 마지막으로 응답에 들어 있던 시각 */
+  seenAt: number;
   /** 마지막으로 실제로 움직인 시각. 다음 위치를 기다리는 짧은 멈춤에도 걷기 모습을 유지한다 */
   movedAt: number;
   facing: Facing;
@@ -180,8 +178,6 @@ const SEAT_REACH = TILE * 1.4;
 const LOBBY_WS_URL = `${API_URL.replace(/^http/, "ws")}/api/lobby/ws`;
 /** 가만히 있어도 이 간격으로 한 번은 보낸다 (서버가 10초 조용한 플레이어를 지우지 않게) */
 const HEARTBEAT_MS = 2000;
-/** 남의 위치 메시지가 이보다 오래 끊겼다 오면 한 틱 동안만 옮긴다 */
-const SEGMENT_MAX_MS = 200;
 const RECONNECT_MIN_MS = 1000;
 const RECONNECT_MAX_MS = 8000;
 /** 못 보내고 쌓인 데이터가 이만큼 넘으면(느린 연결) 이번엔 건너뛴다 */
@@ -986,8 +982,8 @@ export function Lobby({ games }: { games: DoorGame[] }) {
     resize();
 
     const onKeyDown = (event: KeyboardEvent) => {
-      // 채팅 입력 중엔 WASD·F·Space가 글자로 들어가야 한다. 약관 패널이 열려 있을 땐 방향키·Space로 글을 스크롤한다
-      if (event.target instanceof HTMLInputElement || (event.target instanceof Element && event.target.closest("dialog[open]"))) return;
+      // 채팅 입력 중엔 WASD·F·Space가 글자로 들어가야 한다
+      if (event.target instanceof HTMLInputElement) return;
       if (KEY_VECTORS[event.code]) {
         event.preventDefault(); // 방향키 스크롤 방지
         pressed.add(event.code);
@@ -1119,15 +1115,9 @@ export function Lobby({ games }: { games: DoorGame[] }) {
           heard = `${player.name}: ${emote === null ? player.chat : `${CAPYBARA_EMOTES[emote]} (이모티콘)`}`;
         }
         if (remote) {
-          // 다음 위치가 올 때까지(=지난 수신 간격) 걸쳐 옮긴다. 지수 감속으로 따라가면 받을 때마다 빨라졌다 느려져서 끊겨 보인다.
-          // 서버는 바뀐 게 없으면 안 보내므로, 오래 조용하다 온 메시지는 한 틱 동안만 옮긴다 (안 그러면 다시 걷기 시작할 때 늦게 따라온다)
-          const gap = received - remote.receivedAt;
-          remote.fromX = remote.x;
-          remote.fromY = remote.y;
-          remote.toX = player.x;
-          remote.toY = player.y;
-          remote.segMs = gap > SEGMENT_MAX_MS ? LOBBY_TICK_MS : Math.max(LOBBY_TICK_MS, gap);
-          remote.receivedAt = received;
+          // 받은 위치를 쌓아 두고 틱 루프가 조금 과거를 보간해 그린다 (서버는 바뀐 게 없으면 안 보내므로 평소 간격은 한 틱)
+          pushSnapshot(remote.snapshots, player.x, player.y, received, LOBBY_TICK_MS);
+          remote.seenAt = received;
           remote.facing = player.facing;
           remote.sitting = player.sitting;
           remote.outfit = player.outfit ?? {};
@@ -1141,12 +1131,8 @@ export function Lobby({ games }: { games: DoorGame[] }) {
             name: player.name,
             x: player.x,
             y: player.y,
-            fromX: player.x,
-            fromY: player.y,
-            toX: player.x,
-            toY: player.y,
-            receivedAt: received,
-            segMs: LOBBY_TICK_MS,
+            snapshots: [{ x: player.x, y: player.y, at: received }],
+            seenAt: received,
             movedAt: -Infinity,
             facing: player.facing,
             sitting: player.sitting,
@@ -1160,7 +1146,8 @@ export function Lobby({ games }: { games: DoorGame[] }) {
           });
         }
       }
-      for (const id of remotes.keys()) if (!seen.has(id)) remotes.delete(id);
+      // 한 번 목록에서 빠졌다고 바로 지우면 시야 경계에서 사라졌다 다시 나타나 깜빡인다
+      for (const [id, remote] of remotes) if (!seen.has(id) && received - remote.seenAt > REMOTE_GONE_MS) remotes.delete(id);
       if (heard) {
         setHeardChat(heard);
         playSound("chat", settingsRef.current);
@@ -1337,10 +1324,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
       if (isStunned !== shownStunned) setStunned((shownStunned = isStunned));
 
       for (const remote of remotes.values()) {
-        // rAF 시각이 수신 시각보다 살짝 이를 수 있어서 0 아래로 내려가지 않게 한다
-        const t = Math.max(0, Math.min(1, (now - remote.receivedAt) / remote.segMs));
-        const nextX = remote.fromX + (remote.toX - remote.fromX) * t;
-        const nextY = remote.fromY + (remote.toY - remote.fromY) * t;
+        const { x: nextX, y: nextY } = sampleSnapshots(remote.snapshots, now - REMOTE_RENDER_DELAY_MS);
         const step = Math.hypot(nextX - remote.x, nextY - remote.y);
         remote.x = nextX;
         remote.y = nextY;
@@ -1726,7 +1710,21 @@ export function Lobby({ games }: { games: DoorGame[] }) {
             <span className="rounded-full bg-card/85 px-2 py-0.5 text-caption-3 font-semibold text-text-strong">때리기</span>
           </button>
         </div>
-        <SiteLinks />
+        <nav aria-label="사이트 정보" className="flex items-center gap-3 text-caption-3 drop-shadow-md">
+          {SITE_LINKS.map(({ href, label }) => (
+            <Link
+              key={href}
+              href={href}
+              className={cn(
+                "flex min-h-6 items-center rounded-sm transition-colors focus-visible:outline-2 focus-visible:outline-primary",
+                // 문의는 있는 듯 없는 듯 옅게
+                href === "/contact" ? "text-white/45 hover:text-white/80" : "text-white/85 hover:text-white",
+              )}
+            >
+              {label}
+            </Link>
+          ))}
+        </nav>
       </div>
     </>
   );

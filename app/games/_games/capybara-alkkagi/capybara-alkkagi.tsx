@@ -13,7 +13,7 @@ import {
 
 import { AdSlot } from "@/components/ads/ad-slot";
 import { Progress } from "@/components/feedback/progress";
-import { EmoteBubble, EmotePicker, OpenRoomList, TurnTimer, useEmoteShowing } from "@/components/games/capybara-room";
+import { EmoteBubble, EmotePicker, RoomList, TurnTimer, useEmoteShowing } from "@/components/games/capybara-room";
 import { GameControls, LEAVE_CONFIRM_MESSAGE } from "@/components/games/game-controls";
 import { Button } from "@/components/inputs/button";
 import { Dialog } from "@/components/overlay/dialog";
@@ -90,7 +90,8 @@ export function CapybaraAlkkagi() {
   const { view, error, pending, copied, clockOffset, create, join, act, sendEmote, copyInvite, leave } = useRoom<
     AlkkagiState,
     AlkkagiAction
-  >("capybara-alkkagi");  const emoteShowing = useEmoteShowing(view?.emote ?? null);
+  >("capybara-alkkagi");
+  const emoteShowing = useEmoteShowing(view?.emote ?? null);
   const [aim, setAim] = useState<Aim | null>(null);
   /** 샷 애니메이션 중이면 true. 알 위치는 state가 아니라 DOM에 바로 쓴다 */
   const [animating, setAnimating] = useState(false);
@@ -319,8 +320,9 @@ export function CapybaraAlkkagi() {
       />
 
       {!view || !state ? (
-        <div className="absolute inset-0 flex items-center justify-center px-4">
-          <div className={cn(CARD, "flex w-full max-w-md flex-col gap-5 p-6")}>
+        // 시작 카드 + 오른쪽 방 목록. 좁은 화면에서는 위아래로 쌓고 스크롤한다
+        <div className="absolute inset-0 flex flex-col items-center gap-4 overflow-y-auto px-4 pt-[calc(max(1rem,env(safe-area-inset-top))_+_3.5rem)] pb-[max(1rem,env(safe-area-inset-bottom))] md:flex-row md:justify-center md:overflow-hidden">
+          <div className={cn(CARD, "flex w-full max-w-md shrink-0 flex-col gap-5 p-6")}>
             <div className="flex flex-col items-center gap-2">
               <p aria-hidden="true" className="text-center text-title-1 font-black">
                 {GAME_TITLES["capybara-alkkagi"]}
@@ -340,14 +342,17 @@ export function CapybaraAlkkagi() {
               </Button>
             </div>
 
-            <OpenRoomList room={{ slug: "capybara-alkkagi", pending, join }} />
-
             {error && (
               <p role="alert" className="text-center text-caption-1 text-error">
                 {error}
               </p>
             )}
           </div>
+
+          <RoomList
+            room={{ slug: "capybara-alkkagi", pending, join }}
+            className="w-full max-w-md shrink-0 md:h-[min(36rem,100%)] md:w-80"
+          />
         </div>
       ) : (
         <div className="absolute inset-0 flex flex-col items-center gap-3 pt-[calc(max(1rem,env(safe-area-inset-top))_+_3.5rem)] pb-[max(1rem,env(safe-area-inset-bottom))]">
