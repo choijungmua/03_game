@@ -47,7 +47,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
           crossOrigin="anonymous"
         />
       </head>
-      <body className={pretendard.variable}>
+      <body>
         <JsonLd data={websiteJsonLd()} />
         <Providers>
           {children}
