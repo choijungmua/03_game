@@ -7,8 +7,8 @@ import "./globals.css";
 import { Providers } from "./providers";
 
 export const metadata: Metadata = {
-  title: "03 Game",
-  description: "03 Game interface",
+  title: "ggpli",
+  description: "ggpli 게임 모음",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
