@@ -103,9 +103,10 @@
     --card-foreground: oklch(0.145 0 0);
     --popover: oklch(1 0 0);
     --popover-foreground: oklch(0.145 0 0);
-    --primary: oklch(0.623 0.214 259.815);
-    --primary-hover: oklch(0.546 0.245 262.881);
-    --primary-foreground: oklch(0.985 0 0);
+    /* primary = 카피바라 털색. 주황갈색 위에선 흰 글자 대비가 약해 글자는 어둡게 */
+    --primary: var(--capybara);
+    --primary-hover: color-mix(in oklch, var(--capybara) 85%, black);
+    --primary-foreground: oklch(0.145 0 0);
     --secondary: oklch(0.97 0 0);
     --secondary-foreground: oklch(0.205 0 0);
     --muted: oklch(0.97 0 0);
@@ -152,8 +153,8 @@
     --card-foreground: oklch(0.985 0 0);
     --popover: oklch(0.205 0 0);
     --popover-foreground: oklch(0.985 0 0);
-    --primary: oklch(0.623 0.214 259.815);
-    --primary-hover: oklch(0.546 0.245 262.881);
+    --primary: var(--capybara);
+    --primary-hover: color-mix(in oklch, var(--capybara) 85%, black);
     --primary-foreground: oklch(0.145 0 0);
     --secondary: oklch(0.269 0 0);
     --secondary-foreground: oklch(0.985 0 0);
