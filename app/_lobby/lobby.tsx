@@ -83,8 +83,15 @@ interface Remote {
   id: string;
   x: number;
   y: number;
-  targetX: number;
-  targetY: number;
+  /** 마지막으로 받은 위치까지 fromX,Y에서 segMs 동안 일정한 속도로 옮겨 간다 */
+  fromX: number;
+  fromY: number;
+  toX: number;
+  toY: number;
+  receivedAt: number;
+  segMs: number;
+  /** 마지막으로 실제로 움직인 시각. 다음 위치를 기다리는 짧은 멈춤에도 걷기 모습을 유지한다 */
+  movedAt: number;
   facing: Facing;
   sitting: boolean;
   walkDist: number;
@@ -900,8 +907,13 @@ export function Lobby({ games }: { games: DoorGame[] }) {
             const stunUntil = player.stunMs > 0 ? received + player.stunMs : 0;
             const remote = remotes.get(player.id);
             if (remote) {
-              remote.targetX = player.x;
-              remote.targetY = player.y;
+              // 다음 위치가 올 때까지(=지난 수신 간격) 걸쳐 옮긴다. 지수 감속으로 따라가면 받을 때마다 빨라졌다 느려져서 끊겨 보인다
+              remote.fromX = remote.x;
+              remote.fromY = remote.y;
+              remote.toX = player.x;
+              remote.toY = player.y;
+              remote.segMs = Math.min(500, Math.max(SYNC_MS, received - remote.receivedAt));
+              remote.receivedAt = received;
               remote.facing = player.facing;
               remote.sitting = player.sitting;
               remote.outfit = player.outfit ?? {};
@@ -912,8 +924,13 @@ export function Lobby({ games }: { games: DoorGame[] }) {
                 id: player.id,
                 x: player.x,
                 y: player.y,
-                targetX: player.x,
-                targetY: player.y,
+                fromX: player.x,
+                fromY: player.y,
+                toX: player.x,
+                toY: player.y,
+                receivedAt: received,
+                segMs: SYNC_MS,
+                movedAt: -Infinity,
                 facing: player.facing,
                 sitting: player.sitting,
                 walkDist: 0,
@@ -1061,13 +1078,16 @@ export function Lobby({ games }: { games: DoorGame[] }) {
       if (isStunned !== shownStunned) setStunned((shownStunned = isStunned));
 
       for (const remote of remotes.values()) {
-        const ease = Math.min(1, dt / 100);
-        const moving = Math.hypot(remote.targetX - remote.x, remote.targetY - remote.y) > 2;
-        const stepX = (remote.targetX - remote.x) * ease;
-        const stepY = (remote.targetY - remote.y) * ease;
-        remote.x += stepX;
-        remote.y += stepY;
-        remote.walkDist = moving ? remote.walkDist + Math.hypot(stepX, stepY) : 0;
+        // rAF 시각이 수신 시각보다 살짝 이를 수 있어서 0 아래로 내려가지 않게 한다
+        const t = Math.max(0, Math.min(1, (now - remote.receivedAt) / remote.segMs));
+        const nextX = remote.fromX + (remote.toX - remote.fromX) * t;
+        const nextY = remote.fromY + (remote.toY - remote.fromY) * t;
+        const step = Math.hypot(nextX - remote.x, nextY - remote.y);
+        remote.x = nextX;
+        remote.y = nextY;
+        if (step > 0.05) remote.movedAt = now;
+        const moving = now - remote.movedAt < 200;
+        remote.walkDist = moving ? remote.walkDist + step : 0;
         const busy = moving || remote.sitting || now < remote.stunUntil || now < remote.attackUntil;
         remote.idleMs = busy ? 0 : nextIdle(remote.idleMs, dt);
       }
