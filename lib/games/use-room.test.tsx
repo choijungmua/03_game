@@ -168,6 +168,22 @@ describe("useRoom", () => {
     expect(hook.result.current.error).toBe("");
   });
 
+  it("판이 그대로면 폴링이 와도 같은 화면 객체를 유지하고(매초 판 전체를 다시 그리지 않게), 바뀌면 새로 받는다", async () => {
+    const { server } = fakeServer();
+    const { result } = renderRoom();
+    act(() => result.current.create());
+    await until(() => result.current.view !== null);
+    const before = result.current.view;
+
+    await tickPoll();
+    await settle();
+    expect(result.current.view).toBe(before);
+
+    server.join();
+    await tickPoll();
+    await until(() => result.current.view?.joined.white === true);
+  });
+
   it("탭으로 돌아오면 폴링을 기다리지 않고 바로 새로 받는다", async () => {
     const { server } = fakeServer();
     const { blackToken, hook } = await joinAsWhite(server);
