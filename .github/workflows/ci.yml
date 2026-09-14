@@ -36,3 +36,27 @@ jobs:
 
       - name: 프로덕션 빌드
         run: pnpm build
+
+  # 프로덕션 빌드를 띄워 로비와 모든 게임 페이지를 브라우저로 열고 조작해, 에러가 하나라도 나면 실패 (e2e/)
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec playwright install --with-deps chromium
+
+      - name: E2E 스모크
+        run: pnpm e2e
+
+      - name: 실패하면 리포트 올리기
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: playwright-report
+          retention-days: 7
