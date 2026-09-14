@@ -5,7 +5,11 @@ import NextImage from "next/image";
 import { useRouter } from "next/navigation";
 import { type FormEvent, useEffect, useEffectEvent, useRef, useState } from "react";
 
+import { pretendard } from "@/config";
 import { cn } from "@/lib";
+
+/** 캔버스는 CSS 폰트를 물려받지 않으니 사이트 폰트(Pretendard) 이름을 직접 쓴다 */
+const CANVAS_FONT = pretendard.style.fontFamily;
 
 import {
   BUILDING_ASSETS,
@@ -364,7 +368,7 @@ function drawSteam(ctx: CanvasRenderingContext2D, x: number, y: number, now: num
 }
 
 function drawLabel(ctx: CanvasRenderingContext2D, text: string, x: number, y: number, strong = false) {
-  ctx.font = `${strong ? "bold " : ""}13px system-ui, sans-serif`;
+  ctx.font = `${strong ? 700 : 600} 13px ${CANVAS_FONT}`;
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
   ctx.lineWidth = 4;
@@ -379,7 +383,7 @@ const BUBBLE_LINE = 16;
 
 /** 꼬리 끝이 (x, bottom)에 오는 말풍선. 한글은 띄어쓰기 없이 길게 쓰기도 해서 글자 단위로 줄을 바꾼다 */
 function drawBubble(ctx: CanvasRenderingContext2D, text: string, x: number, bottom: number) {
-  ctx.font = "500 12px system-ui, sans-serif";
+  ctx.font = `500 12px ${CANVAS_FONT}`;
   const lines: string[] = [];
   let line = "";
   for (const char of text) {
@@ -629,7 +633,7 @@ function drawHit(ctx: CanvasRenderingContext2D, x: number, y: number, progress: 
     ctx.stroke();
   }
   ctx.globalAlpha = 1 - progress;
-  ctx.font = "900 18px system-ui, sans-serif";
+  ctx.font = `700 18px ${CANVAS_FONT}`;
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
   ctx.lineWidth = 4;
