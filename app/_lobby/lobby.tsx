@@ -215,8 +215,11 @@ const ENTER_CHARGE_MS = 900;
 const SEAT_REACH = TILE * 1.4;
 /** 로비 WebSocket 주소 (http→ws, https→wss) */
 const LOBBY_WS_URL = `${API_URL.replace(/^http/, "ws")}/api/lobby/ws`;
-/** 가만히 있어도 이 간격으로 한 번은 보낸다 (서버가 10초 조용한 플레이어를 지우지 않게) */
-const HEARTBEAT_MS = 2000;
+/**
+ * 가만히 있으면 이 간격으로만 한 번 보낸다. 서버는 WebSocket이 열려 있으면 조용해도 지우지 않고(연결 확인은 30초 ping),
+ * 멈춰 있는 동안 서버에 일을 시키지 않으려고 길게 둔다 — 만일을 위한 안전망일 뿐이다 (전에는 2초)
+ */
+const HEARTBEAT_MS = 25_000;
 const RECONNECT_MIN_MS = 1000;
 const RECONNECT_MAX_MS = 8000;
 /** 못 보내고 쌓인 데이터가 이만큼 넘으면(느린 연결) 이번엔 건너뛴다 */
