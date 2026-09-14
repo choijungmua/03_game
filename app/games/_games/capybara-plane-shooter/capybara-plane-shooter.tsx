@@ -8,11 +8,13 @@ import { AdSlot } from "@/components/ads/ad-slot";
 import { GameControls } from "@/components/games/game-controls";
 import { ShareButton } from "@/components/games/share-button";
 import { cn } from "@/lib";
-import { GAME_TITLES } from "@/lib/games/constants";
+import { GAME_SOUNDS, GAME_TITLES } from "@/lib/games/constants";
 import { submitGameRecord } from "@/lib/games/game-events";
 import { useInView } from "@/lib/games/use-in-view";
 import { useLockPageScroll } from "@/lib/games/use-lock-page-scroll";
+import { playGameSound, type SoundLayer } from "@/lib/lobby/settings";
 
+import { PLANE_SHOOTER_SOUNDS, SOUND_GAP_MS } from "./constants";
 import { PlaneShooterLeaderboard } from "./leaderboard";
 import {
   BOSS_PATTERN_LABELS,
@@ -26,6 +28,7 @@ import {
   getBossPattern,
   getPlaneY,
   getStageConfig,
+  isBossStage,
   ITEMS,
   MAX_HP,
   step,
@@ -129,6 +132,91 @@ function readHud(state: GameState): Hud {
       : null,
     killsLeft: Math.max(0, getStageConfig(state.stage).killGoal - state.stageKills),
   };
+}
+
+/** step 직전 상태 중 효과음 판단에 필요한 것만 떠 둔다 (배열은 새로 생긴·사라진 것을 가리려고 참조를 복사) */
+type SoundSnapshot = Pick<GameState, "hp" | "stage" | "bank" | "fireInMs" | "bossPatternIndex" | "bossPatternMs" | "items"> & {
+  hasBoss: boolean;
+  shots: Set<GameState["shots"][number]>;
+};
+
+function takeSoundSnapshot(state: GameState): SoundSnapshot {
+  return {
+    hp: state.hp,
+    stage: state.stage,
+    bank: state.bank,
+    fireInMs: state.fireInMs,
+    bossPatternIndex: state.bossPatternIndex,
+    bossPatternMs: state.bossPatternMs,
+    items: [...state.items],
+    hasBoss: state.enemies.some((enemy) => enemy.kind === "boss"),
+    shots: new Set(state.shots),
+  };
+}
+
+/** 한 프레임 전후 상태를 비교해 이번 프레임에 일어난 일마다 소리를 한 번씩 낸다. 잦은 소리는 gap으로 솎는다 */
+function playStepSounds(
+  prev: SoundSnapshot,
+  state: GameState,
+  now: number,
+  lastPlayed: Map<keyof typeof SOUND_GAP_MS, number>,
+) {
+  function throttled(key: keyof typeof SOUND_GAP_MS, layers: readonly SoundLayer[]) {
+    if (now - (lastPlayed.get(key) ?? -Infinity) < SOUND_GAP_MS[key]) return;
+    lastPlayed.set(key, now);
+    playGameSound(layers);
+  }
+
+  // fireInMs는 발사할 때만 늘어난다
+  if (state.fireInMs > prev.fireInMs) throttled("fire", PLANE_SHOOTER_SOUNDS.fire[state.weapon]);
+  if (prev.bank === 0 && state.bank !== 0) throttled("move", PLANE_SHOOTER_SOUNDS.move);
+
+  // 맞은 순간 flashMs가 80으로 새로 채워진다 (그 전에 이미 dt만큼 줄어든 뒤라 80이면 이번 프레임에 맞은 것)
+  for (const enemy of state.enemies) {
+    if (enemy.flashMs !== 80) continue;
+    if (enemy.kind === "boss") throttled("bossHit", PLANE_SHOOTER_SOUNDS.bossHit);
+    else throttled("enemyHit", PLANE_SHOOTER_SOUNDS.enemyHit);
+  }
+
+  const damaged = state.hp < prev.hp;
+  // 폭발은 이번 프레임에 생긴 것만 ageMs가 0이다. 들이받아 생긴 폭발은 피격음이 대신한다
+  if (!damaged && state.explosions.some((explosion) => explosion.ageMs === 0)) {
+    throttled("enemyDown", PLANE_SHOOTER_SOUNDS.enemyDown);
+  }
+  if (damaged && state.hp > 0) {
+    playGameSound(state.hp === 1 ? PLANE_SHOOTER_SOUNDS.lowHp : PLANE_SHOOTER_SOUNDS.damage);
+  }
+
+  for (const shot of state.shots) {
+    if (prev.shots.has(shot)) continue;
+    if (shot.fromBoss) throttled("bossShot", PLANE_SHOOTER_SOUNDS.bossShot);
+    else throttled("enemyShot", PLANE_SHOOTER_SOUNDS.enemyShot);
+  }
+
+  // 사라진 아이템 중 화면 아래로 떨어진 게 아니면 먹은 것
+  for (const item of prev.items) {
+    if (state.items.includes(item) || item.y - item.r >= state.height) continue;
+    playGameSound(item.kind === "heal" ? PLANE_SHOOTER_SOUNDS.heal : PLANE_SHOOTER_SOUNDS.weaponPickup);
+  }
+
+  if (state.stage > prev.stage) {
+    playGameSound(isBossStage(prev.stage) ? PLANE_SHOOTER_SOUNDS.bossClear : PLANE_SHOOTER_SOUNDS.stageClear);
+    if (isBossStage(state.stage)) playGameSound(PLANE_SHOOTER_SOUNDS.bossStage);
+    return;
+  }
+
+  const hasBoss = state.enemies.some((enemy) => enemy.kind === "boss");
+  if (!hasBoss) return;
+  if (!prev.hasBoss) {
+    playGameSound(PLANE_SHOOTER_SOUNDS.bossAppear);
+    return;
+  }
+  if (state.bossPatternIndex !== prev.bossPatternIndex) playGameSound(PLANE_SHOOTER_SOUNDS.bossPattern);
+  if (getBossPattern(state) !== "charge") return;
+  if (prev.bossPatternMs === 0 && state.bossPatternMs > 0) playGameSound(PLANE_SHOOTER_SOUNDS.chargeWindup);
+  if (prev.bossPatternMs < CHARGE_WINDUP_MS && state.bossPatternMs >= CHARGE_WINDUP_MS) {
+    playGameSound(PLANE_SHOOTER_SOUNDS.chargeDash);
+  }
 }
 
 function drawSprite(
@@ -277,6 +365,11 @@ export function CapybaraPlaneShooter() {
     void loadSprites();
   }, []);
 
+  // 3·2·1 숫자가 바뀔 때마다 한 박
+  useEffect(() => {
+    if (phase === "countdown") playGameSound(GAME_SOUNDS.countdown);
+  }, [phase, countdownIndex]);
+
   useEffect(() => {
     if (phase !== "countdown") return;
 
@@ -286,6 +379,7 @@ export function CapybaraPlaneShooter() {
           setCountdownIndex(index + 1);
           return;
         }
+        playGameSound(GAME_SOUNDS.go);
         setPhase("playing");
       }, COUNTDOWN_STEP_MS * (index + 1)),
     );
@@ -298,6 +392,8 @@ export function CapybaraPlaneShooter() {
     const now = Date.now();
     const record = { id: String(now), score, stage, at: now };
     const rank = getRank(records, record);
+    playGameSound(PLANE_SHOOTER_SOUNDS.gameOver);
+    if (rank === 1) playGameSound(PLANE_SHOOTER_SOUNDS.newRecord);
     saveRecords(insertRecord(records, record));
     void submitGameRecord("capybara-plane-shooter", record.score, record);
     setResult({ score, stage, recordId: record.id, rank });
@@ -337,6 +433,7 @@ export function CapybaraPlaneShooter() {
       const startAt = performance.now();
       let lastAt = startAt;
       let lastHudKey = "";
+      const lastPlayed = new Map<keyof typeof SOUND_GAP_MS, number>();
 
       function tick(now: number) {
         const state = stateRef.current;
@@ -354,7 +451,9 @@ export function CapybaraPlaneShooter() {
           targetX: dragRef.current?.targetX ?? null,
         };
         // rAF는 백그라운드 탭에서 멈추고, step이 프레임 간격에 상한을 둬서 자연히 일시정지된다
+        const before = takeSoundSnapshot(state);
         step(state, now - lastAt, input);
+        playStepSounds(before, state, now, lastPlayed);
         lastAt = now;
         // rAF가 넘기는 now는 프레임 시작 시각이라 startAt보다 앞설 수 있다. 음수면 애니메이션 프레임 번호가 -1이 되어 그림을 못 찾는다
         draw(ctx, state, sprites, palette, Math.max(0, now - startAt), reducedMotion);
@@ -412,7 +511,9 @@ export function CapybaraPlaneShooter() {
 
   // 시작/재시작은 click으로 받아 스크롤하려고 끄는 동작에는 반응하지 않게 한다
   function handleClick() {
-    if (phase === "idle" || phase === "result") startCountdown();
+    if (phase !== "idle" && phase !== "result") return;
+    playGameSound(GAME_SOUNDS.start);
+    startCountdown();
   }
 
   const handleKey = useEffectEvent((event: KeyboardEvent) => {
@@ -430,7 +531,7 @@ export function CapybaraPlaneShooter() {
       return;
     }
     event.preventDefault();
-    if (phase === "idle" || phase === "result") startCountdown();
+    handleClick();
   });
 
   useEffect(() => {

@@ -7,8 +7,8 @@ export const DEFAULT_LOBBY_SETTINGS: LobbySettings = { muted: false, volume: 0.6
 
 export const LOBBY_SETTINGS_STORAGE_KEY = "ggpli:lobby-settings";
 
-/** 다른 유저는 이만큼 과거 위치를 그린다. 폴링(150ms)이 한 번 늦어도 멈칫하지 않게 두 틱이 조금 안 되게 둔다 */
-export const REMOTE_RENDER_DELAY_MS = 250;
+/** 다른 유저는 이만큼 과거 위치를 그린다. WebSocket 틱(50ms, presence.ts LOBBY_TICK_MS) 두 번치라 한 틱이 늦게 와도 멈칫하지 않는다 (150ms 폴링 때는 250ms였다) */
+export const REMOTE_RENDER_DELAY_MS = 100;
 /** 응답에서 이만큼 계속 빠진 유저만 지운다. 한 번 빠졌다고 지우면 사라졌다 다시 나타나 깜빡인다 */
 export const REMOTE_GONE_MS = 1_000;
 /** 유저마다 들고 있는 과거 위치 개수 */
@@ -21,10 +21,22 @@ export const SOUNDS: Record<LobbySound, readonly SoundLayer[]> = {
   chat: [{ kind: "tone", wave: "sine", from: 740, to: 1180, ms: 120, level: 0.18 }],
   swing: [{ kind: "tone", wave: "triangle", from: 420, to: 140, ms: 140, level: 0.16 }],
   hit: [{ kind: "tone", wave: "square", from: 180, to: 55, ms: 200, level: 0.12 }],
-  // 톡: 발바닥이 풀밭에 닿는 낮고 부드러운 소리
+  // 사각: 풀밭을 밟는 낮고 부드러운 발소리 + 풀잎 스치는 소리
   step: [
-    { kind: "noise", filter: "lowpass", q: 1, from: 900, to: 250, ms: 70, level: 0.2 },
-    { kind: "tone", wave: "sine", from: 120, to: 70, ms: 60, level: 0.1 },
+    { kind: "noise", filter: "lowpass", q: 1, from: 900, to: 250, ms: 70, level: 0.18 },
+    { kind: "tone", wave: "sine", from: 120, to: 70, ms: 60, level: 0.08 },
+    { kind: "noise", filter: "bandpass", q: 0.8, from: 3200, to: 2000, ms: 110, level: 0.08, attack: 15 },
+  ],
+  // 통: 나무 데크 판자를 밟는 속 빈 나무 울림
+  stepDeck: [
+    { kind: "noise", filter: "bandpass", q: 4, from: 900, to: 700, ms: 40, level: 0.3 },
+    { kind: "tone", wave: "triangle", from: 320, to: 260, ms: 80, level: 0.12 },
+    { at: 8, kind: "tone", wave: "sine", from: 640, to: 560, ms: 50, level: 0.05 },
+  ],
+  // 철퍽: 진흙길을 밟는 질척한 소리
+  stepMud: [
+    { kind: "noise", filter: "lowpass", q: 2, from: 400, to: 900, ms: 90, level: 0.22 },
+    { kind: "tone", wave: "sine", from: 90, to: 60, ms: 70, level: 0.1 },
   ],
   // 뿅 → 털썩: 폴짝 뛰어올라 통나무에 엉덩이를 붙인다
   sit: [

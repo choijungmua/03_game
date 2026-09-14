@@ -7,10 +7,13 @@ import { AdSlot } from "@/components/ads/ad-slot";
 import { GameControls } from "@/components/games/game-controls";
 import { ShareButton } from "@/components/games/share-button";
 import { cn } from "@/lib";
-import { GAME_TITLES } from "@/lib/games/constants";
+import { GAME_SOUNDS, GAME_TITLES } from "@/lib/games/constants";
 import { submitGameRecord } from "@/lib/games/game-events";
+import { useFrameText } from "@/lib/games/use-frame-text";
 import { useInView } from "@/lib/games/use-in-view";
+import { playGameSound, type SoundLayer } from "@/lib/lobby/settings";
 
+import { CLICK_SPEED_SOUNDS, FAIL_TIER_INDEX, RESULT_SOUND_DELAY_MS, RESULT_TAP_GUARD_MS } from "./constants";
 import { ClickSpeedLeaderboard } from "./leaderboard";
 import {
   calculateCps,
@@ -22,18 +25,12 @@ import {
   saveRecords,
   useClickSpeedRecords,
 } from "./records";
-import { getClickSpeedTier } from "./tiers";
+import { CLICK_SPEED_TIERS, getClickSpeedTier } from "./tiers";
 
 export const COUNTDOWN_VALUES = [3, 2, 1] as const;
 export const COUNTDOWN_STEP_MS = 800;
 
 type Phase = "idle" | "countdown" | "playing" | "result";
-
-interface Ripple {
-  id: number;
-  x: number;
-  y: number;
-}
 
 interface RoundResult {
   count: number;
@@ -48,21 +45,27 @@ function stopPropagation(event: React.SyntheticEvent) {
   event.stopPropagation();
 }
 
+function playTap() {
+  playGameSound(GAME_SOUNDS.tap);
+}
+
+/** 앞 소리가 끝난 뒤 이어서 나도록 모든 층을 ms만큼 미룬다 */
+function delayLayers(layers: readonly SoundLayer[], ms: number): SoundLayer[] {
+  return layers.map((layer) => ({ ...layer, at: (layer.at ?? 0) + ms }));
+}
+
 /** 오른쪽 아래 남은 시간 */
 function PlayTimer({ startAt, seconds }: { startAt: number; seconds: number }) {
-  const [elapsedMs, setElapsedMs] = useState(0);
-
-  useEffect(() => {
-    const id = setInterval(() => setElapsedMs(Date.now() - startAt), 10);
-    return () => clearInterval(id);
-  }, [startAt]);
+  const valueRef = useRef<HTMLSpanElement>(null);
+  const remaining = (elapsedMs: number) => (Math.max(0, seconds * 1000 - elapsedMs) / 1000).toFixed(2);
+  useFrameText(valueRef, () => remaining(Date.now() - startAt));
 
   return (
     <p
       data-testid="play-timer"
       className="pointer-events-none absolute right-4 bottom-[max(1rem,env(safe-area-inset-bottom))] rounded-full bg-black/15 px-3 py-1.5 text-title-3 font-bold tabular-nums"
     >
-      {(Math.max(0, seconds * 1000 - elapsedMs) / 1000).toFixed(2)}초
+      <span ref={valueRef}>{remaining(0)}</span>초
     </p>
   );
 }
@@ -89,7 +92,10 @@ function DurationPicker({
           key={seconds}
           type="button"
           aria-pressed={value === seconds}
-          onClick={() => onChange(seconds)}
+          onClick={() => {
+            playTap();
+            onChange(seconds);
+          }}
           className={cn(
             "min-h-11 min-w-14 cursor-pointer rounded-full px-4 text-caption-1 font-semibold tabular-nums transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
             value === seconds ? "bg-primary text-white" : "opacity-70 hover:opacity-100",
@@ -108,12 +114,14 @@ export function ClickSpeed() {
   const [phase, setPhase] = useState<Phase>("idle");
   const [countdownIndex, setCountdownIndex] = useState(0);
   const [count, setCount] = useState(0);
-  const [ripples, setRipples] = useState<Ripple[]>([]);
   const [result, setResult] = useState<RoundResult | null>(null);
   const [playStartAt, setPlayStartAt] = useState(0);
 
   const containerRef = useRef<HTMLDivElement>(null);
-  const rippleIdRef = useRef(0);
+  /** 탭 물결을 붙이는 층. 플레이가 끝나 층이 사라지면 남은 물결도 같이 사라진다 */
+  const rippleLayerRef = useRef<HTMLDivElement>(null);
+  /** 결과 화면이 뜬 시각. 연타하던 손이 바로 다시 시작하지 않도록 잠깐 탭을 무시하는 기준 */
+  const resultAtRef = useRef(0);
   const { ref: recordsRef, inView: recordsVisible } = useInView<HTMLElement>(phase === "result");
 
   const secondsRecords = records.filter((record) => record.seconds === seconds);
@@ -124,11 +132,12 @@ export function ClickSpeed() {
     const timers = COUNTDOWN_VALUES.map((_, index) =>
       setTimeout(() => {
         if (index < COUNTDOWN_VALUES.length - 1) {
+          playGameSound(GAME_SOUNDS.countdown);
           setCountdownIndex(index + 1);
           return;
         }
+        playGameSound(GAME_SOUNDS.go);
         setCount(0);
-        setRipples([]);
         setPlayStartAt(Date.now());
         setPhase("playing");
       }, COUNTDOWN_STEP_MS * (index + 1)),
@@ -138,10 +147,11 @@ export function ClickSpeed() {
   }, [phase]);
 
   const finishRound = useEffectEvent(() => {
-    setRipples([]);
+    resultAtRef.current = Date.now();
     setPhase("result");
 
     if (count === 0) {
+      playGameSound([...CLICK_SPEED_SOUNDS.timeUp, ...delayLayers(GAME_SOUNDS.fail, RESULT_SOUND_DELAY_MS)]);
       setResult({ count: 0, cps: 0, seconds, recordId: null, rank: null });
       return;
     }
@@ -149,6 +159,15 @@ export function ClickSpeed() {
     const now = Date.now();
     const record = { id: String(now), count, cps: calculateCps(count, seconds), seconds, at: now };
     const rank = getRank(records, record);
+
+    // 시간 끝 → 등급에 따라 성공/실패 → 1위면 반짝반짝까지
+    const failed = CLICK_SPEED_TIERS.indexOf(getClickSpeedTier(record.cps)) >= FAIL_TIER_INDEX;
+    const resultSound = failed ? GAME_SOUNDS.fail : GAME_SOUNDS.success;
+    playGameSound([
+      ...CLICK_SPEED_SOUNDS.timeUp,
+      ...delayLayers(resultSound, RESULT_SOUND_DELAY_MS),
+      ...(rank === 1 && !failed ? delayLayers(GAME_SOUNDS.record, RESULT_SOUND_DELAY_MS + 700) : []),
+    ]);
     saveRecords(insertRecord(records, record));
     void submitGameRecord("click-speed", record.count, record);
 
@@ -158,25 +177,39 @@ export function ClickSpeed() {
   // 초록 화면이 된 순간부터 정한 시간이 지나면 끝난다
   useEffect(() => {
     if (phase !== "playing") return;
-    const timer = setTimeout(finishRound, seconds * 1000);
-    return () => clearTimeout(timer);
+    const timers = [setTimeout(finishRound, seconds * 1000)];
+    // 끝나기 3·2·1초 전마다 삐 — 시간이 거의 다 됐다는 신호
+    for (const left of COUNTDOWN_VALUES) {
+      if (left < seconds) timers.push(setTimeout(() => playGameSound(GAME_SOUNDS.countdown), (seconds - left) * 1000));
+    }
+    return () => timers.forEach(clearTimeout);
   }, [phase, seconds]);
 
   function startCountdown() {
+    playGameSound(GAME_SOUNDS.countdown);
     setCountdownIndex(0);
     setPhase("countdown");
   }
 
   function cancelRound() {
+    playGameSound(GAME_SOUNDS.pause);
     setCount(0);
-    setRipples([]);
     setPhase("idle");
   }
 
   function registerTap(x: number, y: number) {
-    const id = rippleIdRef.current++;
-    setRipples((prev) => [...prev, { id, x, y }]);
+    playGameSound(CLICK_SPEED_SOUNDS.click);
     setCount((prev) => prev + 1);
+    // 물결은 상태로 두지 않고 DOM에 바로 붙였다가 애니메이션이 끝나면 뗀다 (탭마다 렌더를 한 번 더 하지 않게)
+    const layer = rippleLayerRef.current;
+    if (!layer) return;
+    const ripple = document.createElement("span");
+    ripple.dataset.testid = "ripple";
+    ripple.className = "pointer-events-none absolute size-6 rounded-full bg-white animate-click-ripple";
+    ripple.style.left = `${x - 12}px`;
+    ripple.style.top = `${y - 12}px`;
+    ripple.addEventListener("animationend", () => ripple.remove(), { once: true });
+    layer.append(ripple);
   }
 
   // 연타는 손가락이 닿는 순간(pointerdown)에 센다
@@ -186,9 +219,15 @@ export function ClickSpeed() {
     registerTap(event.clientX - (rect?.left ?? 0), event.clientY - (rect?.top ?? 0));
   }
 
+  /** 시작 화면이거나, 결과 화면이 뜨고 연타 여운이 지나갔으면 새 판을 연다 */
+  function canStart() {
+    if (phase === "idle") return true;
+    return phase === "result" && Date.now() - resultAtRef.current >= RESULT_TAP_GUARD_MS;
+  }
+
   // 시작/재시작은 click으로 받아 스크롤하려고 끄는 동작에는 반응하지 않게 한다
   function handleClick() {
-    if (phase === "idle" || phase === "result") startCountdown();
+    if (canStart()) startCountdown();
   }
 
   const handleKeyDown = useEffectEvent((event: KeyboardEvent) => {
@@ -204,17 +243,13 @@ export function ClickSpeed() {
       registerTap((rect?.width ?? 0) / 2, (rect?.height ?? 0) / 2);
       return;
     }
-    if (phase === "idle" || phase === "result") startCountdown();
+    if (canStart()) startCountdown();
   });
 
   useEffect(() => {
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, []);
-
-  function removeRipple(id: number) {
-    setRipples((prev) => prev.filter((ripple) => ripple.id !== id));
-  }
 
   const tier = result ? getClickSpeedTier(result.cps) : null;
 
@@ -314,15 +349,7 @@ export function ClickSpeed() {
             {count}
           </span>
 
-          {ripples.map((ripple) => (
-            <span
-              key={ripple.id}
-              data-testid="ripple"
-              onAnimationEnd={() => removeRipple(ripple.id)}
-              className="pointer-events-none absolute size-6 rounded-full bg-white animate-click-ripple"
-              style={{ left: ripple.x - 12, top: ripple.y - 12 }}
-            />
-          ))}
+          <div ref={rippleLayerRef} aria-hidden="true" className="pointer-events-none absolute inset-0" />
 
           <PlayTimer startAt={playStartAt} seconds={seconds} />
         </>

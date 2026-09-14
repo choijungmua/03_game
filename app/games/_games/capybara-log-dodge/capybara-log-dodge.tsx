@@ -8,12 +8,25 @@ import { AdSlot } from "@/components/ads/ad-slot";
 import { GameControls } from "@/components/games/game-controls";
 import { ShareButton } from "@/components/games/share-button";
 import { cn } from "@/lib";
-import { GAME_TITLES } from "@/lib/games/constants";
+import { GAME_SOUNDS, GAME_TITLES } from "@/lib/games/constants";
 import { submitGameRecord } from "@/lib/games/game-events";
 import { useInView } from "@/lib/games/use-in-view";
 import { useLockPageScroll } from "@/lib/games/use-lock-page-scroll";
 import { lobbyAssetSrc } from "@/lib/lobby/assets";
+import { SOUNDS } from "@/lib/lobby/constants";
+import { playGameSound } from "@/lib/lobby/settings";
 
+import {
+  BOUNCE_SOUND,
+  DUCK_SOUND,
+  JUMP_SOUND,
+  LAND_SOUND,
+  LEVEL_UP_SOUND,
+  SPLIT_SOUND,
+  STEP_SOUND_MS,
+  TIER_UP_SOUND,
+  WAVE_SOUNDS,
+} from "./constants";
 import { LogDodgeLeaderboard } from "./leaderboard";
 import {
   CAPYBARA_Y,
@@ -29,6 +42,8 @@ import {
   JUMP_MS,
   type Log,
   LOG_HEIGHTS,
+  LOG_THICKNESS,
+  LOG_UNLOCK_MS,
   type LogKind,
   parseChallenge,
   seedFromText,
@@ -255,12 +270,15 @@ export function CapybaraLogDodge() {
 
   useEffect(() => {
     if (phase !== "countdown") return;
+    playGameSound(GAME_SOUNDS.countdown);
     const timers = COUNTDOWN_VALUES.map((_, index) =>
       setTimeout(() => {
         if (index < COUNTDOWN_VALUES.length - 1) {
+          playGameSound(GAME_SOUNDS.countdown);
           setCountdownIndex(index + 1);
           return;
         }
+        playGameSound(GAME_SOUNDS.go);
         setPhase("playing");
       }, COUNTDOWN_STEP_MS * (index + 1)),
     );
@@ -282,6 +300,11 @@ export function CapybaraLogDodge() {
       recordId: record.id,
       rank,
     });
+    // 결과: 1위면 반짝, 친구 기록을 넘었거나 통나무 서퍼 이상이면 빠밤, 아니면 뿌우우
+    const beat = challenge !== null && record.timeMs / 1000 > challenge;
+    playGameSound(
+      rank === 1 ? GAME_SOUNDS.record : beat || getLogDodgeTier(record.timeMs).minSeconds >= 25 ? GAME_SOUNDS.success : GAME_SOUNDS.fail,
+    );
     setPhase("result");
   });
 
@@ -318,8 +341,49 @@ export function CapybaraLogDodge() {
     const startAt = performance.now();
     let lastAt = startAt;
     let lastHudKey = "";
+    let lastCue: Hud["cue"] = null;
+    let lastPassed = false;
+    let lastStepAt = 0;
     let frameId = 0;
     let hitTimer: ReturnType<typeof setTimeout> | undefined;
+
+    /** step 앞뒤 상태를 비교해 이번 프레임에 일어난 일마다 소리를 한 번씩 낸다 */
+    function playFrameSounds(state: GameState, before: Pick<GameState, "elapsedMs" | "jumpMs" | "duckMs" | "waveInMs" | "nextId" | "nearMisses">, now: number) {
+      if (state.hitBy) {
+        playGameSound(GAME_SOUNDS.hit);
+        playGameSound(SOUNDS.caught);
+        return;
+      }
+      if (state.jumpMs > before.jumpMs) playGameSound(JUMP_SOUND);
+      else if (before.jumpMs > 0 && state.jumpMs === 0) playGameSound(LAND_SOUND);
+      if (before.duckMs === 0 && state.duckMs > 0) playGameSound(DUCK_SOUND);
+      // 발소리: 땅에서 좌우로 움직일 때만, 간격을 두고
+      if (state.lean !== 0 && state.jumpMs === 0 && now - lastStepAt >= STEP_SOUND_MS) {
+        lastStepAt = now;
+        playGameSound(SOUNDS.step);
+      }
+
+      let split = false;
+      let bounced = false;
+      for (const log of state.logs) {
+        // 쪼개진 조각은 원래 통나무(LOG_THICKNESS + 8)보다 얇다
+        if (log.id >= before.nextId && log.kind === "split" && log.h === LOG_THICKNESS) split = true;
+        // 튕긴 프레임에만 벽에 딱 붙어 있다 (step이 가장자리로 되돌림)
+        if (log.vx !== 0 && (log.x === log.w / 2 || log.x === GAME_WIDTH - log.w / 2)) bounced = true;
+      }
+      if (state.waveInMs > before.waveInMs) {
+        const wave = state.logs.find((log) => log.id >= before.nextId);
+        if (wave) playGameSound(WAVE_SOUNDS[wave.kind]);
+      }
+      if (split) playGameSound(SPLIT_SOUND);
+      else if (bounced) playGameSound(BOUNCE_SOUND);
+      if (state.nearMisses > before.nearMisses) playGameSound(GAME_SOUNDS.whoosh);
+
+      // 등급 시간을 넘기면 빠라밤, 새 통나무 종류가 풀리면 따단 (겹치면 등급 소리만)
+      const crossed = (ms: number) => before.elapsedMs < ms && state.elapsedMs >= ms;
+      if (getLogDodgeTier(before.elapsedMs) !== getLogDodgeTier(state.elapsedMs)) playGameSound(TIER_UP_SOUND);
+      else if (Object.values(LOG_UNLOCK_MS).some((ms) => ms > 0 && crossed(ms))) playGameSound(LEVEL_UP_SOUND);
+    }
 
     function tick(now: number) {
       const state = stateRef.current;
@@ -333,6 +397,14 @@ export function CapybaraLogDodge() {
       }
       const { left, right } = keysRef.current;
       const action = actionRef.current;
+      const before = {
+        elapsedMs: state.elapsedMs,
+        jumpMs: state.jumpMs,
+        duckMs: state.duckMs,
+        waveInMs: state.waveInMs,
+        nextId: state.nextId,
+        nearMisses: state.nearMisses,
+      };
       // rAF는 백그라운드 탭에서 멈추고, step이 프레임 간격에 상한을 둬서 자연히 일시정지된다
       step(state, now - lastAt, {
         direction: left === right ? 0 : left ? -1 : 1,
@@ -345,8 +417,14 @@ export function CapybaraLogDodge() {
       // 움직임 줄이기 설정이면 아슬아슬 슬로모션을 쓰지 않는다
       if (reducedMotion) state.slowmoMs = 0;
       draw(ctx, state, sprites, Math.max(0, now - startAt), reducedMotion, shadow);
+      playFrameSounds(state, before, now);
 
       const nextHud = readHud(state, challengeMs);
+      // "점프!"/"숙여!" 안내가 새로 뜨면 삐삐, 친구 기록을 넘은 순간 띵동
+      if (nextHud.cue && nextHud.cue !== lastCue && !state.hitBy) playGameSound(GAME_SOUNDS.warning);
+      if (nextHud.passedFlash && !lastPassed) playGameSound(GAME_SOUNDS.correct);
+      lastCue = nextHud.cue;
+      lastPassed = nextHud.passedFlash;
       const hudKey = Object.values(nextHud).join("|");
       if (hudKey !== lastHudKey) {
         lastHudKey = hudKey;
@@ -419,7 +497,9 @@ export function CapybaraLogDodge() {
 
   // 시작/재시작은 click으로 받아 스크롤하려고 끄는 동작에는 반응하지 않게 한다
   function handleClick() {
-    if (phase === "idle" || phase === "result") startCountdown();
+    if (phase !== "idle" && phase !== "result") return;
+    playGameSound(GAME_SOUNDS.start);
+    startCountdown();
   }
 
   function releaseDuckButton() {
@@ -452,7 +532,7 @@ export function CapybaraLogDodge() {
     if (!pressed || event.repeat || (event.key !== " " && event.key !== "Enter")) return;
     if (event.target instanceof HTMLElement && event.target.closest("a, button, input, textarea, select")) return;
     event.preventDefault();
-    if (phase === "idle" || phase === "result") startCountdown();
+    handleClick();
   });
 
   useEffect(() => {
@@ -560,7 +640,10 @@ export function CapybaraLogDodge() {
                   key={value}
                   type="button"
                   aria-pressed={mode === value}
-                  onClick={() => setMode(value)}
+                  onClick={() => {
+                    playGameSound(GAME_SOUNDS.tap);
+                    setMode(value);
+                  }}
                   className={cn(
                     "min-h-11 cursor-pointer rounded-full px-5 text-caption-1 font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
                     mode === value ? "bg-primary text-white" : "text-text-caption hover:text-text-strong",

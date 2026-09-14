@@ -4,7 +4,7 @@ import type { ReactNode } from "react";
 
 import { emoteImage } from "@/lib/games/emotes";
 
-import { CAPYBARA_IDLE, MEADOW_TEXTURE, PARTY_EMOTE, SLEEP_EMOTE } from "./constants";
+import { CAPYBARA_IDLE, MEADOW_TEXTURE, PARTY_EMOTE, READING_LEFT, READING_RIGHT, SLEEP_EMOTE } from "./constants";
 
 /** 나무 테두리 알약 버튼 (로비 앉기·때리기 테두리 색) */
 const WOOD_BUTTON =
@@ -27,7 +27,12 @@ export function LegalPage({ title, children }: { title: string; children: ReactN
 
       <div className="relative mx-auto mt-28 max-w-lg">
         <article className="rounded-[2rem] border-8 border-capybara bg-[color-mix(in_oklab,var(--capybara-light)_28%,white)] px-5 pb-8 pt-14 text-foreground shadow-xl sm:px-8">
-          <h1 className="text-center text-2xl font-bold">{title}</h1>
+          {/* 좁은 화면: 읽는 카피바라 둘이 제목 양옆에서 종이를 본다 (넓은 화면은 종이 바깥 양옆에 크게) */}
+          <div className="flex items-center justify-center gap-2">
+            <NextImage src={READING_RIGHT} alt="" width={96} height={96} unoptimized className="size-16 lg:hidden" />
+            <h1 className="min-w-0 text-balance text-center text-2xl font-bold">{title}</h1>
+            <NextImage src={READING_LEFT} alt="" width={96} height={96} unoptimized className="size-16 lg:hidden" />
+          </div>
 
           <div className="mt-8 space-y-8 text-sm leading-relaxed text-muted-foreground">{children}</div>
 
@@ -61,6 +66,24 @@ export function LegalPage({ title, children }: { title: string; children: ReactN
           className="pointer-events-none absolute left-1/2 top-0 size-32 -translate-x-1/2 -translate-y-3/4 drop-shadow-lg"
         />
       </div>
+
+      {/* 넓은 화면: 종이(폭 32rem) 바깥 양옆 아래에 붙어 있어 스크롤해도 같이 읽는다. 카피바라 폭 14rem + 틈 1rem */}
+      <NextImage
+        src={READING_RIGHT}
+        alt=""
+        width={384}
+        height={384}
+        unoptimized
+        className="pointer-events-none fixed bottom-4 left-[calc(50%-31rem)] hidden size-56 drop-shadow-lg lg:block"
+      />
+      <NextImage
+        src={READING_LEFT}
+        alt=""
+        width={384}
+        height={384}
+        unoptimized
+        className="pointer-events-none fixed bottom-4 right-[calc(50%-31rem)] hidden size-56 drop-shadow-lg lg:block"
+      />
     </main>
   );
 }

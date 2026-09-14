@@ -7,6 +7,7 @@ import {
   type PointerEvent,
   useEffect,
   useEffectEvent,
+  useLayoutEffect,
   useRef,
   useState,
 } from "react";
@@ -27,10 +28,12 @@ import { GameControls, LEAVE_CONFIRM_MESSAGE } from "@/components/games/game-con
 import { Button } from "@/components/inputs/button";
 import { Dialog } from "@/components/overlay/dialog";
 import { cn } from "@/lib";
-import { GAME_TITLES } from "@/lib/games/constants";
+import { GAME_SOUNDS, GAME_TITLES } from "@/lib/games/constants";
 import { opponent, type RoomView, type Stone, type Vector } from "@/lib/games/rooms";
 import { useRoom } from "@/lib/games/use-room";
+import { playGameSound, type SoundLayer } from "@/lib/lobby/settings";
 
+import { ALKKAGI_SOUNDS, CLACK_GAP_MS, STRETCH_GAP_MS } from "./constants";
 import {
   type AlkkagiState,
   FIELD,
@@ -83,19 +86,35 @@ function describeEnd(state: AlkkagiState) {
   return `${STONE_NAME[opponent(state.winner)]} 알이 모두 판 밖으로 떨어졌어요.`;
 }
 
+/** 알 버튼 위치. 백은 판을 180도 돌려 보고, 알 크기 기준 %라서 판 좌표 / 지름으로 옮기고 -50%로 가운데 맞춘다 */
+function pieceTransform(piece: Piece, flipped: boolean) {
+  const diameter = radiusOf(piece) * 2;
+  const x = flipped ? FIELD - piece.x : piece.x;
+  const y = flipped ? FIELD - piece.y : piece.y;
+  return `translate(${(x / diameter) * 100 - 50}%, ${(y / diameter) * 100 - 50}%)`;
+}
+
 function aliveCount(pieces: Piece[], owner: Stone) {
   return pieces.filter((piece) => piece.owner === owner && !piece.out).length;
 }
 
+// 세기(0~1)에 맞춰 소리 크기와 음높이를 바꿔 재생한다
+function playScaled(layers: readonly SoundLayer[], strength: number) {
+  const level = 0.35 + 0.65 * strength;
+  const pitch = 0.8 + 0.4 * strength;
+  playGameSound(layers.map((layer) => ({ ...layer, level: layer.level * level, from: layer.from * pitch, to: layer.to * pitch })));
+}
+
 export function CapybaraAlkkagi() {
-  const { view, error, pending, copied, clockOffset, create, join, act, sendEmote, copyInvite, leave } = useRoom<
+  const { view, error, pending, reconnecting, gone, spectateCode, copied, clockOffset, create, join, watch, act, sendEmote, copyInvite, leave } = useRoom<
     AlkkagiState,
     AlkkagiAction
-  >("capybara-alkkagi");  const emoteShowing = useEmoteShowing(view?.emote ?? null);
+  >("capybara-alkkagi");
+  const emoteShowing = useEmoteShowing(view?.emote ?? null);
   const record = useRoomRecord("capybara-alkkagi", view);
   const [aim, setAim] = useState<Aim | null>(null);
-  /** 샷 애니메이션 중 보여줄 알 위치. null이면 서버 상태 그대로 */
-  const [frame, setFrame] = useState<Piece[] | null>(null);
+  /** 샷 애니메이션 중이면 true. 알 위치는 state가 아니라 DOM에 바로 쓴다 */
+  const [animating, setAnimating] = useState(false);
   const [flash, setFlash] = useState<string | null>(null);
 
   // 포인터 이벤트는 렌더링 사이에 여러 번 올 수 있어서 최신 조준값은 ref로도 들고 있는다
@@ -104,6 +123,11 @@ export function CapybaraAlkkagi() {
   const fieldRef = useRef<HTMLDivElement>(null);
   const boardRef = useRef<HTMLDivElement>(null);
   const seenShot = useRef<{ code: string; seq: number } | null>(null);
+  const lastStretch = useRef({ at: 0, step: 0 });
+  /** 방마다 대국 시작·끝 소리를 한 번씩만 내려고 직전에 본 상태를 들고 있는다 */
+  const seenRound = useRef<{ code: string; started: boolean; over: boolean } | null>(null);
+  /** 알 id → 버튼. 샷 애니메이션이 프레임마다 위치를 바로 쓴다 */
+  const pieceButtons = useRef(new Map<number, HTMLButtonElement>());
 
   function updateAim(next: Aim | null) {
     aimRef.current = next;
@@ -113,9 +137,8 @@ export function CapybaraAlkkagi() {
   const state = view?.state;
   const code = view?.code;
   const shotSeq = state?.lastShot?.seq ?? 0;
-  const animating = frame !== null;
   const canShoot = Boolean(
-    view && state && view.joined.white && !state.winner && view.you === state.turn && !animating && !pending,
+    view && state && view.joined.white && !state.winner && view.you === state.turn && !animating && !pending && !reconnecting,
   );
   // 백은 판을 180도 돌려서 본다 — 내 알이 항상 아래쪽
   const flipped = view?.you === "white";
@@ -138,66 +161,170 @@ export function CapybaraAlkkagi() {
     );
   });
 
+  /** 알 위치·떨어짐을 React 렌더 없이 버튼에 바로 쓴다 (JSX의 style·className과 같은 값) */
+  const drawPieces = useEffectEvent((pieces: Piece[]) => {
+    for (const piece of pieces) {
+      const button = pieceButtons.current.get(piece.id);
+      if (!button) continue;
+      button.style.transform = pieceTransform(piece, flipped);
+      button.firstElementChild?.classList.toggle("scale-50", piece.out);
+      button.firstElementChild?.classList.toggle("opacity-0", piece.out);
+    }
+  });
+
   // 새 샷이 오면(내가 쳤든 상대가 쳤든) 서버와 같은 시뮬레이션을 돌려 프레임을 만들고 재생한다.
-  // 방에 처음 들어왔을 때는 지난 샷을 다시 틀지 않는다
+  // 방에 처음 들어왔을 때는 지난 샷을 다시 틀지 않는다.
+  // 프레임마다 setState로 판 전체를 다시 그리면 초당 60번 렌더가 돌아서, 알 위치만 DOM에 바로 쓰고 React 렌더는 시작·끝 두 번만 한다
   const playNewShot = useEffectEvent(() => {
     const shot = view?.state.lastShot;
     const seen = seenShot.current;
     seenShot.current = code ? { code, seq: shotSeq } : null;
     if (!shot || !code || !seen || seen.code !== code || seen.seq >= shot.seq) return;
 
+    const you = view?.you;
     const afterMessage = () => {
+      const next = view?.state;
+      // 결과(승패) 소리는 따로 나므로, 판이 이어질 때만 차례 소리를 낸다
+      if (next && !next.winner) {
+        if (shot.knocked > 0 && shot.by === you) playGameSound(GAME_SOUNDS.correct);
+        else if (you && next.turn === you && shot.by !== you) playGameSound(ALKKAGI_SOUNDS.myTurn);
+      }
       if (shot.knocked === 0) return;
-      const combo = view?.state.combo ?? 0;
+      const combo = next?.combo ?? 0;
       showFlash(combo > 0 ? `퉁! ${shot.knocked}마리 · 한 번 더!` : `퉁! ${shot.knocked}마리`);
     };
 
+    // 내 샷은 놓는 순간 이미 소리를 냈다 — 상대(친구·컴퓨터) 샷만 여기서 튕기는 소리
+    const speed = Math.sqrt(shot.velocity.x * shot.velocity.x + shot.velocity.y * shot.velocity.y);
+    if (shot.by !== you) playScaled(ALKKAGI_SOUNDS.flick, speed / MAX_SPEED);
+
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      if (shot.knocked > 0) playGameSound(ALKKAGI_SOUNDS.fall);
       afterMessage();
       return;
     }
 
     const frames: Piece[][] = [];
-    const hitFrames = new Set<number>();
+    /** 부딪힌 프레임 → 충격 세기(0~1): 그 프레임에서 가장 많이 움직인 알의 속도로 어림한다 */
+    const hitFrames = new Map<number, number>();
+    const fallFrames = new Set<number>();
     simulateShot(shot.before, shot.pieceId, shot.velocity, (pieces, hit) => {
-      if (hit) hitFrames.add(frames.length);
+      const previous = frames.at(-1) ?? shot.before;
+      if (hit) {
+        let fastest = 0;
+        pieces.forEach((piece, i) => {
+          const dx = piece.x - previous[i].x;
+          const dy = piece.y - previous[i].y;
+          fastest = Math.max(fastest, Math.sqrt(dx * dx + dy * dy));
+        });
+        hitFrames.set(frames.length, Math.min(1, fastest / MAX_SPEED));
+      }
+      if (pieces.some((piece, i) => piece.out && !previous[i].out)) fallFrames.add(frames.length);
       frames.push(pieces.map((piece) => ({ ...piece })));
     });
+    if (frames.length === 0) {
+      afterMessage();
+      return;
+    }
 
+    // 화면에 그리기 전에 첫 프레임을 올려 둔다 (서버가 준 샷 이후 위치가 한 번 번쩍 보이지 않게)
+    drawPieces(frames[0]);
+    setAnimating(true);
     const startedAt = performance.now();
     let shown = -1;
+    let lastClack = 0;
     let rafId = requestAnimationFrame(function tick(now) {
       const index = Math.min(frames.length - 1, Math.floor((now - startedAt) / STEP_MS));
+      let shaken = false;
+      let fell = false;
+      let impact = -1;
       for (let i = shown + 1; i <= index; i++) {
-        if (hitFrames.has(i)) {
-          shake();
-          break;
+        const strength = hitFrames.get(i);
+        if (strength !== undefined) {
+          if (!shaken) shake();
+          shaken = true;
+          impact = Math.max(impact, strength);
         }
+        if (fallFrames.has(i)) fell = true;
       }
+      // 한 화면 프레임에 여러 번 부딪혀도 소리는 한 번, 그리고 CLACK_GAP_MS 간격을 둔다
+      if (impact >= 0 && now - lastClack >= CLACK_GAP_MS) {
+        lastClack = now;
+        playScaled(ALKKAGI_SOUNDS.clack, impact);
+      }
+      if (fell) playGameSound(ALKKAGI_SOUNDS.fall);
       shown = index;
       if (index >= frames.length - 1) {
-        setFrame(null);
+        // 마지막은 서버 상태(= JSX가 그린 값)로 맞춘다
+        drawPieces(view?.state.pieces ?? []);
+        setAnimating(false);
         afterMessage();
         return;
       }
-      setFrame(frames[index]);
+      drawPieces(frames[index]);
       rafId = requestAnimationFrame(tick);
     });
 
     return () => cancelAnimationFrame(rafId);
   });
 
-  useEffect(() => {
+  const stopShot = useEffectEvent(() => {
+    drawPieces(view?.state.pieces ?? []);
+    setAnimating(false);
+  });
+
+  useLayoutEffect(() => {
     const cancel = playNewShot();
     return () => {
       cancel?.();
-      setFrame(null);
+      stopShot();
     };
   }, [code, shotSeq]);
 
+  const joinedWhite = Boolean(view?.joined.white);
+  const isOver = Boolean(state?.endReason) && !animating;
+
+  // 대국 시작(둘 다 들어옴)·끝(승패 결과)에 한 번씩 소리. 이미 끝난 방에 들어오면 결과 소리는 내지 않는다
+  const playRoundSound = useEffectEvent(() => {
+    if (!code || !view) {
+      seenRound.current = null;
+      return;
+    }
+    const seen = seenRound.current?.code === code ? seenRound.current : null;
+    seenRound.current = { code, started: joinedWhite, over: isOver };
+    if (!seen) {
+      if (joinedWhite && !isOver && !view.state.lastShot) playGameSound(GAME_SOUNDS.start);
+      return;
+    }
+    if (joinedWhite && !seen.started) playGameSound(GAME_SOUNDS.start);
+    if (isOver && !seen.over) {
+      const won = view.state.winner === view.you || !view.you;
+      playGameSound(won ? GAME_SOUNDS.success : GAME_SOUNDS.fail);
+    }
+  });
+
+  useEffect(() => {
+    playRoundSound();
+  }, [code, joinedWhite, isOver]);
+
+  useEffect(() => {
+    if (gone) playGameSound(GAME_SOUNDS.warning);
+  }, [gone]);
+
+  // 서버가 수를 거절하는 등 에러 문구가 새로 뜨면 삐빅
+  useEffect(() => {
+    if (error && code) playGameSound(GAME_SOUNDS.wrong);
+  }, [error, code]);
+
+
   function fire(target: Aim) {
     updateAim(null);
-    if (target.power < MIN_POWER) return;
+    if (target.power < MIN_POWER) {
+      // 너무 약하게 놓으면 취소 — 톡
+      playGameSound(GAME_SOUNDS.tap);
+      return;
+    }
+    playScaled(ALKKAGI_SOUNDS.flick, target.power);
     const speed = target.power * MAX_SPEED;
     act("shoot", target.pieceId, { x: Math.cos(target.angle) * speed, y: Math.sin(target.angle) * speed });
   }
@@ -215,6 +342,8 @@ export function CapybaraAlkkagi() {
     if (!canShoot) return;
     event.currentTarget.setPointerCapture(event.pointerId);
     dragPointer.current = event.pointerId;
+    lastStretch.current = { at: 0, step: 0 };
+    playGameSound(ALKKAGI_SOUNDS.grab);
     updateAim({ pieceId: piece.id, angle: forwardAngle, power: 0 });
   }
 
@@ -225,7 +354,15 @@ export function CapybaraAlkkagi() {
     const pullX = piece.x - point.x;
     const pullY = piece.y - point.y;
     const distance = Math.sqrt(pullX * pullX + pullY * pullY);
-    updateAim({ pieceId: piece.id, angle: Math.atan2(pullY, pullX), power: Math.min(1, distance / MAX_PULL) });
+    const power = Math.min(1, distance / MAX_PULL);
+    // 힘이 10% 단위로 바뀔 때마다 끼릭 (너무 잦지 않게 STRETCH_GAP_MS 간격)
+    const step = Math.round(power * 10);
+    const now = performance.now();
+    if (step !== lastStretch.current.step && now - lastStretch.current.at >= STRETCH_GAP_MS) {
+      lastStretch.current = { at: now, step };
+      playScaled(ALKKAGI_SOUNDS.stretch, power);
+    }
+    updateAim({ pieceId: piece.id, angle: Math.atan2(pullY, pullX), power });
   }
 
   function handlePointerUp(event: PointerEvent<HTMLButtonElement>) {
@@ -260,14 +397,15 @@ export function CapybaraAlkkagi() {
     const handler = handlers[event.key];
     if (!handler || !canShoot) return;
     event.preventDefault();
+    // Enter/Space는 fire에서 소리를 낸다
+    if (event.key.startsWith("Arrow")) playGameSound(ALKKAGI_SOUNDS.aim);
+    else if (event.key === "Escape") playGameSound(GAME_SOUNDS.tap);
     handler();
   }
 
-  const pieces = frame ?? state?.pieces ?? [];
+  const pieces = state?.pieces ?? [];
   const toScreen = (point: Vector) => (flipped ? { x: FIELD - point.x, y: FIELD - point.y } : point);
   const aimedPiece = aim ? pieces.find((piece) => piece.id === aim.pieceId && !piece.out) : undefined;
-  const isOver = Boolean(state?.endReason) && !animating;
-
   return (
     <div className="relative h-dvh w-full touch-manipulation select-none overflow-hidden bg-background text-text-strong [-webkit-tap-highlight-color:transparent]">
       <h1 className="sr-only">{GAME_TITLES["capybara-alkkagi"]}</h1>
@@ -313,8 +451,22 @@ export function CapybaraAlkkagi() {
             </div>
 
             <div className="flex flex-col gap-2">
-              <BotPicker pending={pending} onPick={create} />
-              <Button type="button" onClick={() => create()} disabled={pending} className="h-12 w-full text-title-3 font-bold">
+              <BotPicker
+                pending={pending}
+                onPick={(level) => {
+                  playGameSound(GAME_SOUNDS.tap);
+                  create(level);
+                }}
+              />
+              <Button
+                type="button"
+                onClick={() => {
+                  playGameSound(GAME_SOUNDS.tap);
+                  create();
+                }}
+                disabled={pending}
+                className="h-12 w-full text-title-3 font-bold"
+              >
                 방 만들기
               </Button>
             </div>
@@ -323,6 +475,19 @@ export function CapybaraAlkkagi() {
               <p role="alert" className="text-center text-caption-1 text-error">
                 {error}
               </p>
+            )}
+            {spectateCode && (
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  playGameSound(GAME_SOUNDS.tap);
+                  watch();
+                }}
+                className="h-12 w-full"
+              >
+                관전하기
+              </Button>
             )}
           </div>
 
@@ -353,7 +518,15 @@ export function CapybaraAlkkagi() {
               {/* 친구가 들어오기 전엔 초대 버튼, 들어온 뒤엔 남은 시간이 같은 자리에 나온다 */}
               <div className="flex h-10 flex-col justify-center">
                 {!view.joined.white ? (
-                  <Button type="button" variant="outline" onClick={copyInvite} className="h-10 w-full">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => {
+                      playGameSound(GAME_SOUNDS.tap);
+                      copyInvite();
+                    }}
+                    className="h-10 w-full"
+                  >
                     {copied ? "초대 링크를 복사했어요" : "초대 링크 복사"}
                   </Button>
                 ) : (
@@ -365,6 +538,7 @@ export function CapybaraAlkkagi() {
                       limitMs={TURN_TIME_MS}
                       clockOffset={clockOffset}
                       label={`${STONE_NAME[state.turn]} 남은 시간`}
+                      mine={state.turn === view.you}
                     />
                   )
                 )}
@@ -429,12 +603,15 @@ export function CapybaraAlkkagi() {
                 )}
 
                 {pieces.map((piece) => {
-                  const screen = toScreen(piece);
                   const mine = view.you === piece.owner;
                   const diameter = radiusOf(piece) * 2;
                   return (
                     <button
                       key={piece.id}
+                      ref={(button) => {
+                        if (button) pieceButtons.current.set(piece.id, button);
+                        else pieceButtons.current.delete(piece.id);
+                      }}
                       type="button"
                       aria-label={`${mine ? "내" : "상대"} ${piece.leader ? "대장 " : ""}${STONE_NAME[piece.owner]}${piece.out ? " (떨어짐)" : ""}`}
                       disabled={!canShoot || !mine || piece.out}
@@ -453,8 +630,7 @@ export function CapybaraAlkkagi() {
                       style={{
                         width: `${(diameter / FIELD) * 100}%`,
                         height: `${(diameter / FIELD) * 100}%`,
-                        // 알 크기 기준 %라서 판 좌표 / 지름으로 옮기고 -50%로 가운데 맞춤
-                        transform: `translate(${(screen.x / diameter) * 100 - 50}%, ${(screen.y / diameter) * 100 - 50}%)`,
+                        transform: pieceTransform(piece, flipped),
                       }}
                     >
                       {/* 떨어지면 작아지면서 사라진다 */}
@@ -530,8 +706,11 @@ export function CapybaraAlkkagi() {
                 <Button
                   type="button"
                   variant="outline"
-                  disabled={pending}
-                  onClick={() => window.confirm("정말 기권할까요?") && act("resign")}
+                  disabled={pending || reconnecting}
+                  onClick={() => {
+                    playGameSound(GAME_SOUNDS.tap);
+                    if (window.confirm("정말 기권할까요?")) act("resign");
+                  }}
                   className="h-11 shrink-0"
                 >
                   기권…
@@ -545,7 +724,7 @@ export function CapybaraAlkkagi() {
         leaveConfirm={view?.you && view.joined.white && !state?.endReason ? LEAVE_CONFIRM_MESSAGE : undefined}
       />
 
-      <Dialog open={isOver} onOpenChange={(open) => !open && leave()}>
+      <Dialog open={isOver || gone} onOpenChange={(open) => !open && leave()}>
         <Dialog.Content showCloseButton={false} closeOnOverlayClick={false} className="text-center">
           {view && state?.winner && (
             <div className="flex flex-col items-center gap-3">
@@ -560,8 +739,23 @@ export function CapybaraAlkkagi() {
               <Dialog.Description>{describeEnd(state)}</Dialog.Description>
             </div>
           )}
+          {gone && !state?.winner && (
+            <div className="flex flex-col items-center gap-3">
+              <Dialog.Title className="text-title-1 font-black">방이 사라졌어요</Dialog.Title>
+              <Dialog.Description>
+                오래 비어 있어 방이 정리됐거나 서버에서 방을 찾을 수 없어요. 처음 화면에서 새로 시작해 주세요.
+              </Dialog.Description>
+            </div>
+          )}
 
-          <Button type="button" onClick={leave} className="h-12 w-full text-title-3 font-bold">
+          <Button
+            type="button"
+            onClick={() => {
+              playGameSound(GAME_SOUNDS.tap);
+              leave();
+            }}
+            className="h-12 w-full text-title-3 font-bold"
+          >
             처음으로
           </Button>
 

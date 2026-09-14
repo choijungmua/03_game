@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { useEffect, useEffectEvent, useRef, useState } from "react";
+import { memo, useEffect, useEffectEvent, useRef, useState } from "react";
 
 import { AdSlot } from "@/components/ads/ad-slot";
 import { Progress } from "@/components/feedback/progress";
@@ -9,10 +9,12 @@ import { GameControls } from "@/components/games/game-controls";
 import { Button } from "@/components/inputs/button";
 import { Dialog } from "@/components/overlay/dialog";
 import { cn } from "@/lib";
-import { GAME_TITLES } from "@/lib/games/constants";
+import { GAME_SOUNDS, GAME_TITLES } from "@/lib/games/constants";
 import { useLockPageScroll } from "@/lib/games/use-lock-page-scroll";
-import { type LobbySettings, type LobbySound, loadLobbySettings, playSound } from "@/lib/lobby/settings";
+import { SOUNDS } from "@/lib/lobby/constants";
+import { playGameSound } from "@/lib/lobby/settings";
 
+import { SNEAK_SOUNDS } from "./constants";
 import {
   addBite,
   AWAY_MS_RANGE,
@@ -81,283 +83,23 @@ function preventDefault(event: React.SyntheticEvent) {
   event.preventDefault();
 }
 
-export function CapybaraSneak() {
-  const [status, setStatus] = useState<GameStatus>("ready");
-  const [ownerState, setOwnerState] = useState<OwnerState>("away");
-  const [gauge, setGauge] = useState(0);
-  const [trend, setTrend] = useState<GaugeTrend>("up");
-  const [pressing, setPressing] = useState(false);
-  const [paused, setPaused] = useState(false);
-  // 먹는 동안 접시 오른쪽/왼쪽을 오가며 먹는다. "left"면 카피바라 층 전체를 좌우 반전한다
-  const [side, setSide] = useState<"right" | "left">("right");
-  // 들킨 뒤 화난 주인을 잠깐 보여준 다음에야 결과 팝업을 연다
-  const [caughtShown, setCaughtShown] = useState(false);
-  useLockPageScroll(status === "playing");
-  // 게임 중 꾹 누르고 있으면 와구와구 씹고 접시가 들썩인다
-  const munching = status === "playing" && pressing;
+interface StageProps {
+  ownerState: OwnerState;
+  ownerImage: keyof typeof OWNER_IMAGES;
+  foodStage: FoodStage;
+  pose: CapybaraPose;
+  munching: boolean;
+  /** 접시 오른쪽/왼쪽 어느 쪽에서 먹는지. "left"면 카피바라 층을 좌우 반전한다 */
+  side: "right" | "left";
+}
 
-  // 먹기·감소·주인 타이머는 화면이 다시 그려지기 전에도 여러 번 돌 수 있어서,
-  // 판정은 렌더링 결과 대신 항상 최신 값을 담은 ref로 한다
-  const statusRef = useRef<GameStatus>("ready");
-  const ownerRef = useRef<OwnerState>("away");
-  const gaugeRef = useRef(0);
-  // 지금 보이는 주인 상태(away/turning/looking)가 다음 상태로 바뀌는 시각(ms epoch).
-  // 멈출 때 여기서 "남은 시간"을 계산해두면, 이어할 때 같은 상태를 남은 시간만큼만 이어갈 수 있다
-  const phaseEndsAtRef = useRef(0);
-  // away 주기에서 "!" 경고가 뜨는 시점(경고 길이)을 기억해둔다 — away 중에 멈췄다 이어할 때도 같은 경고 길이를 쓰기 위해
-  const warningMsRef = useRef(0);
-  // 멈출 때 계산한 "남은 시간". null이 아니면 다음 effect 실행이 새 주기 대신 이 시간부터 이어간다
-  const remainingRef = useRef<number | null>(null);
-  // 다음 게이지 감소 틱이 언제인지(ms epoch). 안 누르고 있을 때만 의미가 있다
-  const decayAtRef = useRef(0);
-  // 멈출 때(안 누르고 있었다면) 계산한 감소까지 남은 시간. null이면 다음 감소 effect가 처음부터(DECAY_GRACE_MS) 기다린다
-  const decayRemainingRef = useRef<number | null>(null);
-
-  // 효과음은 로비에서 정한 소리 켜기·크기를 그대로 따른다. 처음 소리 낼 때 한 번만 읽는다
-  const soundSettingsRef = useRef<LobbySettings | null>(null);
-  // 한 입(80ms)마다 소리를 내면 너무 촘촘해서 세 입에 한 번 아삭 소리를 낸다
-  const bitesRef = useRef(0);
-  function sound(name: LobbySound) {
-    soundSettingsRef.current ??= loadLobbySettings();
-    playSound(name, soundSettingsRef.current);
-  }
-
-  function changeStatus(next: GameStatus) {
-    statusRef.current = next;
-    setStatus(next);
-  }
-
-  const moveOwner = useEffectEvent((next: OwnerState) => {
-    if (statusRef.current !== "playing") return;
-    ownerRef.current = next;
-    setOwnerState(next);
-  });
-
-  const bite = useEffectEvent(() => {
-    if (statusRef.current !== "playing") return;
-
-    if (ownerRef.current === "looking") {
-      changeStatus("fail");
-      sound("caught");
-      return;
-    }
-
-    if (bitesRef.current++ % 3 === 0) sound("chomp");
-    const nextGauge = addBite(gaugeRef.current);
-    gaugeRef.current = nextGauge;
-    setGauge(nextGauge);
-    setTrend("up");
-    if (nextGauge >= 100) changeStatus("success");
-  });
-
-  const decay = useEffectEvent(() => {
-    if (statusRef.current !== "playing" || gaugeRef.current === 0) return;
-
-    const nextGauge = decayGauge(gaugeRef.current);
-    gaugeRef.current = nextGauge;
-    setGauge(nextGauge);
-    setTrend("down");
-  });
-
-  // 게임 중에만 주인이 등 돌림 → "!" 경고 → 돌아봄(가끔은 흘끗) → 다시 등 돌림을 반복한다
-  useEffect(() => {
-    if (status !== "playing" || paused) return;
-
-    const timers: ReturnType<typeof setTimeout>[] = [];
-
-    // delayMs 뒤에 등을 돌린다(다음 away 주기 시작). looking이 끝날 때와 이어하기(looking 이어감)가 같이 쓴다
-    function scheduleAwayAfter(delayMs: number) {
-      phaseEndsAtRef.current = Date.now() + delayMs;
-      timers.push(
-        setTimeout(() => {
-          moveOwner("away");
-          scheduleAway();
-        }, delayMs),
-      );
-    }
-
-    // delayMs 뒤에 돌아봄(가끔은 흘끗). away 경로와 이어하기(turning 이어감)가 같이 쓴다
-    function scheduleLooking(delayMs: number) {
-      timers.push(
-        setTimeout(() => {
-          moveOwner("looking");
-          const look = pickLook();
-          scheduleAwayAfter(look.ms);
-        }, delayMs),
-      );
-    }
-
-    function scheduleAway() {
-      const awayMs = pickDuration(AWAY_MS_RANGE);
-      const warningMs = Math.min(awayMs, pickWarningMs(gaugeRef.current));
-      warningMsRef.current = warningMs;
-      phaseEndsAtRef.current = Date.now() + awayMs;
-      timers.push(setTimeout(() => moveOwner("turning"), awayMs - warningMs));
-      scheduleLooking(awayMs);
-    }
-
-    const remaining = remainingRef.current;
-    if (remaining === null) {
-      scheduleAway();
-    } else {
-      // 멈추기 전 상태·남은 시간 그대로 이어간다 — 멈춰서 시선을 피하거나 경고를 늘릴 수 없다
-      remainingRef.current = null;
-      if (ownerRef.current === "looking") {
-        scheduleAwayAfter(remaining);
-      } else if (ownerRef.current === "turning") {
-        phaseEndsAtRef.current = Date.now() + remaining;
-        scheduleLooking(remaining);
-      } else {
-        phaseEndsAtRef.current = Date.now() + remaining;
-        timers.push(setTimeout(() => moveOwner("turning"), Math.max(0, remaining - warningMsRef.current)));
-        scheduleLooking(remaining);
-      }
-    }
-
-    return () => timers.forEach(clearTimeout);
-  }, [status, paused]);
-
-  // 누르고 딜레이가 지나면 첫 입, 그 뒤로는 손을 뗄 때까지 일정 간격으로 한 입씩 먹는다
-  useEffect(() => {
-    if (!pressing || status !== "playing" || paused) return;
-
-    let interval: ReturnType<typeof setInterval> | undefined;
-    const delay = setTimeout(() => {
-      bite();
-      interval = setInterval(bite, EAT_INTERVAL_MS);
-    }, EAT_DELAY_MS);
-
-    return () => {
-      clearTimeout(delay);
-      if (interval !== undefined) clearInterval(interval);
-    };
-  }, [pressing, status, paused]);
-
-  useEffect(() => {
-    if (!munching) return;
-    const id = setInterval(() => setSide((s) => (s === "right" ? "left" : "right")), SIDE_SWITCH_MS);
-    return () => clearInterval(id);
-  }, [munching]);
-
-  useEffect(() => {
-    if (status !== "fail") return;
-    const id = setTimeout(() => setCaughtShown(true), CAUGHT_REVEAL_MS);
-    return () => clearTimeout(id);
-  }, [status]);
-
-  // 손을 떼고 잠깐 여유를 준 뒤, 다시 누를 때까지 일정 간격으로 게이지가 줄어든다
-  useEffect(() => {
-    if (pressing || status !== "playing" || paused) return;
-
-    let interval: ReturnType<typeof setInterval> | undefined;
-    function tick() {
-      decay();
-      decayAtRef.current = Date.now() + DECAY_INTERVAL_MS;
-    }
-
-    // 멈추기 전 안 누르고 있었다면 남은 시간만큼만 기다린다 — 멈췄다 이어하기를 반복해도 감소를 미룰 수 없다
-    const first = decayRemainingRef.current ?? DECAY_GRACE_MS;
-    decayRemainingRef.current = null;
-    decayAtRef.current = Date.now() + first;
-    const grace = setTimeout(() => {
-      tick();
-      interval = setInterval(tick, DECAY_INTERVAL_MS);
-    }, first);
-
-    return () => {
-      clearTimeout(grace);
-      if (interval !== undefined) clearInterval(interval);
-    };
-  }, [pressing, status, paused]);
-
-  // 결과 팝업 안에서 누른 것도 React 트리를 따라 올라오지만, 게임이 끝났으면 무시된다
-  function startPress() {
-    if (paused) return;
-    if (statusRef.current === "success" || statusRef.current === "fail") return;
-    if (statusRef.current === "ready") changeStatus("playing");
-    setPressing(true);
-  }
-
-  const handleKeyDown = useEffectEvent((event: KeyboardEvent) => {
-    if (event.key !== " " && event.key !== "Enter") return;
-    if (event.target instanceof HTMLElement && event.target.closest("a, button, input, textarea, select")) {
-      return;
-    }
-    event.preventDefault();
-    if (event.repeat) return;
-    startPress();
-  });
-
-  const handleKeyUp = useEffectEvent((event: KeyboardEvent) => {
-    if (event.key === " " || event.key === "Enter") setPressing(false);
-  });
-
-  // 화면 밖에서 손을 떼거나 창이 포커스를 잃어도 먹기를 멈춘다
-  useEffect(() => {
-    const release = () => setPressing(false);
-    window.addEventListener("keydown", handleKeyDown);
-    window.addEventListener("keyup", handleKeyUp);
-    window.addEventListener("pointerup", release);
-    window.addEventListener("pointercancel", release);
-    window.addEventListener("blur", release);
-    return () => {
-      window.removeEventListener("keydown", handleKeyDown);
-      window.removeEventListener("keyup", handleKeyUp);
-      window.removeEventListener("pointerup", release);
-      window.removeEventListener("pointercancel", release);
-      window.removeEventListener("blur", release);
-    };
-  }, []);
-
-  function restart() {
-    statusRef.current = "ready";
-    ownerRef.current = "away";
-    gaugeRef.current = 0;
-    setStatus("ready");
-    setOwnerState("away");
-    setGauge(0);
-    setTrend("up");
-    setPressing(false);
-    setPaused(false);
-    setSide("right");
-    setCaughtShown(false);
-    phaseEndsAtRef.current = 0;
-    warningMsRef.current = 0;
-    remainingRef.current = null;
-    decayAtRef.current = 0;
-    decayRemainingRef.current = null;
-  }
-
-  // 주인 상태는 그대로 두고 누르기만 해제한다 — 멈춘 순간의 상태·남은 시간 그대로 이어가야
-  // 멈춰서 시선을 피하거나("looking"→"away") 경고를 늘리는(매번 새 경고) 꼼수가 생기지 않는다
-  function pauseGame() {
-    remainingRef.current = Math.max(0, phaseEndsAtRef.current - Date.now());
-    // 안 누르고 있어서 게이지가 줄던 중이었다면 그 남은 시간도 이어간다 — 아니면 멈췄다 이어하기를
-    // 반복해서 감소 시작을 계속 미루는(=게이지가 절대 안 줄어드는) 꼼수가 생긴다
-    if (!pressing) decayRemainingRef.current = Math.max(0, decayAtRef.current - Date.now());
-    setPressing(false);
-    setPaused(true);
-  }
-
-  const foodStage = getFoodStage(gauge);
-  const ownerImage = status === "fail" ? "angry" : ownerState === "looking" ? "looking" : "away";
-  const isOver = status === "success" || (status === "fail" && caughtShown);
-  const isShrinking = trend === "down" && gauge > 0;
-  const pose: CapybaraPose =
-    status === "fail" ? "caught" : status === "success" || pressing ? "eating" : "idle";
-
+/**
+ * 주방 무대(배경·주인·수박·카피바라 그림). 게이지는 누르는 동안 80ms마다 바뀌지만 무대는 그때 바뀌지 않으므로
+ * memo로 묶어 그림 10장을 매번 다시 그리지 않는다
+ */
+const SneakStage = memo(function SneakStage({ ownerState, ownerImage, foodStage, pose, munching, side }: StageProps) {
   return (
-    <div
-      data-testid="capybara-sneak-screen"
-      onPointerDown={startPress}
-      onContextMenu={preventDefault}
-      className="relative h-dvh w-full cursor-pointer touch-none select-none overflow-hidden bg-background [-webkit-tap-highlight-color:transparent] [-webkit-touch-callout:none]"
-    >
-      <h1 className="sr-only">{GAME_TITLES["capybara-sneak"]}</h1>
-      <p aria-live="polite" className="sr-only">
-        {status === "fail" ? "주인에게 들켰어요" : OWNER_STATUS_MESSAGE[ownerState]}
-      </p>
-
+    <>
       {/* 세로 화면에서 무대 위아래 빈 곳을 같은 배경을 흐리게 깔아 채운다 */}
       <Image
         src={`${ASSET}/background/back.webp`}
@@ -485,6 +227,312 @@ export function CapybaraSneak() {
             </span>
           ))}
       </div>
+    </>
+  );
+});
+
+export function CapybaraSneak() {
+  const [status, setStatus] = useState<GameStatus>("ready");
+  const [ownerState, setOwnerState] = useState<OwnerState>("away");
+  const [gauge, setGauge] = useState(0);
+  const [trend, setTrend] = useState<GaugeTrend>("up");
+  const [pressing, setPressing] = useState(false);
+  const [paused, setPaused] = useState(false);
+  // 먹는 동안 접시 오른쪽/왼쪽을 오가며 먹는다. "left"면 카피바라 층 전체를 좌우 반전한다
+  const [side, setSide] = useState<"right" | "left">("right");
+  // 들킨 뒤 화난 주인을 잠깐 보여준 다음에야 결과 팝업을 연다
+  const [caughtShown, setCaughtShown] = useState(false);
+  useLockPageScroll(status === "playing");
+  // 게임 중 꾹 누르고 있으면 와구와구 씹고 접시가 들썩인다
+  const munching = status === "playing" && pressing;
+
+  // 먹기·감소·주인 타이머는 화면이 다시 그려지기 전에도 여러 번 돌 수 있어서,
+  // 판정은 렌더링 결과 대신 항상 최신 값을 담은 ref로 한다
+  const statusRef = useRef<GameStatus>("ready");
+  const ownerRef = useRef<OwnerState>("away");
+  const gaugeRef = useRef(0);
+  // 지금 보이는 주인 상태(away/turning/looking)가 다음 상태로 바뀌는 시각(ms epoch).
+  // 멈출 때 여기서 "남은 시간"을 계산해두면, 이어할 때 같은 상태를 남은 시간만큼만 이어갈 수 있다
+  const phaseEndsAtRef = useRef(0);
+  // away 주기에서 "!" 경고가 뜨는 시점(경고 길이)을 기억해둔다 — away 중에 멈췄다 이어할 때도 같은 경고 길이를 쓰기 위해
+  const warningMsRef = useRef(0);
+  // 멈출 때 계산한 "남은 시간". null이 아니면 다음 effect 실행이 새 주기 대신 이 시간부터 이어간다
+  const remainingRef = useRef<number | null>(null);
+  // 다음 게이지 감소 틱이 언제인지(ms epoch). 안 누르고 있을 때만 의미가 있다
+  const decayAtRef = useRef(0);
+  // 멈출 때(안 누르고 있었다면) 계산한 감소까지 남은 시간. null이면 다음 감소 effect가 처음부터(DECAY_GRACE_MS) 기다린다
+  const decayRemainingRef = useRef<number | null>(null);
+
+  // 한 입(80ms)마다 소리를 내면 너무 촘촘해서 세 입에 한 번 아삭 소리를 낸다
+  const bitesRef = useRef(0);
+
+  function changeStatus(next: GameStatus) {
+    statusRef.current = next;
+    setStatus(next);
+  }
+
+  // glance는 looking일 때만 의미가 있다(흘끗 보기면 가벼운 소리)
+  const moveOwner = useEffectEvent((next: OwnerState, glance = false) => {
+    if (statusRef.current !== "playing") return;
+    ownerRef.current = next;
+    setOwnerState(next);
+    if (next === "turning") playGameSound(GAME_SOUNDS.warning);
+    else if (next === "looking") playGameSound(glance ? SNEAK_SOUNDS.glance : SNEAK_SOUNDS.look);
+    else playGameSound(SNEAK_SOUNDS.relief);
+  });
+
+  const bite = useEffectEvent(() => {
+    if (statusRef.current !== "playing") return;
+
+    if (ownerRef.current === "looking") {
+      changeStatus("fail");
+      playGameSound(SOUNDS.caught);
+      return;
+    }
+
+    if (bitesRef.current++ % 3 === 0) playGameSound(SOUNDS.chomp);
+    const nextGauge = addBite(gaugeRef.current);
+    if (getFoodStage(gaugeRef.current) === "full" && getFoodStage(nextGauge) === "half") {
+      playGameSound(SNEAK_SOUNDS.half);
+    }
+    gaugeRef.current = nextGauge;
+    setGauge(nextGauge);
+    setTrend("up");
+    if (nextGauge >= 100) {
+      changeStatus("success");
+      playGameSound(GAME_SOUNDS.success);
+    }
+  });
+
+  const decay = useEffectEvent(() => {
+    if (statusRef.current !== "playing" || gaugeRef.current === 0) return;
+
+    // 줄기 시작하는 첫 틱에만 소리를 낸다
+    if (trend !== "down") playGameSound(SNEAK_SOUNDS.shrink);
+    const nextGauge = decayGauge(gaugeRef.current);
+    gaugeRef.current = nextGauge;
+    setGauge(nextGauge);
+    setTrend("down");
+  });
+
+  // 게임 중에만 주인이 등 돌림 → "!" 경고 → 돌아봄(가끔은 흘끗) → 다시 등 돌림을 반복한다
+  useEffect(() => {
+    if (status !== "playing" || paused) return;
+
+    const timers: ReturnType<typeof setTimeout>[] = [];
+
+    // delayMs 뒤에 등을 돌린다(다음 away 주기 시작). looking이 끝날 때와 이어하기(looking 이어감)가 같이 쓴다
+    function scheduleAwayAfter(delayMs: number) {
+      phaseEndsAtRef.current = Date.now() + delayMs;
+      timers.push(
+        setTimeout(() => {
+          moveOwner("away");
+          scheduleAway();
+        }, delayMs),
+      );
+    }
+
+    // delayMs 뒤에 돌아봄(가끔은 흘끗). away 경로와 이어하기(turning 이어감)가 같이 쓴다
+    function scheduleLooking(delayMs: number) {
+      timers.push(
+        setTimeout(() => {
+          const look = pickLook();
+          moveOwner("looking", look.glance);
+          scheduleAwayAfter(look.ms);
+        }, delayMs),
+      );
+    }
+
+    function scheduleAway() {
+      const awayMs = pickDuration(AWAY_MS_RANGE);
+      const warningMs = Math.min(awayMs, pickWarningMs(gaugeRef.current));
+      warningMsRef.current = warningMs;
+      phaseEndsAtRef.current = Date.now() + awayMs;
+      timers.push(setTimeout(() => moveOwner("turning"), awayMs - warningMs));
+      scheduleLooking(awayMs);
+    }
+
+    const remaining = remainingRef.current;
+    if (remaining === null) {
+      scheduleAway();
+    } else {
+      // 멈추기 전 상태·남은 시간 그대로 이어간다 — 멈춰서 시선을 피하거나 경고를 늘릴 수 없다
+      remainingRef.current = null;
+      if (ownerRef.current === "looking") {
+        scheduleAwayAfter(remaining);
+      } else if (ownerRef.current === "turning") {
+        phaseEndsAtRef.current = Date.now() + remaining;
+        scheduleLooking(remaining);
+      } else {
+        phaseEndsAtRef.current = Date.now() + remaining;
+        timers.push(setTimeout(() => moveOwner("turning"), Math.max(0, remaining - warningMsRef.current)));
+        scheduleLooking(remaining);
+      }
+    }
+
+    return () => timers.forEach(clearTimeout);
+  }, [status, paused]);
+
+  // 누르고 딜레이가 지나면 첫 입, 그 뒤로는 손을 뗄 때까지 일정 간격으로 한 입씩 먹는다
+  useEffect(() => {
+    if (!pressing || status !== "playing" || paused) return;
+
+    let interval: ReturnType<typeof setInterval> | undefined;
+    const delay = setTimeout(() => {
+      bite();
+      interval = setInterval(bite, EAT_INTERVAL_MS);
+    }, EAT_DELAY_MS);
+
+    return () => {
+      clearTimeout(delay);
+      if (interval !== undefined) clearInterval(interval);
+    };
+  }, [pressing, status, paused]);
+
+  useEffect(() => {
+    if (!munching) return;
+    const id = setInterval(() => {
+      playGameSound(SNEAK_SOUNDS.hop);
+      setSide((s) => (s === "right" ? "left" : "right"));
+    }, SIDE_SWITCH_MS);
+    return () => clearInterval(id);
+  }, [munching]);
+
+  useEffect(() => {
+    if (status !== "fail") return;
+    const id = setTimeout(() => {
+      playGameSound(GAME_SOUNDS.fail);
+      setCaughtShown(true);
+    }, CAUGHT_REVEAL_MS);
+    return () => clearTimeout(id);
+  }, [status]);
+
+  // 손을 떼고 잠깐 여유를 준 뒤, 다시 누를 때까지 일정 간격으로 게이지가 줄어든다
+  useEffect(() => {
+    if (pressing || status !== "playing" || paused) return;
+
+    let interval: ReturnType<typeof setInterval> | undefined;
+    function tick() {
+      decay();
+      decayAtRef.current = Date.now() + DECAY_INTERVAL_MS;
+    }
+
+    // 멈추기 전 안 누르고 있었다면 남은 시간만큼만 기다린다 — 멈췄다 이어하기를 반복해도 감소를 미룰 수 없다
+    const first = decayRemainingRef.current ?? DECAY_GRACE_MS;
+    decayRemainingRef.current = null;
+    decayAtRef.current = Date.now() + first;
+    const grace = setTimeout(() => {
+      tick();
+      interval = setInterval(tick, DECAY_INTERVAL_MS);
+    }, first);
+
+    return () => {
+      clearTimeout(grace);
+      if (interval !== undefined) clearInterval(interval);
+    };
+  }, [pressing, status, paused]);
+
+  // 결과 팝업 안에서 누른 것도 React 트리를 따라 올라오지만, 게임이 끝났으면 무시된다
+  function startPress() {
+    if (paused) return;
+    if (statusRef.current === "success" || statusRef.current === "fail") return;
+    if (statusRef.current === "ready") {
+      changeStatus("playing");
+      playGameSound(GAME_SOUNDS.start);
+    }
+    // 누를 때마다 첫 입에 바로 아삭 소리가 나도록 센다
+    bitesRef.current = 0;
+    setPressing(true);
+  }
+
+  const handleKeyDown = useEffectEvent((event: KeyboardEvent) => {
+    if (event.key !== " " && event.key !== "Enter") return;
+    if (event.target instanceof HTMLElement && event.target.closest("a, button, input, textarea, select")) {
+      return;
+    }
+    event.preventDefault();
+    if (event.repeat) return;
+    startPress();
+  });
+
+  const handleKeyUp = useEffectEvent((event: KeyboardEvent) => {
+    if (event.key === " " || event.key === "Enter") setPressing(false);
+  });
+
+  // 화면 밖에서 손을 떼거나 창이 포커스를 잃어도 먹기를 멈춘다
+  useEffect(() => {
+    const release = () => setPressing(false);
+    window.addEventListener("keydown", handleKeyDown);
+    window.addEventListener("keyup", handleKeyUp);
+    window.addEventListener("pointerup", release);
+    window.addEventListener("pointercancel", release);
+    window.addEventListener("blur", release);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("keyup", handleKeyUp);
+      window.removeEventListener("pointerup", release);
+      window.removeEventListener("pointercancel", release);
+      window.removeEventListener("blur", release);
+    };
+  }, []);
+
+  function restart() {
+    statusRef.current = "ready";
+    ownerRef.current = "away";
+    gaugeRef.current = 0;
+    setStatus("ready");
+    setOwnerState("away");
+    setGauge(0);
+    setTrend("up");
+    setPressing(false);
+    setPaused(false);
+    setSide("right");
+    setCaughtShown(false);
+    phaseEndsAtRef.current = 0;
+    warningMsRef.current = 0;
+    remainingRef.current = null;
+    decayAtRef.current = 0;
+    decayRemainingRef.current = null;
+  }
+
+  // 주인 상태는 그대로 두고 누르기만 해제한다 — 멈춘 순간의 상태·남은 시간 그대로 이어가야
+  // 멈춰서 시선을 피하거나("looking"→"away") 경고를 늘리는(매번 새 경고) 꼼수가 생기지 않는다
+  function pauseGame() {
+    remainingRef.current = Math.max(0, phaseEndsAtRef.current - Date.now());
+    // 안 누르고 있어서 게이지가 줄던 중이었다면 그 남은 시간도 이어간다 — 아니면 멈췄다 이어하기를
+    // 반복해서 감소 시작을 계속 미루는(=게이지가 절대 안 줄어드는) 꼼수가 생긴다
+    if (!pressing) decayRemainingRef.current = Math.max(0, decayAtRef.current - Date.now());
+    setPressing(false);
+    setPaused(true);
+  }
+
+  const foodStage = getFoodStage(gauge);
+  const ownerImage = status === "fail" ? "angry" : ownerState === "looking" ? "looking" : "away";
+  const isOver = status === "success" || (status === "fail" && caughtShown);
+  const isShrinking = trend === "down" && gauge > 0;
+  const pose: CapybaraPose =
+    status === "fail" ? "caught" : status === "success" || pressing ? "eating" : "idle";
+
+  return (
+    <div
+      data-testid="capybara-sneak-screen"
+      onPointerDown={startPress}
+      onContextMenu={preventDefault}
+      className="relative h-dvh w-full cursor-pointer touch-none select-none overflow-hidden bg-background [-webkit-tap-highlight-color:transparent] [-webkit-touch-callout:none]"
+    >
+      <h1 className="sr-only">{GAME_TITLES["capybara-sneak"]}</h1>
+      <p aria-live="polite" className="sr-only">
+        {status === "fail" ? "주인에게 들켰어요" : OWNER_STATUS_MESSAGE[ownerState]}
+      </p>
+
+      <SneakStage
+        ownerState={ownerState}
+        ownerImage={ownerImage}
+        foodStage={foodStage}
+        pose={pose}
+        munching={munching}
+        side={side}
+      />
 
       <div
         data-testid="gauge-panel"
@@ -541,7 +589,13 @@ export function CapybaraSneak() {
             </Dialog.Description>
           </div>
 
-          <Button type="button" onClick={restart} className="h-12 w-full text-title-3 font-bold">
+          <Button
+            type="button"
+            onClick={() => {
+              playGameSound(GAME_SOUNDS.tap);
+              restart();
+            }}
+            className="h-12 w-full text-title-3 font-bold">
             다시 하기
           </Button>
 

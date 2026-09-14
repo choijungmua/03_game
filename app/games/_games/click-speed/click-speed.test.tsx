@@ -5,6 +5,7 @@ import { GAME_TITLES } from "@/lib/games/constants";
 import { mockIntersectionObserver } from "@/lib/games/testing/mock-intersection-observer";
 
 import { ClickSpeed, COUNTDOWN_STEP_MS, COUNTDOWN_VALUES } from "./click-speed";
+import { RESULT_TAP_GUARD_MS } from "./constants";
 import { DEFAULT_SECONDS } from "./records";
 
 function getScreenEl() {
@@ -24,6 +25,8 @@ async function advance(ms: number) {
 }
 
 async function startPlaying() {
+  // 결과 화면 직후에는 탭을 잠깐 무시하므로(연타 여운 방지) 이어서 다음 판을 시작할 때는 그만큼 기다린다
+  if (getScreenEl().getAttribute("data-phase") === "result") await advance(RESULT_TAP_GUARD_MS);
   press();
   await advance(COUNTDOWN_STEP_MS * COUNTDOWN_VALUES.length);
 }
@@ -223,7 +226,8 @@ describe("ClickSpeed", () => {
       render(<ClickSpeed />);
       await startPlaying();
       expect(screen.getByTestId("play-timer")).toHaveTextContent("5.00초");
-      await advance(1230);
+      // 가짜 타이머의 requestAnimationFrame은 16ms마다 돈다
+      await advance(1232);
       expect(screen.getByTestId("play-timer")).toHaveTextContent("3.77초");
     });
 
@@ -271,11 +275,32 @@ describe("ClickSpeed", () => {
       expect(getLeaderboardRows()[0]).toHaveTextContent("-");
     });
 
-    it("결과 화면에서 다시 탭하면 카운트다운이 시작된다", async () => {
+    it("결과 화면에서 잠깐 뒤 다시 탭하면 카운트다운이 시작된다", async () => {
       render(<ClickSpeed />);
       await playRound(3, 200);
+      await advance(RESULT_TAP_GUARD_MS);
       press();
       expect(screen.getByTestId("countdown")).toHaveTextContent("3");
+    });
+
+    it("시간이 끝나는 순간에도 연타하던 탭·키는 결과 화면을 넘기지 않는다", async () => {
+      render(<ClickSpeed />);
+      await playRound(30, 100);
+      expect(screen.getByTestId("result-count")).toHaveTextContent("30");
+
+      // 결과가 뜬 직후 이어진 연타와 Space
+      press();
+      await advance(100);
+      press();
+      fireEvent.keyDown(window, { key: " " });
+      await advance(RESULT_TAP_GUARD_MS - 200);
+      press();
+      expect(getScreenEl()).toHaveAttribute("data-phase", "result");
+      expect(screen.getByTestId("result-count")).toHaveTextContent("30");
+
+      await advance(100);
+      press();
+      expect(getScreenEl()).toHaveAttribute("data-phase", "countdown");
     });
   });
 

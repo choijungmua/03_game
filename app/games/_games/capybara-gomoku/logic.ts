@@ -79,6 +79,31 @@ export function playMove(state: GomokuState, index: number, stone: Stone): MoveR
   return { ok: true, state: next };
 }
 
+// (dx, dy) 방향으로 같은 색이 끝난 다음 칸이 판 안의 빈 자리인지
+function openEnd(board: Cell[], size: number, index: number, dx: number, dy: number) {
+  const color = board[index];
+  let x = (index % size) + dx;
+  let y = Math.floor(index / size) + dy;
+  while (x >= 0 && x < size && y >= 0 && y < size && board[y * size + x] === color) {
+    x += dx;
+    y += dy;
+  }
+  return x >= 0 && x < size && y >= 0 && y < size && board[y * size + x] === null;
+}
+
+// ponytail: 붙어 있는 줄만 본다(띈 넷·띈 셋은 못 잡음). 경고음 용도라 충분, 정확한 위협 판정이 필요하면 패턴 검사로 교체
+/** index에 둔 돌이 만든 위협: 한쪽이라도 열린 넷 = "four", 양쪽이 열린 셋 = "three" */
+export function threatAt(board: Cell[], size: number, index: number): "four" | "three" | null {
+  let three = false;
+  for (const [dx, dy] of DIRECTIONS) {
+    const length = lineThrough(board, size, index, dx, dy).length;
+    const open = Number(openEnd(board, size, index, dx, dy)) + Number(openEnd(board, size, index, -dx, -dy));
+    if (length === 4 && open > 0) return "four";
+    if (length === 3 && open === 2) three = true;
+  }
+  return three ? "three" : null;
+}
+
 export function resign(state: GomokuState, stone: Stone): MoveResult<GomokuState> {
   if (state.endReason) return { ok: false, error: "이미 끝난 대국이에요" };
   return { ok: true, state: { ...state, winner: opponent(stone), endReason: "resign" } };

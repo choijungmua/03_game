@@ -10,7 +10,7 @@ import { cn } from "@/lib";
 import type { LobbySettings } from "@/lib/lobby/settings";
 
 import { FRAME_SRC } from "./constants";
-import { isShortcutKey } from "./shortcut";
+import { flashButton, isShortcutKey } from "./shortcut";
 import { CAPYBARA_SRC } from "./wardrobe";
 
 interface SettingsProps {
@@ -65,6 +65,8 @@ export function SoundToggle({ settings, onChange }: SettingsProps) {
   const onShortcut = useEffectEvent((event: KeyboardEvent) => {
     if (!isShortcutKey(event, "KeyM")) return;
     event.preventDefault();
+    // 아이콘 오버레이의 group이 감싼 div라서 거기에 표시한다
+    flashButton(rootRef.current);
     onChange({ ...settings, muted: !settings.muted });
   });
   useEffect(() => {
@@ -102,7 +104,7 @@ export function SoundToggle({ settings, onChange }: SettingsProps) {
           {/* 마우스를 올리거나 키보드 포커스·터치로 알약이 열렸으면 얼굴 위에 지금 상태 스피커 아이콘 */}
           <span
             className={cn(
-              "absolute inset-0 flex items-center justify-center bg-overlay text-white opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-has-[:focus-visible]:opacity-100 motion-reduce:transition-none",
+              "absolute inset-0 flex items-center justify-center bg-overlay text-white opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-has-[:focus-visible]:opacity-100 group-data-flash:opacity-100 motion-reduce:transition-none",
               peek && "opacity-100",
             )}
           >

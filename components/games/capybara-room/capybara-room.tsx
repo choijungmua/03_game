@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { useEffect, useState } from "react";
+import { useEffect, useEffectEvent, useRef, useState } from "react";
 
 import { AdSlot } from "@/components/ads/ad-slot";
 import { Progress } from "@/components/feedback/progress";
@@ -9,10 +9,13 @@ import { GameControls, LEAVE_CONFIRM_MESSAGE } from "@/components/games/game-con
 import { Button } from "@/components/inputs/button";
 import { Dialog } from "@/components/overlay/dialog";
 import { cn } from "@/lib";
+import { GAME_SOUNDS } from "@/lib/games/constants";
 import type { Cell, RoomView, Stone } from "@/lib/games/rooms";
+import { playGameSound } from "@/lib/lobby/settings";
 
 import { EmoteBubble, EmotePicker, useEmoteShowing } from "./capybara-emotes";
 import { BotPicker } from "./bot-picker";
+import { ROOM_SOUNDS, TICK_SECONDS, URGENT_SECONDS } from "./constants";
 import { RoomList } from "./room-list";
 import { RoomRecordPanel, useRoomRecord } from "./room-record";
 import type { BoardRoomState, CapybaraRoomProps } from "./type";
@@ -21,7 +24,6 @@ const ASSET = "/assets/images/games/capybara-board";
 const CARD = "rounded-2xl bg-background/85 shadow-lg backdrop-blur";
 // 판 이미지 가장자리 테두리 안쪽에 줄이 오도록 둔 여백
 const BOARD_INSET = "3.5%";
-const URGENT_SECONDS = 10;
 
 function describeStatus(view: RoomView<BoardRoomState>, stoneName: Record<Stone, string>) {
   const { state, joined, you } = view;
@@ -36,6 +38,12 @@ function describeStatus(view: RoomView<BoardRoomState>, stoneName: Record<Stone,
   return view.bot ? "컴퓨터가 생각하는 중…" : "상대 차례예요";
 }
 
+/** 버튼 누름 소리를 내고 할 일을 한다 */
+function tap(action: () => void) {
+  playGameSound(GAME_SOUNDS.tap);
+  action();
+}
+
 function cellLabel(index: number, size: number, cell: Cell, stoneName: Record<Stone, string>) {
   const position = `${Math.floor(index / size) + 1}행 ${(index % size) + 1}열`;
   return `${position} ${cell ? stoneName[cell] : "빈 자리"}`;
@@ -46,13 +54,31 @@ interface TurnTimerProps {
   limitMs: number;
   clockOffset: number;
   label: string;
+  /** 내 차례인지. false면 경고음·초읽기를 내지 않는다 (모르면 넘기지 않는다) */
+  mine?: boolean;
 }
 
-export function TurnTimer({ startedAt, limitMs, clockOffset, label }: TurnTimerProps) {
+export function TurnTimer({ startedAt, limitMs, clockOffset, label, mine }: TurnTimerProps) {
   const [now, setNow] = useState(() => Date.now());
+  /** 마지막으로 소리를 낸 남은 초. 차례가 바뀌면 key로 새로 그려져 처음부터 센다 */
+  const sounded = useRef(Infinity);
+
+  // 10초 남으면 삐삐 한 번, 마지막 5초는 초마다 틱
+  const countDown = useEffectEvent((current: number) => {
+    const left = Math.ceil(Math.max(0, startedAt + limitMs - (current + clockOffset)) / 1000);
+    if (mine === false || left < 1 || left > URGENT_SECONDS || left >= sounded.current) return;
+    const warned = sounded.current <= URGENT_SECONDS;
+    sounded.current = left;
+    if (left <= TICK_SECONDS) playGameSound(GAME_SOUNDS.tick);
+    else if (!warned) playGameSound(GAME_SOUNDS.warning);
+  });
 
   useEffect(() => {
-    const id = setInterval(() => setNow(Date.now()), 250);
+    const id = setInterval(() => {
+      const current = Date.now();
+      setNow(current);
+      countDown(current);
+    }, 250);
     return () => clearInterval(id);
   }, []);
 
@@ -88,7 +114,8 @@ export function CapybaraRoom<S extends BoardRoomState>({
   resultText,
   adPlacement,
 }: CapybaraRoomProps<S>) {
-  const { view, error, pending, copied, clockOffset, create, sendEmote, copyInvite, leave } = room;
+  const { view, error, pending, reconnecting, gone, spectateCode, copied, clockOffset, create, watch, sendEmote, copyInvite, leave } =
+    room;
   const emoteShowing = useEmoteShowing(view?.emote ?? null);
   const record = useRoomRecord(room.slug, view);
 
@@ -96,7 +123,25 @@ export function CapybaraRoom<S extends BoardRoomState>({
   const isOver = Boolean(state?.endReason);
   // 누구 차례인지로 판을 막지 않는다 — 내 화면의 차례 정보는 폴링 간격만큼 늦을 수 있어서, 막으면 상대가 둔 직후 클릭이 씹힌다.
   // 차례 확인은 room.act가 보내기 전에 서버 기준으로 다시 한다
-  const canTouch = Boolean(view && state && view.you && view.joined.white && !state.endReason);
+  // 서버와 연결이 끊긴 동안에는 눌러도 보내지 못하니 막는다
+  const canTouch = Boolean(view && state && view.you && view.joined.white && !state.endReason && !reconnecting);
+
+  // 서버에서 온 변화는 값이 바뀐 순간에만 한 번 울린다 (다시 그려지거나 이펙트가 다시 돌아도 같은 값이면 조용하다)
+  const code = view?.code ?? null;
+  const opponentIn = Boolean(view?.joined.white);
+  const playing = Boolean(view?.you && opponentIn && !state?.endReason);
+  const heard = useRef({ code, opponentIn, error, copied, reconnecting, gone });
+  useEffect(() => {
+    const before = heard.current;
+    heard.current = { code, opponentIn, error, copied, reconnecting, gone };
+    // 기다리던 방에 상대가 들어옴 / 상대가 이미 있는 방(참가·컴퓨터 대전)에 들어가 바로 시작
+    if (code && code === before.code && opponentIn && !before.opponentIn) playGameSound(ROOM_SOUNDS.opponentJoined);
+    else if (code && code !== before.code && playing) playGameSound(GAME_SOUNDS.start);
+    if (gone && !before.gone) playGameSound(ROOM_SOUNDS.gone);
+    else if (error && error !== before.error) playGameSound(GAME_SOUNDS.wrong);
+    else if (before.reconnecting && !reconnecting && !gone) playGameSound(ROOM_SOUNDS.reconnected);
+    if (copied && !before.copied) playGameSound(ROOM_SOUNDS.copied);
+  }, [code, opponentIn, playing, error, copied, reconnecting, gone]);
 
   return (
     <div className="relative h-dvh w-full touch-manipulation select-none overflow-hidden bg-background text-text-strong [-webkit-tap-highlight-color:transparent]">
@@ -136,8 +181,8 @@ export function CapybaraRoom<S extends BoardRoomState>({
             </div>
 
             <div className="flex flex-col gap-2">
-              <BotPicker pending={pending} onPick={create} />
-              <Button type="button" onClick={() => create()} disabled={pending} className="h-12 w-full text-title-3 font-bold">
+              <BotPicker pending={pending} onPick={(level) => tap(() => create(level))} />
+              <Button type="button" onClick={() => tap(() => create())} disabled={pending} className="h-12 w-full text-title-3 font-bold">
                 방 만들기
               </Button>
             </div>
@@ -146,6 +191,11 @@ export function CapybaraRoom<S extends BoardRoomState>({
               <p role="alert" className="text-center text-caption-1 text-error">
                 {error}
               </p>
+            )}
+            {spectateCode && (
+              <Button type="button" variant="outline" onClick={() => tap(watch)} className="h-12 w-full">
+                관전하기
+              </Button>
             )}
           </div>
 
@@ -171,7 +221,7 @@ export function CapybaraRoom<S extends BoardRoomState>({
               {/* 친구가 들어오기 전엔 초대 버튼, 들어온 뒤엔 남은 시간이 같은 자리에 나온다 */}
               <div className="flex h-10 flex-col justify-center">
                 {!view.joined.white ? (
-                  <Button type="button" variant="outline" onClick={copyInvite} className="h-10 w-full">
+                  <Button type="button" variant="outline" onClick={() => tap(copyInvite)} className="h-10 w-full">
                     {copied ? "초대 링크를 복사했어요" : "초대 링크 복사"}
                   </Button>
                 ) : (
@@ -183,6 +233,7 @@ export function CapybaraRoom<S extends BoardRoomState>({
                       limitMs={turnTimeMs}
                       clockOffset={clockOffset}
                       label={`${stoneName[state.turn]} 남은 시간`}
+                      mine={state.turn === view.you}
                     />
                   )
                 )}
@@ -285,7 +336,7 @@ export function CapybaraRoom<S extends BoardRoomState>({
                     type="button"
                     variant="outline"
                     disabled={!canTouch || pending}
-                    onClick={onPass}
+                    onClick={() => tap(onPass)}
                     className="h-11 flex-1"
                   >
                     패스
@@ -294,8 +345,8 @@ export function CapybaraRoom<S extends BoardRoomState>({
                 <Button
                   type="button"
                   variant="outline"
-                  disabled={pending}
-                  onClick={() => window.confirm("정말 기권할까요?") && onResign()}
+                  disabled={pending || reconnecting}
+                  onClick={() => tap(() => window.confirm("정말 기권할까요?") && onResign())}
                   className="h-11 flex-1"
                 >
                   기권…
@@ -309,7 +360,7 @@ export function CapybaraRoom<S extends BoardRoomState>({
         leaveConfirm={view?.you && view.joined.white && !state?.endReason ? LEAVE_CONFIRM_MESSAGE : undefined}
       />
 
-      <Dialog open={isOver} onOpenChange={(open) => !open && leave()}>
+      <Dialog open={isOver || gone} onOpenChange={(open) => !open && leave()}>
         <Dialog.Content showCloseButton={false} closeOnOverlayClick={false} className="text-center">
           {view && state?.endReason && (
             <div className="flex flex-col items-center gap-3">
@@ -326,8 +377,16 @@ export function CapybaraRoom<S extends BoardRoomState>({
               <Dialog.Description className="tabular-nums">{resultText}</Dialog.Description>
             </div>
           )}
+          {gone && !state?.endReason && (
+            <div className="flex flex-col items-center gap-3">
+              <Dialog.Title className="text-title-1 font-black">방이 사라졌어요</Dialog.Title>
+              <Dialog.Description>
+                오래 비어 있어 방이 정리됐거나 서버에서 방을 찾을 수 없어요. 처음 화면에서 새로 시작해 주세요.
+              </Dialog.Description>
+            </div>
+          )}
 
-          <Button type="button" onClick={leave} className="h-12 w-full text-title-3 font-bold">
+          <Button type="button" onClick={() => tap(leave)} className="h-12 w-full text-title-3 font-bold">
             처음으로
           </Button>
 

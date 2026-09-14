@@ -4,7 +4,9 @@ import { Share2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { cn } from "@/lib";
+import { GAME_SOUNDS } from "@/lib/games/constants";
 import { recordGameShare } from "@/lib/games/game-events";
+import { playGameSound } from "@/lib/lobby/settings";
 
 import type { ShareButtonProps } from "./type";
 
@@ -26,6 +28,7 @@ export function ShareButton({ title, text, url: shareUrl, className }: ShareButt
       try {
         await navigator.share({ title, text, url });
         recordShare("native");
+        playGameSound(GAME_SOUNDS.pickup);
         return;
       } catch (error) {
         if (error instanceof DOMException && error.name === "AbortError") return;
@@ -35,8 +38,10 @@ export function ShareButton({ title, text, url: shareUrl, className }: ShareButt
     try {
       await navigator.clipboard.writeText(`${text} ${url}`);
       recordShare("clipboard");
+      playGameSound(GAME_SOUNDS.pickup);
       toast.success("링크를 복사했어요");
     } catch {
+      playGameSound(GAME_SOUNDS.wrong);
       toast.error("공유하지 못했어요. 주소창의 링크를 직접 복사해 주세요");
     }
   }
@@ -47,6 +52,7 @@ export function ShareButton({ title, text, url: shareUrl, className }: ShareButt
       aria-label="공유하기"
       onPointerDown={stopPropagation}
       onClick={(event) => {
+        playGameSound(GAME_SOUNDS.tap);
         event.stopPropagation();
         void share();
       }}
