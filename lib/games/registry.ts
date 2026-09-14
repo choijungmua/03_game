@@ -47,7 +47,7 @@ export const GAMES: GameEntry[] = [
   {
     slug: "capybara-baduk",
     title: GAME_TITLES["capybara-baduk"],
-    description: "초대 코드로 친구를 불러 9줄 바둑판에서 1:1로 두는 온라인 바둑",
+    description: "초대 코드로 친구를 부르거나 컴퓨터와 9줄 바둑판에서 1:1로 두는 온라인 바둑",
     tier: "C",
     playDifficulty: "보통",
     pageName: "baduk",
@@ -57,7 +57,7 @@ export const GAMES: GameEntry[] = [
   {
     slug: "capybara-gomoku",
     title: GAME_TITLES["capybara-gomoku"],
-    description: "초대 코드로 친구를 불러 15줄 판에서 카피바라 돌 다섯 개를 먼저 한 줄로 잇는 온라인 오목",
+    description: "초대 코드로 친구를 부르거나 컴퓨터와 15줄 판에서 카피바라 돌 다섯 개를 먼저 한 줄로 잇는 온라인 오목",
     tier: "C",
     playDifficulty: "보통",
     pageName: "gomoku",
@@ -67,7 +67,7 @@ export const GAMES: GameEntry[] = [
   {
     slug: "capybara-alkkagi",
     title: GAME_TITLES["capybara-alkkagi"],
-    description: "초대 코드로 친구를 불러 카피바라 알을 튕겨 상대 알을 판 밖으로 떨어뜨리는 온라인 알까기",
+    description: "초대 코드로 친구를 부르거나 컴퓨터와 카피바라 알을 튕겨 상대 알을 판 밖으로 떨어뜨리는 온라인 알까기",
     tier: "B",
     playDifficulty: "보통",
     pageName: "alkkagi",
