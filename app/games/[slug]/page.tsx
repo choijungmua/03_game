@@ -23,7 +23,7 @@ export async function generateMetadata({
 
   const { seo } = await game.seo();
   return pageMetadata({
-    title: game.title,
+    title: game.pageName,
     description: seo.metaDescription,
     path: `/games/${slug}`,
     keywords: seo.keywords,

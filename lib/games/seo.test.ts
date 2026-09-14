@@ -6,6 +6,11 @@ import { describe, expect, it } from "vitest";
 import { GAMES, getAllGameSeo } from "./registry";
 
 describe("게임별 SEO 문구", () => {
+  it("페이지 제목용 이름은 게임마다 다른 영어 소문자 한 단어다", () => {
+    GAMES.forEach((game) => expect(game.pageName, game.slug).toMatch(/^[a-z]+$/));
+    expect(new Set(GAMES.map((game) => game.pageName)).size).toBe(GAMES.length);
+  });
+
   it("등록된 게임마다 폴더에 seo.ts가 있다", () => {
     GAMES.forEach((game) => {
       expect(existsSync(join(process.cwd(), "app/games/_games", game.slug, "seo.ts")), game.slug).toBe(true);

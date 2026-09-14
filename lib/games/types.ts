@@ -9,6 +9,8 @@ export interface GameEntry {
   description: string;
   tier: RetryTier;
   playDifficulty: PlayDifficulty;
+  /** 페이지 제목·공유 이미지에 쓰는 영어 소문자 한 단어 ("ggpli - reaction") */
+  pageName: string;
   component: ComponentType;
   /** 게임 폴더의 seo.ts. 서버(메타데이터·sitemap·가이드)에서만 필요할 때 불러온다 */
   seo: () => Promise<{ seo: GameSeo }>;
