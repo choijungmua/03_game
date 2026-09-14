@@ -1,6 +1,7 @@
 // 로비 오픈월드 멀티: 각 플레이어가 자기 위치를 짧은 주기로 보내고, 응답으로 근처 플레이어를 받는다.
 // 맵은 하나라 모두 같은 공간에 있다. 때리기 판정도 서버가 한다 (앞쪽 가까운 한 명을 2초 기절)
 
+import { CAPYBARA_ADJECTIVES, CAPYBARA_NAMES, ZWJ } from "./constants";
 import { type Outfit, sanitizeOutfit } from "./wardrobe";
 import { type Facing, FACING_VECTORS, FACINGS, TILE, WALK_SPEED } from "./world";
 
@@ -16,6 +17,8 @@ export interface PlayerState {
 export interface PublicPlayer extends PlayerState {
   /** 화면에 보이는 짧은 id. 토큰은 절대 다른 사람에게 보내지 않는다 */
   id: string;
+  /** 머리 위 이름표 ("졸린 치킨바라"). 접속 중인 사람끼리는 안 겹친다 */
+  name: string;
   /** 남은 기절 시간(ms). 서버·클라이언트 시계가 달라서 시각이 아니라 남은 시간으로 보낸다 */
   stunMs: number;
   /** 남은 때리기 동작 시간(ms) */
@@ -44,6 +47,7 @@ export interface PresenceResponse {
 
 interface Player extends PlayerState {
   id: string;
+  name: string;
   token: string;
   updatedAt: number;
   stunnedUntil: number;
@@ -78,9 +82,33 @@ function allPlayers() {
   return (store.lobbyPlayers ??= new Map());
 }
 
-/** 제어·보이지 않는 문자와 줄바꿈을 공백 하나로 바꾸고 CHAT_MAX 글자로 자른다 (이모지가 반쪽 나지 않게 글자 단위로) */
+/** 지금 접속 중인 사람과 겹치지 않는 이름을 무작위 자리부터 찾는다. 조합 수가 MAX_PLAYERS보다 많아 늘 찾아진다 */
+function pickName(players: Map<string, Player>) {
+  const taken = new Set([...players.values()].map((player) => player.name));
+  const total = CAPYBARA_ADJECTIVES.length * CAPYBARA_NAMES.length;
+  const start = Math.floor(Math.random() * total);
+  for (let step = 0; step < total; step++) {
+    const index = (start + step) % total;
+    const name = `${CAPYBARA_ADJECTIVES[Math.floor(index / CAPYBARA_NAMES.length)]} ${CAPYBARA_NAMES[index % CAPYBARA_NAMES.length]}`;
+    if (!taken.has(name)) return name;
+  }
+  return "카피바라";
+}
+
+const GRAPHEMES = new Intl.Segmenter("ko", { granularity: "grapheme" });
+
+/** 눈에 한 글자로 보이는 단위로 나눈다 (조합 이모지·피부색 이모지도 한 글자) */
+export function graphemes(text: string) {
+  return Array.from(GRAPHEMES.segment(text), ({ segment }) => segment);
+}
+
+/** 제어·보이지 않는 문자와 줄바꿈을 공백 하나로 바꾸고 CHAT_MAX 글자로 자른다 (이모지 조합은 남기고, 반쪽 나지 않게 보이는 글자 단위로) */
 export function cleanChat(text: string) {
-  return [...text.replace(/[\p{C}\s]+/gu, " ").trim()].slice(0, CHAT_MAX).join("").trim();
+  const flat = text
+    .replace(/[\p{C}\s]/gu, (char) => (char === ZWJ ? char : " "))
+    .replace(/ {2,}/g, " ")
+    .trim();
+  return graphemes(flat).slice(0, CHAT_MAX).join("").trim();
 }
 
 /** 요청 본문 검증. 바깥 입력이라 필드마다 타입을 확인한다 */
@@ -108,6 +136,7 @@ export function parsePresence(body: Partial<PresenceRequest> | null): PresenceRe
 
 const toPublic = (player: Player, now: number): PublicPlayer => ({
   id: player.id,
+  name: player.name,
   x: player.x,
   y: player.y,
   facing: player.facing,
@@ -154,6 +183,7 @@ export function updatePresence(request: PresenceRequest, now = Date.now()): Pres
       sitting: request.sitting,
       outfit: request.outfit,
       id: crypto.randomUUID().slice(0, 6),
+      name: pickName(players),
       token: request.token,
       updatedAt: now,
       stunnedUntil: 0,

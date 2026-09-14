@@ -11,6 +11,9 @@ import { useInView } from "@/lib/games/use-in-view";
 import { ClickSpeedLeaderboard } from "./leaderboard";
 import {
   calculateCps,
+  type ClickSpeedSeconds,
+  DEFAULT_SECONDS,
+  DURATION_OPTIONS,
   getRank,
   insertRecord,
   saveRecords,
@@ -20,8 +23,6 @@ import { getClickSpeedTier } from "./tiers";
 
 export const COUNTDOWN_VALUES = [3, 2, 1] as const;
 export const COUNTDOWN_STEP_MS = 800;
-/** 이 시간 동안 탭이 없으면 연타가 끝난 것으로 본다 */
-export const IDLE_STOP_MS = 1500;
 
 type Phase = "idle" | "countdown" | "playing" | "result";
 
@@ -34,6 +35,7 @@ interface Ripple {
 interface RoundResult {
   count: number;
   cps: number;
+  seconds: ClickSpeedSeconds;
   recordId: string | null;
   /** 한 번도 탭하지 않아 기록이 없으면 null */
   rank: number | null;
@@ -43,11 +45,11 @@ function stopPropagation(event: React.SyntheticEvent) {
   event.stopPropagation();
 }
 
-function PlayTimer({ startAt }: { startAt: number | null }) {
+/** 오른쪽 아래 남은 시간 */
+function PlayTimer({ startAt, seconds }: { startAt: number; seconds: number }) {
   const [elapsedMs, setElapsedMs] = useState(0);
 
   useEffect(() => {
-    if (startAt === null) return;
     const id = setInterval(() => setElapsedMs(Date.now() - startAt), 10);
     return () => clearInterval(id);
   }, [startAt]);
@@ -57,24 +59,61 @@ function PlayTimer({ startAt }: { startAt: number | null }) {
       data-testid="play-timer"
       className="pointer-events-none absolute right-4 bottom-[max(1rem,env(safe-area-inset-bottom))] rounded-full bg-black/15 px-3 py-1.5 text-title-3 font-bold tabular-nums"
     >
-      {(elapsedMs / 1000).toFixed(2)}초
+      {(Math.max(0, seconds * 1000 - elapsedMs) / 1000).toFixed(2)}초
     </p>
+  );
+}
+
+function DurationPicker({
+  value,
+  onChange,
+  className,
+}: {
+  value: ClickSpeedSeconds;
+  onChange: (seconds: ClickSpeedSeconds) => void;
+  className?: string;
+}) {
+  return (
+    <div
+      role="group"
+      aria-label="연타 시간 선택"
+      className={cn("flex cursor-default gap-1 rounded-full p-1", className)}
+      onPointerDown={stopPropagation}
+      onClick={stopPropagation}
+    >
+      {DURATION_OPTIONS.map((seconds) => (
+        <button
+          key={seconds}
+          type="button"
+          aria-pressed={value === seconds}
+          onClick={() => onChange(seconds)}
+          className={cn(
+            "min-h-11 min-w-14 cursor-pointer rounded-full px-4 text-caption-1 font-semibold tabular-nums transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
+            value === seconds ? "bg-primary text-white" : "opacity-70 hover:opacity-100",
+          )}
+        >
+          {seconds}초
+        </button>
+      ))}
+    </div>
   );
 }
 
 export function ClickSpeed() {
   const records = useClickSpeedRecords();
+  const [seconds, setSeconds] = useState<ClickSpeedSeconds>(DEFAULT_SECONDS);
   const [phase, setPhase] = useState<Phase>("idle");
   const [countdownIndex, setCountdownIndex] = useState(0);
   const [count, setCount] = useState(0);
   const [ripples, setRipples] = useState<Ripple[]>([]);
   const [result, setResult] = useState<RoundResult | null>(null);
+  const [playStartAt, setPlayStartAt] = useState(0);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const rippleIdRef = useRef(0);
-  const [firstTapAt, setFirstTapAt] = useState<number | null>(null);
-  const lastTapAtRef = useRef(0);
   const { ref: recordsRef, inView: recordsVisible } = useInView<HTMLElement>(phase === "result");
+
+  const secondsRecords = records.filter((record) => record.seconds === seconds);
 
   useEffect(() => {
     if (phase !== "countdown") return;
@@ -87,7 +126,7 @@ export function ClickSpeed() {
         }
         setCount(0);
         setRipples([]);
-        setFirstTapAt(null);
+        setPlayStartAt(Date.now());
         setPhase("playing");
       }, COUNTDOWN_STEP_MS * (index + 1)),
     );
@@ -100,25 +139,24 @@ export function ClickSpeed() {
     setPhase("result");
 
     if (count === 0) {
-      setResult({ count: 0, cps: 0, recordId: null, rank: null });
+      setResult({ count: 0, cps: 0, seconds, recordId: null, rank: null });
       return;
     }
 
     const now = Date.now();
-    const cps = calculateCps(count, firstTapAt ?? 0, lastTapAtRef.current);
-    const record = { id: String(now), count, cps, at: now };
+    const record = { id: String(now), count, cps: calculateCps(count, seconds), seconds, at: now };
     const rank = getRank(records, record);
     saveRecords(insertRecord(records, record));
 
-    setResult({ count, cps, recordId: record.id, rank });
+    setResult({ count, cps: record.cps, seconds, recordId: record.id, rank });
   });
 
-  // 탭할 때마다(count가 바뀔 때마다) 멈춤 판정 타이머를 다시 건다
+  // 초록 화면이 된 순간부터 정한 시간이 지나면 끝난다
   useEffect(() => {
     if (phase !== "playing") return;
-    const timer = setTimeout(finishRound, IDLE_STOP_MS);
+    const timer = setTimeout(finishRound, seconds * 1000);
     return () => clearTimeout(timer);
-  }, [phase, count]);
+  }, [phase, seconds]);
 
   function startCountdown() {
     setCountdownIndex(0);
@@ -126,10 +164,6 @@ export function ClickSpeed() {
   }
 
   function registerTap(x: number, y: number) {
-    const now = Date.now();
-    if (count === 0) setFirstTapAt(now);
-    lastTapAtRef.current = now;
-
     const id = rippleIdRef.current++;
     setRipples((prev) => [...prev, { id, x, y }]);
     setCount((prev) => prev + 1);
@@ -187,16 +221,16 @@ export function ClickSpeed() {
 
   const shareText =
     phase === "result" && result && tier
-      ? `클릭 스피드 테스트에서 ${result.count}회(초당 ${result.cps.toFixed(1)}회)로 ${tier.label} 등급이 나왔어요. 나보다 빠를 수 있나요?`
+      ? `클릭 스피드 테스트 ${result.seconds}초 동안 ${result.count}회(초당 ${result.cps.toFixed(1)}회)로 ${tier.label} 등급이 나왔어요. 나보다 빠를 수 있나요?`
       : "초록 화면을 최대한 빠르게 연타하는 클릭 스피드 테스트, 같이 해 봐요";
 
   const liveMessage =
     phase === "countdown"
       ? `${COUNTDOWN_VALUES[countdownIndex]}`
       : phase === "playing"
-        ? "연타하세요"
+        ? `${seconds}초 동안 연타하세요`
         : phase === "result" && result && tier
-          ? `${rankLabel}, ${result.count}회, 초당 ${result.cps.toFixed(1)}회, ${tier.label} 등급`
+          ? `${rankLabel}, ${result.seconds}초 동안 ${result.count}회, 초당 ${result.cps.toFixed(1)}회, ${tier.label} 등급`
           : "";
 
   return (
@@ -230,13 +264,15 @@ export function ClickSpeed() {
             {/* 좌우 여백: 좁은 폰에서 제목이 오른쪽 위 공유 버튼 밑으로 들어가지 않게 */}
             <h1 className="px-12 text-title-1 font-bold text-text-strong">클릭 스피드 테스트</h1>
             <p className="text-caption-1 text-balance text-text-caption">
-              화면을 누르면 3·2·1 카운트다운이 시작돼요. 초록 화면이 되면 최대한 빠르게 연타하고, 손을 멈추면 결과가 나와요.
+              화면을 누르면 3·2·1 카운트다운이 시작돼요. 초록 화면이 되면 정한 시간 동안 최대한 빠르게 연타하세요.
             </p>
           </header>
 
+          <DurationPicker value={seconds} onChange={setSeconds} className="bg-card text-text-strong" />
+
           <p className="text-title-1 font-bold text-text-strong">클릭해서 시작하세요</p>
 
-          <ClickSpeedLeaderboard records={records} />
+          <ClickSpeedLeaderboard records={secondsRecords} />
         </div>
       )}
 
@@ -251,7 +287,9 @@ export function ClickSpeed() {
           >
             {COUNTDOWN_VALUES[countdownIndex]}
           </span>
-          <p className="text-title-3 font-semibold opacity-80">초록 화면이 되면 최대한 빠르게 연타하세요</p>
+          <p className="text-title-3 font-semibold opacity-80">
+            초록 화면이 되면 {seconds}초 동안 최대한 빠르게 연타하세요
+          </p>
         </div>
       )}
 
@@ -274,7 +312,7 @@ export function ClickSpeed() {
             />
           ))}
 
-          <PlayTimer startAt={firstTapAt} />
+          <PlayTimer startAt={playStartAt} seconds={seconds} />
         </>
       )}
 
@@ -287,6 +325,9 @@ export function ClickSpeed() {
             <div className="flex flex-col items-center gap-3">
               <p data-testid="result-tier" className="rounded-full bg-black/15 px-4 py-1 text-caption-1 font-bold">
                 {tier.label}
+              </p>
+              <p data-testid="result-seconds" className="text-title-3 font-semibold tabular-nums">
+                {result.seconds}초 동안
               </p>
               <p className="flex items-baseline gap-2 font-black tabular-nums">
                 <span data-testid="result-count" className="text-[6.5rem] leading-none sm:text-[8rem]">
@@ -312,9 +353,10 @@ export function ClickSpeed() {
               <ShareButton title="클릭 스피드 테스트" text={shareText} />
             </div>
 
-            <div className="flex flex-col items-center gap-1 opacity-80">
-              <p className="text-caption-1 font-semibold">탭해서 다시 도전</p>
-              <p className="flex items-center gap-1 text-caption-2 font-medium">
+            <div className="flex flex-col items-center gap-2">
+              <DurationPicker value={seconds} onChange={setSeconds} className="bg-black/10" />
+              <p className="text-caption-1 font-semibold opacity-80">탭해서 다시 도전</p>
+              <p className="flex items-center gap-1 text-caption-2 font-medium opacity-80">
                 <ChevronDown aria-hidden="true" className="size-4" />
                 아래로 내리면 순위 기록이 나와요
               </p>
@@ -332,7 +374,7 @@ export function ClickSpeed() {
               recordsVisible ? "translate-y-0 opacity-100" : "translate-y-10 opacity-0",
             )}
           >
-            <ClickSpeedLeaderboard records={records} highlightId={result.recordId ?? undefined} />
+            <ClickSpeedLeaderboard records={secondsRecords} highlightId={result.recordId ?? undefined} />
             <AdSlot placement="click-speed-result" />
           </section>
         </div>

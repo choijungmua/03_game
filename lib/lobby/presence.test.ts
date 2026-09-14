@@ -7,6 +7,7 @@ import {
   CHAT_MAX,
   CHAT_MS,
   cleanChat,
+  graphemes,
   parsePresence,
   STALE_MS,
   STUN_MS,
@@ -125,11 +126,30 @@ describe("로비 멀티", () => {
     expect(parsePresence({ ...player(0), chat: " \n " })).not.toHaveProperty("chat");
   });
 
+  it("채팅 이모지는 조합을 지키고, 보이는 글자 단위로 자른다", () => {
+    const family = "\u{1F468}\u200D\u{1F469}\u200D\u{1F467}";
+    const thumb = "\u{1F44D}\u{1F3FD}";
+    expect(cleanChat(`안녕 ${family}${thumb}`)).toBe(`안녕 ${family}${thumb}`);
+    expect(graphemes(cleanChat(family.repeat(CHAT_MAX + 5)))).toHaveLength(CHAT_MAX);
+  });
+
   it("대각선을 보고 때리면 그 대각선 앞쪽이 맞는다", () => {
     const base = spot();
     const attacker = { ...player(base, 0), facing: "down-right" as const };
     updatePresence(attacker, 80_000);
     updatePresence(player(base + 30, 30), 80_000);
     expect(updatePresence({ ...attacker, attack: true }, 80_100)?.hit).toBeTruthy();
+  });
+
+  // 최대 인원을 채우므로 맨 마지막에 둔다
+  it("최대 인원이 동시에 들어와도 이름표가 겹치지 않는다", () => {
+    const now = 10_000_000; // 앞선 테스트의 플레이어는 오래돼서 지워진다
+    const names = new Set<string>();
+    for (let i = 0; i < 500; i++) {
+      const name = updatePresence(player(spot()), now)?.you.name;
+      expect(name).toMatch(/^\S+ \S+바라$/);
+      if (name) names.add(name);
+    }
+    expect(names.size).toBe(500);
   });
 });
