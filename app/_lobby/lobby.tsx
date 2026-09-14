@@ -430,14 +430,14 @@ function drawStar(ctx: CanvasRenderingContext2D, x: number, y: number, radius: n
   ctx.stroke();
 }
 
-/** 옷 입은 스프라이트를 굽는 캔버스 크기(px). 화면에는 최대 STAND_SIZE(76) × 기기 픽셀 비율 2 = 152px로 그린다 */
-const DRESSED_PX = 192;
-
 interface OutfitDrawer {
   /** 옷 이미지 (처음 부를 때 불러온다) */
   image: (src: string) => HTMLImageElement;
-  /** 옷 입은 스프라이트를 구워 둔 캔버스. 입은 옷이 없거나 옷 이미지를 아직 불러오는 중이면 null */
-  dressed: (base: HTMLImageElement, outfit: Outfit, view: Facing | "sit-down") => HTMLCanvasElement | null;
+  /**
+   * 옷 입은 스프라이트를 구워 둔 캔버스. size는 화면에 그릴 크기(CSS px)이고, 캔버스는 size × 기기 픽셀 비율로 딱 맞게 굽는다
+   * (서 있으면 76 → 152px, 앉으면 64 → 128px). 입은 옷이 없거나 옷 이미지를 아직 불러오는 중이면 null
+   */
+  dressed: (base: HTMLImageElement, outfit: Outfit, view: Facing | "sit-down", size: number) => HTMLCanvasElement | null;
 }
 
 /**
@@ -519,7 +519,7 @@ function drawCapybara(
 ) {
   /** 옷 입은 스프라이트 한 장. 구워 둔 캔버스가 있으면 한 번에, 옷 이미지를 불러오는 중이면 겹쳐 그린다 */
   const drawDressed = (image: HTMLImageElement, view: Facing | "sit-down", left: number, top: number, size: number) => {
-    const dressed = wardrobe.dressed(image, outfit, view);
+    const dressed = wardrobe.dressed(image, outfit, view, size);
     if (dressed) {
       ctx.drawImage(dressed, left, top, size, size);
       return;
@@ -748,15 +748,19 @@ export function Lobby({ games }: { games: DoorGame[] }) {
     };
     // 옷 입은 스프라이트는 (스프라이트·방향·옷 조합)마다 한 번만 캔버스에 구워 두고, 매 프레임엔 그 한 장만 그린다
     const dressedCache = new Map<string, HTMLCanvasElement>();
+    /** 캔버스의 기기 픽셀 비율 (resize에서 갱신). 옷 입은 스프라이트를 화면 크기에 딱 맞게 굽는 데 쓴다 */
+    let pixelRatio = 1;
     const wardrobe: OutfitDrawer = {
       image: outfitImage,
-      dressed: (base, outfit, view) => {
+      dressed: (base, outfit, view, size) => {
         const worn = WARDROBE_SLOTS.flatMap((slot) => {
           const id = outfit[slot];
           return id ? [`${slot}:${id}`] : [];
         });
         if (worn.length === 0) return null;
-        const key = `${base.src}|${view}|${worn.join(",")}`;
+        // 그릴 크기 그대로 구워서 매 프레임 확대·축소 없이 1:1로 찍는다 (크기가 키에 들어가 화면 배율이 바뀌면 새로 굽는다)
+        const px = Math.ceil(size * pixelRatio);
+        const key = `${base.src}|${view}|${px}|${worn.join(",")}`;
         const cached = dressedCache.get(key);
         if (cached) return cached;
         // 옷 이미지를 다 불러온 뒤에만 굽는다 (덜 불러온 채 구우면 빠진 옷이 그대로 굳는다)
@@ -766,12 +770,12 @@ export function Lobby({ games }: { games: DoorGame[] }) {
         });
         if (!loaded) return null;
         const canvas = document.createElement("canvas");
-        canvas.width = DRESSED_PX;
-        canvas.height = DRESSED_PX;
+        canvas.width = px;
+        canvas.height = px;
         const bake = canvas.getContext("2d");
         if (!bake) return null;
-        bake.drawImage(base, 0, 0, DRESSED_PX, DRESSED_PX);
-        drawOutfit(bake, base, outfit, view, 0, 0, DRESSED_PX, outfitImage);
+        bake.drawImage(base, 0, 0, px, px);
+        drawOutfit(bake, base, outfit, view, 0, 0, px, outfitImage);
         // ponytail: 넘치면 통째로 비운다 (청크 캐시와 같은 방식). 사람이 많아 자주 비워지면 LRU로
         if (dressedCache.size > 300) dressedCache.clear();
         dressedCache.set(key, canvas);
@@ -912,6 +916,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
 
     const resize = () => {
       const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      pixelRatio = dpr;
       view.width = canvas.clientWidth;
       view.height = canvas.clientHeight;
       canvas.width = Math.round(view.width * dpr);
