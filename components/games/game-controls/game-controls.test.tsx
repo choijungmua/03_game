@@ -55,6 +55,18 @@ describe("GameControls", () => {
     expect(screen.queryByText("나가면 상대가 기다리게 돼요")).toBeNull();
   });
 
+  it("leaveConfirm이 사라졌다 다시 생겨도 확인 창이 저절로 열리지 않는다", () => {
+    const message = "나가면 상대가 기다리게 돼요";
+    const { rerender } = render(<GameControls leaveConfirm={message} />);
+    fireEvent.click(screen.getByRole("button", { name: "로비로 돌아가기" }));
+    expect(screen.getByText(message)).toBeInTheDocument();
+
+    rerender(<GameControls />);
+    rerender(<GameControls leaveConfirm={message} />);
+
+    expect(screen.queryByText(message)).toBeNull();
+  });
+
   it("일시정지 버튼을 누르면 onPause를 부른다", () => {
     const pause = pauseProps(false);
     render(<GameControls pause={pause} />);

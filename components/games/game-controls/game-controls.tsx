@@ -17,6 +17,8 @@ function stopPropagation(event: React.SyntheticEvent) {
 
 export function GameControls({ pause, onCancelRound, leaveConfirm, className }: GameControlsProps) {
   const [confirmOpen, setConfirmOpen] = useState(false);
+  // leaveConfirm이 사라지면(다음 판/상대 기권 등) 남아있던 확인 창 상태도 같이 리셋한다
+  if (!leaveConfirm && confirmOpen) setConfirmOpen(false);
   const pausable = pause !== undefined;
 
   // 멈춘 상태의 Esc는 멈춤 창(Radix)이 닫기 = 이어하기로 처리한다
