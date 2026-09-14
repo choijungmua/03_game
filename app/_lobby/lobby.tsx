@@ -65,7 +65,15 @@ import { type LobbySettings, loadLobbySettings, playSound, saveLobbySettings } f
 
 import { CAPYBARA_EMOTES, emoteChat, emoteImage, parseEmoteChat } from "@/lib/games/emotes";
 
-import { BUBBLE_LINE, BUBBLE_TEXT_WIDTH, EMOTE_SIZE, FISH_BUTTON_SRC, SITE_LINKS } from "./constants";
+import {
+  BUBBLE_LINE,
+  BUBBLE_TEXT_WIDTH,
+  EMOTE_SIZE,
+  FISH_BUTTON_SRC,
+  SITE_LINKS,
+  SLEEP_AFTER_MS,
+  SLEEP_FRAME_MS,
+} from "./constants";
 import { EmotePicker } from "./emote-picker";
 import { FishBag } from "./fish-bag";
 import { KeyboardGuide } from "./keyboard-guide";
@@ -128,6 +136,7 @@ type SpriteKey =
   | `sit-${Direction}`
   | `punch-${Direction}`
   | "stun"
+  | `sleep-${1 | 2}`
   | ScratchFrame
   | `${Exclude<IdleFrame, ScratchFrame>}-${Direction}`;
 /** 가만히 서 있을 때 돌아가며 하는 동작의 프레임. 긁기는 뒷모습 한 벌, 하품·졸기는 바라보는 방향(상하좌우)마다 따로 있다 */
@@ -138,6 +147,8 @@ type Texture = GroundId;
 interface CapybaraLook {
   pose: Pose;
   sitting: boolean;
+  /** 통나무에 SLEEP_AFTER_MS 넘게 앉아 있어 잠들었는지 */
+  sleeping: boolean;
   stunned: boolean;
   /** 때리기 진행도 0→1. 안 때리면 -1 */
   attack: number;
@@ -160,6 +171,11 @@ interface Remote {
   movedAt: number;
   facing: Facing;
   sitting: boolean;
+  /**
+   * 앉는 걸 처음 본 시각. 서버는 앉은 시각을 안 보내서 내가 본 때부터 센다
+   * ponytail: 내가 오기 전부터 앉아 있던 사람은 늦게 잠든 것으로 보인다. 모두에게 똑같이 보여야 하면 서버가 sitMs를 보낼 것
+   */
+  sitSince: number;
   walkDist: number;
   idleMs: number;
   stunUntil: number;
@@ -639,11 +655,15 @@ function drawCapybara(
   const lunge = look.attack < 0 ? 0 : (look.attack < 0.35 ? look.attack / 0.35 : 1 - (look.attack - 0.35) / 0.65) * 8;
   const walkKey: SpriteKey = `${look.pose}-${facing}`;
   const idleKey = look.idle ? idleKeys(look.idle, direction).find((candidate) => ready(sprites.get(candidate))) : undefined;
+  // 잠든 그림: 새근새근(1) ↔ 콧방울(2)
+  const sleepKey: SpriteKey = animate && Math.floor(now / SLEEP_FRAME_MS) % 2 === 1 ? "sleep-2" : "sleep-1";
   const key: SpriteKey =
     look.attack >= 0
       ? `punch-${direction}`
       : look.sitting
-        ? `sit-${direction}`
+        ? look.sleeping && ready(sprites.get(sleepKey))
+          ? sleepKey
+          : `sit-${direction}`
         : idleKey
           ? idleKey
           : ready(sprites.get(walkKey))
@@ -654,8 +674,9 @@ function drawCapybara(
   const size = look.sitting ? SIT_SIZE : STAND_SIZE;
   const foot = look.sitting ? SIT_FOOT : STAND_FOOT;
   // 긁기는 뒷모습, 하품·졸기는 그 스프라이트의 방향(이미지가 없어 정면으로 대신했으면 정면). 앉은 정면만 옷을 전부 입힌다
+  // 잠든 그림은 앉은 정면과 같은 자세·정렬이라 같은 옷 자리를 쓴다
   const view =
-    look.sitting && direction === "down"
+    look.sitting && (direction === "down" || key.startsWith("sleep"))
       ? "sit-down"
       : key.startsWith("scratch")
         ? "up"
@@ -664,6 +685,16 @@ function drawCapybara(
           : key === walkKey
             ? facing // 서기·걷기는 대각선 스프라이트가 있어서 대각선 자리
             : direction;
+  if (key.startsWith("sleep")) {
+    // 자는 동안 숨 쉬듯 몸이 발바닥 기준으로 천천히 부풀었다 가라앉고, 머리 옆으로 z가 떠오른다
+    ctx.save();
+    ctx.translate(x, y);
+    if (animate) ctx.scale(1, 1 + Math.sin(now / 700) * 0.02);
+    drawDressed(image, view, -size / 2, -size * foot, size);
+    ctx.restore();
+    drawZzz(ctx, x + size * 0.3, y - size * 0.62, now, animate);
+    return;
+  }
   if (key.startsWith("doze") && animate) {
     // 조는 동안 몸이 천천히 앞뒤로 흔들린다
     ctx.save();
@@ -694,6 +725,23 @@ function drawCapybara(
     return;
   }
   drawDressed(image, view, x + fx * lunge - size / 2, y + fy * lunge - size * foot, size);
+}
+
+/** 잠든 카피바라 머리 옆으로 z 세 개가 차례로 떠오르며 커지고 사라진다 */
+function drawZzz(ctx: CanvasRenderingContext2D, x: number, y: number, now: number, animate: boolean) {
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.lineWidth = 3;
+  ctx.strokeStyle = "rgba(40,28,16,0.7)";
+  ctx.fillStyle = "#fff";
+  for (let i = 0; i < 3; i++) {
+    const phase = animate ? (now / 2400 + i / 3) % 1 : (i + 1) / 4;
+    ctx.globalAlpha = Math.sin(phase * Math.PI);
+    ctx.font = `700 ${Math.round(9 + phase * 7)}px ${CANVAS_FONT}`;
+    ctx.strokeText("z", x + phase * 10, y - phase * 20);
+    ctx.fillText("z", x + phase * 10, y - phase * 20);
+  }
+  ctx.globalAlpha = 1;
 }
 
 /** 맞은 자리에 터지는 "퍽" 효과. progress 0 → 1 */
@@ -1058,6 +1106,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
       sprites.set(`punch-${direction}`, loadImage(`${CHARACTER_BASE}/capybara-punch-${direction}.webp`));
     }
     sprites.set("stun", loadImage(`${CHARACTER_BASE}/capybara-stun.webp`));
+    for (const n of [1, 2] as const) sprites.set(`sleep-${n}`, loadImage(`${CHARACTER_BASE}/capybara-sleep-${n}.webp`));
     for (const n of [1, 2, 3] as const) {
       sprites.set(`scratch-${n}`, loadImage(`${CHARACTER_BASE}/capybara-scratch-${n}.webp`));
     }
@@ -1172,6 +1221,8 @@ export function Lobby({ games }: { games: DoorGame[] }) {
       pose: "stand" as Pose,
       sitting: false,
       seatIndex: -1,
+      /** 앉은 시각. SLEEP_AFTER_MS가 지나면 잠든다 */
+      sitSince: 0,
       walkDist: 0,
       /** 앉기·일어나기 폴짝 애니메이션 시작점 (그림만 옮기고 실제 위치는 바로 바뀐다) */
       hop: { fromX: 0, fromY: 0, start: -Infinity },
@@ -1204,9 +1255,13 @@ export function Lobby({ games }: { games: DoorGame[] }) {
 
     const nearestDoor = () => world.doors.find((door) => Math.hypot(door.x - me.x, door.y - me.y) < DOOR_RADIUS) ?? null;
     const nearestSeat = () => world.seats.findIndex((seat) => Math.hypot(seat.seatX - me.x, seat.standY - me.y) < SEAT_REACH);
-    const seatTaken = (index: number) => {
+    /** 통나무 두 자리 중 비어 있는 나와 가까운 자리의 x. 둘 다 찼으면 null */
+    const freeSpot = (index: number) => {
       const seat = world.seats[index];
-      return [...remotes.values()].some((remote) => remote.sitting && Math.hypot(remote.x - seat.seatX, remote.y - seat.seatY) < 16);
+      const free = seat.spots.filter(
+        (spotX) => ![...remotes.values()].some((remote) => remote.sitting && Math.hypot(remote.x - spotX, remote.y - seat.seatY) < 16),
+      );
+      return free.sort((a, b) => Math.abs(a - me.x) - Math.abs(b - me.x))[0] ?? null;
     };
     const startHop = () => {
       me.hop = { fromX: me.x, fromY: me.y, start: performance.now() };
@@ -1214,8 +1269,8 @@ export function Lobby({ games }: { games: DoorGame[] }) {
     const standUp = () => {
       const seat = world.seats[me.seatIndex];
       if (seat) {
+        // 앉았던 자리 바로 앞으로 내려선다
         startHop();
-        me.x = seat.seatX;
         me.y = seat.standY;
       }
       me.sitting = false;
@@ -1489,6 +1544,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
           pushSnapshot(remote.snapshots, player.x, player.y, received, LOBBY_TICK_MS);
           remote.seenAt = received;
           remote.facing = player.facing;
+          if (player.sitting && !remote.sitting) remote.sitSince = received;
           remote.sitting = player.sitting;
           remote.outfit = player.outfit ?? {};
           remote.stunUntil = stunUntil;
@@ -1507,6 +1563,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
             movedAt: -Infinity,
             facing: player.facing,
             sitting: player.sitting,
+            sitSince: received,
             walkDist: 0,
             idleMs: 0,
             stunUntil,
@@ -1633,17 +1690,18 @@ export function Lobby({ games }: { games: DoorGame[] }) {
           setAutoFishing(true);
         } else {
           const index = nearestSeat();
-          if (index >= 0 && !seatTaken(index)) {
-            const seat = world.seats[index];
+          const spotX = index >= 0 ? freeSpot(index) : null;
+          if (spotX !== null) {
             startHop();
-            me.x = seat.seatX;
-            me.y = seat.seatY;
+            me.x = spotX;
+            me.y = world.seats[index].seatY;
             me.facing = "down";
             me.sitting = true;
             me.seatIndex = index;
+            me.sitSince = now;
             playSound("sit", settingsRef.current);
           } else {
-            showNotice(index >= 0 ? "누가 이미 앉아 있어요" : "통나무 의자 앞에서 앉고, 물가에서 낚시할 수 있어요");
+            showNotice(index >= 0 ? "통나무 두 자리가 다 찼어요" : "통나무 의자 앞에서 앉고, 물가에서 낚시할 수 있어요");
           }
         }
       }
@@ -1899,6 +1957,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
         const look: CapybaraLook = {
           pose: remote.walkDist > 0 ? walkPose(remote.walkDist) : "stand",
           sitting: remote.sitting,
+          sleeping: remote.sitting && now - remote.sitSince >= SLEEP_AFTER_MS,
           stunned: now < remote.stunUntil,
           attack: attackProgress(remote.attackUntil, now),
           stride: remote.walkDist,
@@ -1914,6 +1973,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
       const myLook: CapybaraLook = {
         pose: me.pose,
         sitting: me.sitting,
+        sleeping: me.sitting && now - me.sitSince >= SLEEP_AFTER_MS,
         stunned: isStunned,
         attack: attacking ? attackProgress(me.attackUntil, now) : -1,
         stride: me.walkDist,

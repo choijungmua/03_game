@@ -79,6 +79,11 @@ assets-src/lobby/<분류>/<id>/source.png            # 생성 원본
 - 크기·정렬은 stand와 같음. 배율은 첫 프레임(보통 자세) 기준으로 모든 프레임 같게 — 기지개처럼 키가 커지는 프레임도 발바닥 높이 유지
 - 로비는 3.5초 쉬고 긁기(2.2초) → 3.5초 쉬고 하품(2초) → 3.5초 쉬고 졸기(3초)를 반복 (`IDLE_ACTIONS`)
 
+## 통나무에서 잠든 이미지
+
+- `capybara-sleep-{1,2}`: 정면으로 앉아 잠든 모습. 1 눈 감고 새근새근 → 2 콧방울. 로비는 통나무에 30분(`SLEEP_AFTER_MS`) 넘게 앉아 있으면 1.4초마다 번갈아 그리고, 숨쉬기(세로로 살짝 부풀기)와 머리 옆 z는 코드로 그린다
+- 앉은 정면(`capybara-idle-down`)과 같은 자세·크기·정렬이어야 옷이 앉은 정면 자리(`SLOT_INFO`)에 맞는다. 원본 시트 `assets-src/characters/capybara/sheets/capybara-sleep-sheet.png`(마젠타 배경, 2칸)에서 두 칸을 같은 배율로 잘라 idle-down 캐릭터 상자에 맞췄다
+
 ## 약관 읽기 이미지
 
 - `capybara-reading-{right,left}`: 앉아서 나무테 안경을 쓰고 종이를 읽으며 연필로 가리킴. 방향은 바라보는 쪽 — 이용약관·개인정보처리방침·문의 페이지(`app/_legal/legal-page.tsx`)에서 `right`는 종이 왼편, `left`는 오른편

@@ -43,8 +43,11 @@ describe("카피바라 습지 마을", () => {
     expect(tileUnder(world, world.spring.x, world.spring.y)).toBe("spring");
     expect(world.seats).toHaveLength(4);
     for (const seat of world.seats) {
-      expect(tileUnder(world, seat.seatX, seat.seatY)).toBe("log");
-      expect(isBlockingTile(tileUnder(world, seat.seatX, seat.standY))).toBe(false);
+      // 두 자리 모두 통나무 위이고, 일어나면 그 자리 바로 앞에 선다
+      for (const spotX of seat.spots) {
+        expect(tileUnder(world, spotX, seat.seatY)).toBe("log");
+        expect(isBlockingTile(tileUnder(world, spotX, seat.standY))).toBe(false);
+      }
     }
   });
 
