@@ -46,7 +46,7 @@ import { type LobbySettings, loadLobbySettings, playSound, saveLobbySettings } f
 
 import { CAPYBARA_EMOTES, emoteChat, emoteImage, parseEmoteChat } from "@/lib/games/emotes";
 
-import { BUBBLE_LINE, BUBBLE_TEXT_WIDTH, EMOTE_SIZE, FRAME_SRC, SITE_LINKS } from "./constants";
+import { BUBBLE_LINE, BUBBLE_TEXT_WIDTH, EMOTE_SIZE, FISH_BUTTON_SRC, SITE_LINKS } from "./constants";
 import { EmotePicker } from "./emote-picker";
 import { FishBag } from "./fish-bag";
 import { SoundToggle } from "./lobby-settings";
@@ -1907,10 +1907,24 @@ export function Lobby({ games }: { games: DoorGame[] }) {
               aria-keyshortcuts="Space"
               className="group flex flex-col items-center gap-0.5 rounded-full focus-visible:outline-2 focus-visible:outline-primary"
             >
-              {/* 그림 버튼이 아직 없어서 옷장 버튼처럼 나무 테 안에 아이콘을 둔다 */}
-              <span className="relative flex size-14 items-center md:size-18 justify-center rounded-full bg-card/90 text-text-strong shadow-md transition-transform duration-100 motion-safe:group-active:scale-90 group-hover:text-primary group-data-flash:text-primary">
-                <Fish className="size-8" aria-hidden />
-                <NextImage src={FRAME_SRC} alt="" fill unoptimized sizes="72px" draggable={false} />
+              {/* 누르면 그림과 아이콘이 같이 줄어들게 감싼 쪽에 scale을 준다 */}
+              <span className="relative block size-14 transition-transform md:size-18 duration-100 motion-safe:group-active:scale-90">
+                <NextImage
+                  src={FISH_BUTTON_SRC}
+                  alt=""
+                  width={256}
+                  height={256}
+                  unoptimized
+                  draggable={false}
+                  className={cn("size-full drop-shadow-md", fishing && "brightness-90")}
+                />
+                {/* 마우스를 올리거나 키보드 포커스면 나무 테 안쪽 판 위에 물고기 아이콘 (앉기·때리기와 같은 방식) */}
+                <span
+                  aria-hidden
+                  className="absolute inset-[16%] flex items-center justify-center rounded-full bg-overlay text-white opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-visible:opacity-100 group-data-flash:opacity-100 motion-reduce:transition-none"
+                >
+                  <Fish className="size-7" />
+                </span>
               </span>
               <span className="rounded-full bg-card/85 px-2 py-0.5 text-caption-3 font-semibold text-text-strong">{fishing ? "당기기" : "낚시"}</span>
             </button>
