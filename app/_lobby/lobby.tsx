@@ -77,7 +77,7 @@ import { markLobbyExit } from "@/components/navigation/lobby-link";
 
 import { CAPYBARA_EMOTES, emoteChat, emoteImage, parseEmoteChat } from "@/lib/games/emotes";
 
-import { BUBBLE_LINE, BUBBLE_TEXT_WIDTH, EMOTE_SIZE, FISH_BUTTON_SRC, SITE_LINKS } from "./constants";
+import { BUBBLE_DEPTH, BUBBLE_LINE, BUBBLE_TEXT_WIDTH, EMOTE_SIZE, FISH_BUTTON_SRC, SITE_LINKS } from "./constants";
 import { EmotePicker } from "./emote-picker";
 import { FishBag } from "./fish-bag";
 import { KeyboardGuide } from "./keyboard-guide";
@@ -466,9 +466,6 @@ function drawLabel(ctx: CanvasRenderingContext2D, text: string, x: number, y: nu
   ctx.fillStyle = "#fff";
   ctx.fillText(text, x, y);
 }
-
-/** 말풍선 아래로 비치는 두께(px). 몸통 밑에 어두운 판을 한 겹 더 깔아 도톰해 보이게 한다 */
-const BUBBLE_DEPTH = 2;
 
 /** 둥근 몸통과 꼬리를 끊김 없는 한 선으로 잇는 말풍선 윤곽. 꼬리는 곡선으로 몸통 밑변에서 흘러내린다 */
 function bubblePath(ctx: CanvasRenderingContext2D, x: number, bottom: number, left: number, top: number, width: number, height: number, radius: number) {
