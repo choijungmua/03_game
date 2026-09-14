@@ -10,6 +10,7 @@ import { NAME_MAX } from "@/lib/lobby/constants";
 import { cleanName } from "@/lib/lobby/presence";
 
 import { FRAME_SRC } from "./constants";
+import { CAPYBARA_SRC } from "./wardrobe";
 
 interface ProfileNameProps {
   /** 지금 머리 위 이름표 (첫 동기화 전엔 빈 문자열) */
@@ -68,10 +69,18 @@ export function ProfileName({ name, onRename }: ProfileNameProps) {
         }}
         aria-label={name ? `이름 바꾸기 (지금 이름: ${name})` : "이름 바꾸기"}
         aria-expanded={open}
-        // 크기는 옷장·낚시 가방 버튼(모바일 size-14, md 이상 size-18)과 같게
-        className="group relative flex size-14 items-center justify-center rounded-full bg-card/90 text-text-strong shadow-md backdrop-blur hover:text-primary focus-visible:outline-2 focus-visible:outline-primary md:size-18"
+        // 옷장 버튼과 같은 모양: 크기(모바일 size-14, md 이상 size-18)·카피바라 얼굴·나무 테두리
+        className="group relative size-14 overflow-hidden rounded-full bg-card/90 shadow-md backdrop-blur focus-visible:outline-2 focus-visible:outline-primary md:size-18"
       >
-        <UserPen className="size-6 md:size-7" aria-hidden />
+        {/* 전신 이미지를 얼굴 쪽으로 확대해 얼굴만 보이게 한다 */}
+        <NextImage src={CAPYBARA_SRC} alt="" width={144} height={144} unoptimized className="size-full origin-[50%_30%] scale-[1.9]" />
+        {/* 마우스를 올리거나 키보드 포커스면 얼굴 위에 이름 아이콘 */}
+        <span
+          aria-hidden
+          className="absolute inset-0 flex items-center justify-center bg-overlay text-white opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-visible:opacity-100 motion-reduce:transition-none"
+        >
+          <UserPen className="size-7" />
+        </span>
         <NextImage src={FRAME_SRC} alt="" fill unoptimized sizes="72px" draggable={false} />
       </button>
 
