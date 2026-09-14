@@ -15,7 +15,7 @@
 | 게임 | 뒤로 버튼(왼쪽 위) | 일시정지 버튼(오른쪽 위) | 동작 |
 |---|---|---|---|
 | capybara-plane-shooter, capybara-log-dodge | 항상 | 플레이 중에만 | 멈춤 창. 이어하기 = 멈춘 순간부터 그대로 |
-| capybara-sneak | 항상 | 플레이 중에만 | 멈춤 창. 이어하기 = 멈췄을 때 등을 돌리고 있었으면 처음부터, 경고/시선 중이었으면 경고("!")부터 이어감(시선 회피 방지) |
+| capybara-sneak | 항상 | 플레이 중에만 | 멈춤 창. 이어하기 = 주인 상태·남은 시간 그대로 이어감(멈춤으로 시선을 피하거나 경고를 늘릴 수 없음). 멈출 때 누르기는 해제되므로 이어하자마자 실패하지 않음 |
 | reaction-time, click-speed | 항상 | 없음 | 카운트다운·플레이 중(reaction: `countdown`/`running`, click: `countdown`/`playing`) 누르면 이번 판 취소 → 시작 화면(기록 저장·전송 안 함). 그 외 화면(시작·결과, reaction의 `too-soon`)에서는 로비로 |
 | capybara-baduk, capybara-gomoku, capybara-alkkagi | 항상 | 없음 | 대국 중이면 확인 창("나가면 상대가 기다리게 돼요") 후 로비로. 대기·결과 화면은 바로 로비로 |
 
@@ -84,7 +84,7 @@ export interface GameControlsProps {
 
 **capybara-sneak (타이머)**
 - `paused` state. 기존 effect 게이트 `status !== "playing"`에 `|| paused` 추가 → 모든 타이머가 정리된다
-- 화면은 멈출 때 항상 주인 상태를 `"away"`로 되돌린다(`ownerRef.current = "away"` + `setOwnerState("away")`, `scheduleAway()`가 등 돌린 상태를 전제로 하므로). 다만 멈춘 순간 주인이 `turning`/`looking`이었는지 `resumeWarningRef`에 기억해뒀다가, 이어할 때 그대로 `scheduleAway()`(새 away 주기)를 주지 않고 경고(`"!"`)부터 다시 시작해 `looking`으로 이어지게 한다 — 그냥 `away`로 되돌리기만 하면 시선을 보고 멈췄다 이어서 시선을 피하는 꼼수가 생기기 때문
+- 이어하기 = 주인 상태·남은 시간 그대로 이어감(멈춤으로 시선을 피하거나 경고를 늘릴 수 없음). 멈출 때 누르기는 해제되므로 이어하자마자 실패하지 않음
 - 멈출 때 누르고 있던 입력 해제(기존 blur 처리 재사용)
 - 겹침: 상단 게이지 패널 폭 `w-[min(32rem,calc(100%-2rem))]`을 `w-[min(32rem,calc(100%-8rem))]`로 줄여 좌우 컨트롤 사이에 둔다
 - `onRestart` = `setPaused(false)` + `ready`로 리셋(기존 "다시 하기"와 같은 경로). 기존 `restart()`는 `paused`를 모르므로 같이 풀어줘야 다음 판이 멈춘 채 시작되지 않는다

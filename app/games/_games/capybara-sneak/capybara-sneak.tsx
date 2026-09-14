@@ -88,9 +88,13 @@ export function CapybaraSneak() {
   const statusRef = useRef<GameStatus>("ready");
   const ownerRef = useRef<OwnerState>("away");
   const gaugeRef = useRef(0);
-  // 멈출 때 주인이 이미 등을 돌리고 있었는지(=시선을 피해도 되는지) 기록해둔다.
-  // turning/looking 중에 멈췄다면, 이어할 때 새 away 주기를 주지 않고 경고부터 다시 보여준다
-  const resumeWarningRef = useRef(false);
+  // 지금 보이는 주인 상태(away/turning/looking)가 다음 상태로 바뀌는 시각(ms epoch).
+  // 멈출 때 여기서 "남은 시간"을 계산해두면, 이어할 때 같은 상태를 남은 시간만큼만 이어갈 수 있다
+  const phaseEndsAtRef = useRef(0);
+  // away 주기에서 "!" 경고가 뜨는 시점(경고 길이)을 기억해둔다 — away 중에 멈췄다 이어할 때도 같은 경고 길이를 쓰기 위해
+  const warningMsRef = useRef(0);
+  // 멈출 때 계산한 "남은 시간". null이 아니면 다음 effect 실행이 새 주기 대신 이 시간부터 이어간다
+  const remainingRef = useRef<number | null>(null);
 
   function changeStatus(next: GameStatus) {
     statusRef.current = next;
@@ -133,18 +137,24 @@ export function CapybaraSneak() {
 
     const timers: ReturnType<typeof setTimeout>[] = [];
 
-    // delayMs 뒤에 돌아봄(가끔은 흘끗) → 다시 등 돌리고 새 주기 시작. away 경로와 이어하기 경로가 같이 쓴다
+    // delayMs 뒤에 등을 돌린다(다음 away 주기 시작). looking이 끝날 때와 이어하기(looking 이어감)가 같이 쓴다
+    function scheduleAwayAfter(delayMs: number) {
+      phaseEndsAtRef.current = Date.now() + delayMs;
+      timers.push(
+        setTimeout(() => {
+          moveOwner("away");
+          scheduleAway();
+        }, delayMs),
+      );
+    }
+
+    // delayMs 뒤에 돌아봄(가끔은 흘끗). away 경로와 이어하기(turning 이어감)가 같이 쓴다
     function scheduleLooking(delayMs: number) {
       timers.push(
         setTimeout(() => {
           moveOwner("looking");
           const look = pickLook();
-          timers.push(
-            setTimeout(() => {
-              moveOwner("away");
-              scheduleAway();
-            }, look.ms),
-          );
+          scheduleAwayAfter(look.ms);
         }, delayMs),
       );
     }
@@ -152,17 +162,28 @@ export function CapybaraSneak() {
     function scheduleAway() {
       const awayMs = pickDuration(AWAY_MS_RANGE);
       const warningMs = Math.min(awayMs, pickWarningMs(gaugeRef.current));
+      warningMsRef.current = warningMs;
+      phaseEndsAtRef.current = Date.now() + awayMs;
       timers.push(setTimeout(() => moveOwner("turning"), awayMs - warningMs));
       scheduleLooking(awayMs);
     }
 
-    if (resumeWarningRef.current) {
-      // 멈췄을 때 이미 경고/시선 중이었다면 등 돌리는 시간을 새로 주지 않고 경고부터 이어간다
-      resumeWarningRef.current = false;
-      moveOwner("turning");
-      scheduleLooking(pickWarningMs(gaugeRef.current));
-    } else {
+    const remaining = remainingRef.current;
+    if (remaining === null) {
       scheduleAway();
+    } else {
+      // 멈추기 전 상태·남은 시간 그대로 이어간다 — 멈춰서 시선을 피하거나 경고를 늘릴 수 없다
+      remainingRef.current = null;
+      if (ownerRef.current === "looking") {
+        scheduleAwayAfter(remaining);
+      } else if (ownerRef.current === "turning") {
+        phaseEndsAtRef.current = Date.now() + remaining;
+        scheduleLooking(remaining);
+      } else {
+        phaseEndsAtRef.current = Date.now() + remaining;
+        timers.push(setTimeout(() => moveOwner("turning"), Math.max(0, remaining - warningMsRef.current)));
+        scheduleLooking(remaining);
+      }
     }
 
     return () => timers.forEach(clearTimeout);
@@ -249,15 +270,15 @@ export function CapybaraSneak() {
     setTrend("up");
     setPressing(false);
     setPaused(false);
-    resumeWarningRef.current = false;
+    phaseEndsAtRef.current = 0;
+    warningMsRef.current = 0;
+    remainingRef.current = null;
   }
 
-  // 화면은 등 돌린 모습으로 돌아가지만, turning/looking 중에 멈췄다면 기억해뒀다가
-  // 이어할 때 경고부터 다시 보여준다 — 그냥 away로 되돌리면 시선을 피해 새 주기를 받는 꼼수가 생기기 때문
+  // 주인 상태는 그대로 두고 누르기만 해제한다 — 멈춘 순간의 상태·남은 시간 그대로 이어가야
+  // 멈춰서 시선을 피하거나("looking"→"away") 경고를 늘리는(매번 새 경고) 꼼수가 생기지 않는다
   function pauseGame() {
-    resumeWarningRef.current = ownerRef.current !== "away";
-    ownerRef.current = "away";
-    setOwnerState("away");
+    remainingRef.current = Math.max(0, phaseEndsAtRef.current - Date.now());
     setPressing(false);
     setPaused(true);
   }

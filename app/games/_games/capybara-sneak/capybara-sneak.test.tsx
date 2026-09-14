@@ -372,7 +372,7 @@ describe("CapybaraSneak", () => {
       expect(screen.getByRole("link", { name: "로비로 돌아가기" })).toHaveAttribute("href", "/");
     });
 
-    it("멈춘 동안에는 게이지도 주인도 움직이지 않고, 이어하면 다시 움직인다", async () => {
+    it("멈춘 동안에는 게이지도 주인도 움직이지 않고, 이어하면 남은 시간부터 다시 움직인다", async () => {
       render(<CapybaraSneak />);
       press();
       await advance(EAT_DELAY_MS);
@@ -380,51 +380,96 @@ describe("CapybaraSneak", () => {
       expect(eaten).toBeGreaterThan(0);
 
       fireEvent.click(pauseButton());
-      expect(ownerState()).toBe("away");
+      const ownerAtPause = ownerState();
+      expect(ownerAtPause).toBe("away");
 
-      await advance(10_000);
+      // 멈추지 않았다면 LOOKING_AT 안에 turning → looking까지 진행했을 시간이지만, 멈춘 동안은 그대로다
+      await advance(LOOKING_AT);
       expect(gaugeValue()).toBe(eaten);
-      expect(ownerState()).toBe("away");
+      expect(ownerState()).toBe(ownerAtPause);
       expect(screen.queryByText("들켰다!")).toBeNull();
 
       fireEvent.click(screen.getByRole("button", { name: "이어하기" }));
       release();
-      await advance(TURNING_AT);
+      // 멈추기 전 이미 EAT_DELAY_MS만큼 지나 있었으므로, 새 TURNING_AT이 아니라 남은 시간만 지나면 된다
+      await advance(TURNING_AT - EAT_DELAY_MS);
       expect(ownerState()).toBe("turning");
     });
 
-    it("주인이 보고 있을 때 멈췄다 이어하면 경고부터 다시 보여주고, 시선을 피할 수 없다", async () => {
-      expect(EAT_DELAY_MS).toBeLessThan(WARNING_MS_RANGE.min);
+    it("주인이 보고 있을 때 멈췄다 이어하면 보던 채로, 남은 시간이 지나야 등을 돌린다", async () => {
       render(<CapybaraSneak />);
       press();
       release();
       await advance(LOOKING_AT);
       expect(ownerState()).toBe("looking");
 
+      const intoLook = 100;
+      expect(intoLook).toBeLessThan(GLANCE_MS_RANGE.min);
+      await advance(intoLook);
+
       fireEvent.click(pauseButton());
-      expect(ownerState()).toBe("away");
+      await advance(10_000);
+      // 시선을 피해 등을 돌리게 만들 수 없다 — 멈춰 있는 동안은 계속 보고 있다
+      expect(ownerState()).toBe("looking");
+      expect(gaugeValue()).toBe(0);
 
       fireEvent.click(screen.getByRole("button", { name: "이어하기" }));
-      // 시선을 피해 새 away 주기를 받는 대신, 경고("!")부터 다시 시작한다
+      expect(ownerState()).toBe("looking");
+
+      const remaining = GLANCE_MS_RANGE.min - intoLook;
+      await advance(remaining - 1);
+      expect(ownerState()).toBe("looking");
+      await advance(1);
+      expect(ownerState()).toBe("away");
+    });
+
+    it("경고(turning) 중에 멈췄다 이어하기를 반복해도, 원래 경고 시간이 지나야 본다", async () => {
+      render(<CapybaraSneak />);
+      press();
+      release();
+      await advance(TURNING_AT);
       expect(ownerState()).toBe("turning");
 
-      press();
-      await advance(EAT_DELAY_MS);
-      expect(gaugeValue()).toBeGreaterThan(0);
-      expect(screen.queryByText("들켰다!")).toBeNull();
+      // Esc 스팸을 흉내: 조금씩만 진행시키고 그 사이사이 오래 멈췄다 이어한다
+      const step = 50;
+      expect(step).toBeLessThan(WARNING_MS_RANGE.min);
+      let elapsed = 0;
+      while (elapsed + step < WARNING_MS_RANGE.min) {
+        fireEvent.click(pauseButton());
+        await advance(5_000);
+        expect(ownerState()).toBe("turning");
 
-      await advance(WARNING_MS_RANGE.min - EAT_DELAY_MS);
+        fireEvent.click(screen.getByRole("button", { name: "이어하기" }));
+        await advance(step);
+        elapsed += step;
+        expect(ownerState()).toBe("turning");
+      }
+
+      // 안 멈췄을 때와 같은 총 경고 시간(WARNING_MS_RANGE.min)이 지나면 본다 — 멈춤이 경고를 늘리지 못한다
+      await advance(WARNING_MS_RANGE.min - elapsed);
       expect(ownerState()).toBe("looking");
     });
 
-    it("등을 돌리고 있을 때 멈췄다 이어하면 계속 등을 돌리고 있다", () => {
+    it("등을 돌리고 있을 때 멈췄다 이어하면, 원래 예정된 시간이 지나야 경고가 뜬다", async () => {
       render(<CapybaraSneak />);
       press();
+      release();
       expect(ownerState()).toBe("away");
 
+      const beforePause = 100;
+      await advance(beforePause);
+
       fireEvent.click(pauseButton());
-      fireEvent.click(screen.getByRole("button", { name: "이어하기" }));
+      await advance(5_000);
       expect(ownerState()).toBe("away");
+
+      fireEvent.click(screen.getByRole("button", { name: "이어하기" }));
+      // 새 away 주기(TURNING_AT 전체)가 아니라, 멈추기 전 지난 시간을 뺀 나머지만 지나면 된다
+      await advance(TURNING_AT - beforePause - 1);
+      expect(ownerState()).toBe("away");
+
+      await advance(1);
+      expect(ownerState()).toBe("turning");
     });
 
     it("멈춘 동안 스페이스바를 눌러도 먹지 않는다", async () => {
@@ -435,6 +480,7 @@ describe("CapybaraSneak", () => {
 
       fireEvent.click(pauseButton());
       fireEvent.keyDown(window, { key: " " });
+      expect(capybaraPose()).toBe("idle");
       await advance(EAT_DELAY_MS + EAT_INTERVAL_MS * 3);
       expect(gaugeValue()).toBe(eaten);
     });
