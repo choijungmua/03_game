@@ -5,7 +5,7 @@ import { GAMES } from "@/lib/games/registry";
 const SITE_URL = "https://ggpli.com";
 
 export default function sitemap(): MetadataRoute.Sitemap {
-  const staticPages = ["", "/list", "/privacy", "/terms"].map((path) => ({
+  const staticPages = ["", "/list", "/privacy", "/terms", "/contact"].map((path) => ({
     url: `${SITE_URL}${path}`,
   }));
 
