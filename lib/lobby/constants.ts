@@ -7,6 +7,15 @@ export const DEFAULT_LOBBY_SETTINGS: LobbySettings = { muted: false, volume: 0.6
 
 export const LOBBY_SETTINGS_STORAGE_KEY = "ggpli:lobby-settings";
 
+/** 다른 유저는 이만큼 과거 위치를 그린다. 폴링(150ms)이 한 번 늦어도 멈칫하지 않게 두 틱이 조금 안 되게 둔다 */
+export const REMOTE_RENDER_DELAY_MS = 250;
+/** 응답에서 이만큼 계속 빠진 유저만 지운다. 한 번 빠졌다고 지우면 사라졌다 다시 나타나 깜빡인다 */
+export const REMOTE_GONE_MS = 1_000;
+/** 유저마다 들고 있는 과거 위치 개수 */
+export const MAX_SNAPSHOTS = 8;
+/** 이보다 오래 같은 자리에 있다가 움직이면, 서 있던 시간에 걸쳐 느리게 오지 않고 한 틱 동안 걷게 한다 */
+export const SNAPSHOT_RESTART_MS = 500;
+
 /** 효과음 파일 없이 오실레이터(tone)·걸러낸 잡음(noise)을 겹쳐 합성하는 짧은 소리들 (주파수 Hz, 길이·시작 ms, 최대 크기 0~1) */
 export const SOUNDS: Record<LobbySound, readonly SoundLayer[]> = {
   chat: [{ kind: "tone", wave: "sine", from: 740, to: 1180, ms: 120, level: 0.18 }],
