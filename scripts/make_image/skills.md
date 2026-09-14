@@ -56,6 +56,7 @@ assets-src/lobby/<분류>/<id>/source.png            # 생성 원본
 
 - `props/onsen`: 이끼 돌 테두리 유자 온천 (김은 코드로 그림)
 - `props/log-seat`, `props/lantern`, `nature/reeds`, `nature/grass-bush`, `nature/rocks`: 소품 시트 1장에서 자름
+- `props/guestbook-board`: 방명록 게시판 (나무 기둥 두 개·잎사귀 지붕, 잎 쪽지를 나무 핀으로 꽂은 판, 글자 없음). `capybara-idle-down.png`·`props/lantern/source.png`를 참고로 마젠타 배경 한 장 생성 → 배경 지우고 가장자리까지 잘라 긴 변 384 WebP. 로비 가운데 데크 갈래길 옆, 앞에서 Space로 방명록을 연다
 - `nature/tree-tropical`, `nature/palm`, `props/fence`(갈대 울타리), `nature/lotus`, `nature/banana-bush`: 자연 시트 1장에서 자름. 붙어 있는 소품은 알파 연결 요소(flood fill)로 나눈다
 - `buildings/hut-{1,2,3}`: 게임 오두막 3종 (1 초가 원두막+나무 아케이드 간판, 2 카피바라 귀 풀 굴집+나무 휴대용 게임기 간판, 3 바나나잎 대나무 원두막+나무 TV 간판). 간판 화면은 이미지에서 비워 두고, 화면 위치(이미지 대비 비율)를 정의의 `screen`에 적는다 — 로비가 그 자리에 게임 아이콘을 그린다
 - 게임 아이콘: `public/assets/images/games/<slug>/icon.webp` (원본 `assets-src/games/<slug>/icon.png`) — 오두막 간판 화면에 켜지는, 그 게임을 알리는 소품 하나. 로비에서 게임을 알리는 표시는 이것 하나뿐이다. 작은 화면에 들어가므로 굵고 단순한 실루엣, 생성 배경은 마젠타(#FF00FF) 단색(검은 조약돌·어두운 나무가 배경 제거에 안 먹히게). 마을 테마에 맞게 나무·잎사귀·조약돌·코코넛 같은 자연 소재 + 펠트 질감 (반응속도=나무 스톱워치, 클릭=나무·이끼 마우스, 몰래 먹기=잎 접시 위 수박, 슈팅=나무·대나무 비행기, 바둑=코코넛 그릇 조약돌, 오목=통나무 판 조약돌, 알까기=통나무 판 위 튕기는 조약돌). 투명 배경, 가장자리까지 자른 뒤 384px 이하. 없으면 아이콘 없이 오두막만 보인다
