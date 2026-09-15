@@ -68,7 +68,8 @@ export function GameControls({ pause, onCancelRound, leaveConfirm, className }: 
   }, [pausable]);
 
   const backIcon = <ArrowLeft aria-hidden="true" className="size-5" />;
-  const backClass = cn(ROUND_BUTTON, "left-4");
+  // 가로로 든 아이폰은 왼쪽·오른쪽에 노치·다이나믹 아일랜드가 온다 — 안전 영역만큼 안쪽으로 들인다
+  const backClass = cn(ROUND_BUTTON, "left-[max(1rem,env(safe-area-inset-left))]");
 
   return (
     // 창(Dialog)은 포털이지만 React 트리상 이 div 안이라, 창 내용·창 밖 오버레이 탭까지 여기서 막힌다
@@ -93,14 +94,14 @@ export function GameControls({ pause, onCancelRound, leaveConfirm, className }: 
         aria-label="효과음"
         aria-pressed={volume > 0}
         onClick={toggleSound}
-        className={cn(ROUND_BUTTON, "left-4 mt-14")}
+        className={cn(ROUND_BUTTON, "left-[max(1rem,env(safe-area-inset-left))] mt-14")}
       >
         {volume > 0 ? <Volume2 aria-hidden="true" className="size-5" /> : <VolumeX aria-hidden="true" className="size-5" />}
       </button>
 
       {pause && (
         <>
-          <button type="button" aria-label="일시정지" onClick={pauseWithSound} className={cn(ROUND_BUTTON, "right-4")}>
+          <button type="button" aria-label="일시정지" onClick={pauseWithSound} className={cn(ROUND_BUTTON, "right-[max(1rem,env(safe-area-inset-right))]")}>
             <Pause aria-hidden="true" className="size-5" />
           </button>
 

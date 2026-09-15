@@ -172,7 +172,8 @@ export function CapybaraRoom<S extends BoardRoomState>({
       {!view || !state ? (
         <RoomLobby title={title} guide={guide} room={room} record={record} />
       ) : (
-        <div className="absolute inset-0 flex flex-col items-center gap-3 pt-[calc(max(1rem,env(safe-area-inset-top))_+_3.5rem)] pb-[max(1rem,env(safe-area-inset-bottom))]">
+        // 좁은 화면은 카드가 가로를 꽉 채워 왼쪽 위 뒤로·효과음 버튼 두 개 아래에서 시작한다 (넓으면 카드가 가운데라 안 겹친다)
+        <div className="absolute inset-0 flex flex-col items-center gap-3 pt-[calc(max(1rem,env(safe-area-inset-top))_+_3.5rem)] pb-[max(1rem,env(safe-area-inset-bottom))] max-sm:pt-[calc(max(1rem,env(safe-area-inset-top))_+_7rem)]">
           {/* 위·아래 영역은 높이를 고정한다 — 안의 내용(초대 버튼↔남은 시간, 에러, 버튼 줄)이 바뀌어도 판 크기와 위치가 그대로다 */}
           <div className="relative z-10 w-full shrink-0 px-4">
             <div className={cn(CARD, "relative mx-auto flex w-full max-w-md flex-col gap-2 px-4 py-3")}>
