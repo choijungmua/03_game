@@ -29,6 +29,7 @@ import { Dialog } from "@/components/overlay/dialog";
 import { cn } from "@/lib";
 import { GAME_SOUNDS, GAME_TITLES } from "@/lib/games/constants";
 import { opponent, type RoomView, type Stone, type Vector } from "@/lib/games/rooms";
+import { useLockPageScroll } from "@/lib/games/use-lock-page-scroll";
 import { useRoom } from "@/lib/games/use-room";
 import { playGameSound, type SoundLayer } from "@/lib/lobby/settings";
 
@@ -139,6 +140,8 @@ export function CapybaraAlkkagi() {
   const canShoot = Boolean(
     view && state && view.joined.white && !state.winner && view.you === state.turn && !animating && !pending && !reconnecting,
   );
+  // 대국 중에는 알을 당기다 화면이 밀리지 않게 스크롤을 막는다
+  useLockPageScroll(Boolean(view?.you && view.joined.white && state && !state.winner));
   // 백은 판을 180도 돌려서 본다 — 내 알이 항상 아래쪽
   const flipped = view?.you === "white";
   const forwardAngle = flipped ? Math.PI / 2 : -Math.PI / 2;
