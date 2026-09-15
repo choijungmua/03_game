@@ -9,8 +9,7 @@ import { cn } from "@/lib";
 import { NAME_MAX } from "@/lib/lobby/constants";
 import { cleanName } from "@/lib/lobby/presence";
 
-import { FRAME_SRC } from "./constants";
-import { CAPYBARA_SRC } from "./wardrobe";
+import { PROFILE_BUTTON_SRC } from "./constants";
 
 interface ProfileNameProps {
   /** 지금 머리 위 이름표 (첫 동기화 전엔 빈 문자열) */
@@ -69,19 +68,17 @@ export function ProfileName({ name, onRename }: ProfileNameProps) {
         }}
         aria-label={name ? `이름 바꾸기 (지금 이름: ${name})` : "이름 바꾸기"}
         aria-expanded={open}
-        // 옷장 버튼과 같은 모양: 크기(모바일 size-14, md 이상 size-18)·카피바라 얼굴·나무 테두리
-        className="group relative size-14 overflow-hidden rounded-full bg-card/90 shadow-md backdrop-blur focus-visible:outline-2 focus-visible:outline-primary md:size-18"
+        // 옷장 버튼과 같은 크기(모바일 size-14, md 이상 size-18). 나무 테·펠트 판까지 그려진 이름표 버튼 그림
+        className="group relative block size-14 rounded-full focus-visible:outline-2 focus-visible:outline-primary md:size-18"
       >
-        {/* 전신 이미지를 얼굴 쪽으로 확대해 얼굴만 보이게 한다 */}
-        <NextImage src={CAPYBARA_SRC} alt="" width={144} height={144} unoptimized className="size-full origin-[50%_30%] scale-[1.9]" />
-        {/* 마우스를 올리거나 키보드 포커스면 얼굴 위에 이름 아이콘 */}
+        <NextImage src={PROFILE_BUTTON_SRC} alt="" width={256} height={256} unoptimized draggable={false} className="size-full drop-shadow-md" />
+        {/* 마우스를 올리거나 키보드 포커스면 나무 테 안쪽 판 위에 이름 아이콘 */}
         <span
           aria-hidden
-          className="absolute inset-0 flex items-center justify-center bg-overlay text-white opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-visible:opacity-100 motion-reduce:transition-none"
+          className="absolute inset-[16%] flex items-center justify-center rounded-full bg-overlay text-white opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-visible:opacity-100 motion-reduce:transition-none"
         >
-          <UserPen className="size-7" />
+          <UserPen className="size-6 md:size-7" />
         </span>
-        <NextImage src={FRAME_SRC} alt="" fill unoptimized sizes="72px" draggable={false} />
       </button>
 
       <section

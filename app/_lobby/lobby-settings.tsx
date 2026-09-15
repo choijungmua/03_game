@@ -9,9 +9,8 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib";
 import { type LobbySettings, toggledSound, withVolume } from "@/lib/lobby/settings";
 
-import { FRAME_SRC } from "./constants";
+import { SOUND_BUTTON_SRC } from "./constants";
 import { flashButton, isShortcutKey } from "./shortcut";
-import { CAPYBARA_SRC } from "./wardrobe";
 
 interface SettingsProps {
   settings: LobbySettings;
@@ -94,24 +93,20 @@ export function SoundToggle({ settings, onChange }: SettingsProps) {
         aria-pressed={volume > 0}
         aria-keyshortcuts="M"
         // 크기는 오른쪽 아래 앉기·때리기 버튼(모바일 size-14, md 이상 size-18)과 같게. 헤드폰 위치는 버튼 기준 %라 같이 커진다
-        className="relative size-14 md:size-18 rounded-full bg-card/90 shadow-md backdrop-blur focus-visible:outline-2 focus-visible:outline-primary"
+        className="relative size-14 md:size-18 rounded-full focus-visible:outline-2 focus-visible:outline-primary"
       >
-        {/* 얼굴만 원 안에 자른다(옷장 버튼과 같은 크기·확대). 헤드폰은 이 원 밖에 그려서 바깥으로 삐져나온다 */}
-        <span aria-hidden className="relative block size-full overflow-hidden rounded-full">
-          <span className="relative block size-full origin-[50%_30%] scale-[1.9]">
-            <NextImage src={CAPYBARA_SRC} alt="" fill unoptimized sizes="144px" />
-          </span>
-          {/* 마우스를 올리거나 키보드 포커스·터치로 알약이 열렸으면 얼굴 위에 지금 상태 스피커 아이콘 */}
+        {/* 나무 테·펠트 판까지 그려진 버튼 그림 (가방 버튼과 같은 방식). 헤드폰은 이 원 밖에 그려서 바깥으로 삐져나온다 */}
+        <span aria-hidden className="relative block size-full">
+          <NextImage src={SOUND_BUTTON_SRC} alt="" width={256} height={256} unoptimized draggable={false} className="size-full drop-shadow-md" />
+          {/* 마우스를 올리거나 키보드 포커스·터치로 알약이 열렸으면 나무 테 안쪽 판 위에 지금 상태 스피커 아이콘 */}
           <span
             className={cn(
-              "absolute inset-0 flex items-center justify-center bg-overlay text-white opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-has-[:focus-visible]:opacity-100 group-data-flash:opacity-100 motion-reduce:transition-none",
+              "absolute inset-[16%] flex items-center justify-center rounded-full bg-overlay text-white opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-has-[:focus-visible]:opacity-100 group-data-flash:opacity-100 motion-reduce:transition-none",
               peek && "opacity-100",
             )}
           >
-            {volume === 0 ? <VolumeX className="size-7" /> : <Volume2 className="size-7" />}
+            {volume === 0 ? <VolumeX className="size-6 md:size-7" /> : <Volume2 className="size-6 md:size-7" />}
           </span>
-          {/* 앉기·때리기와 같은 나무 테두리. 스피커 아이콘이 떠도 테두리는 보이게 맨 위에 둔다 */}
-          <NextImage src={FRAME_SRC} alt="" fill unoptimized sizes="72px" draggable={false} />
         </span>
         {/* 인라인 translate로 자리를 잡으니, 벗는 연출은 translate 대신 scale·opacity로 한다 */}
         <NextImage
