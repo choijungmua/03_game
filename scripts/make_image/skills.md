@@ -86,14 +86,17 @@ assets-src/lobby/<분류>/<id>/source.png            # 생성 원본
 ## 통나무에서 잠든 이미지
 
 - `capybara-sleep-{1,2}`: 정면으로 앉아 잠든 모습. 1 눈 감고 새근새근 → 2 콧방울. 로비는 통나무에 30분(`SLEEP_AFTER_MS`) 넘게 앉아 있으면 1.4초마다 번갈아 그리고, 숨쉬기(세로로 살짝 부풀기)와 머리 옆 z는 코드로 그린다
-- 앉은 정면(`capybara-idle-down`)과 같은 자세·크기·정렬이어야 옷이 앉은 정면 자리(`SLOT_INFO`)에 맞는다. 원본 시트 `assets-src/characters/capybara/sheets/capybara-sleep-sheet.png`(마젠타 배경, 2칸)에서 두 칸을 같은 배율로 잘라 idle-down 캐릭터 상자에 맞췄다
+- 앉은 정면(`capybara-idle-down`)과 같은 자세·크기·정렬이다. 옷 자리는 스프라이트마다 따로 재니(아래 옷장 참고) 새 그림을 넣으면 `scripts/wardrobe_fit.py`를 다시 돌린다. 원본 시트 `assets-src/characters/capybara/sheets/capybara-sleep-sheet.png`(마젠타 배경, 2칸)에서 두 칸을 같은 배율로 잘라 idle-down 캐릭터 상자에 맞췄다
 
 ## 옷장 방향별 옷 그림
 
 - 옷장 정면 그림: `public/assets/images/characters/capybara/wardrobe/<slot>/<id>.webp` (시트 3칸 → `scripts/split_wardrobe.py`)
-- 상의·하의·한벌옷·신발·장갑은 로비 맵 방향마다 따로 그린 그림을 쓴다: `<id>-{back,side,front3q,back3q}.webp`. 옆·대각선은 오른쪽을 향한 그림(왼쪽은 코드가 반전), 신발·장갑은 한 짝만
-- 새 옷을 추가하면 `python scripts/wardrobe_views.py gen slot/id` (정면 그림 + 서기 스프라이트 4방향을 참고로 가로 4칸 시트 생성) → `python scripts/wardrobe_views.py split`. 원본 시트는 `assets-src/characters/capybara/wardrobe/views/`
-- 자리는 `lib/lobby/wardrobe.ts`의 `WORLD_ANCHORS` (폭·높이 상자에 비율 유지로 넣음). `lib/lobby/wardrobe.test.ts`가 방향별 그림 누락을 잡는다
+- 로비 옷장 칸은 모자·안경·한벌옷 3개만 쓴다 (상의·하의·신발·장갑은 보류 — 그림은 남아 있고 `WARDROBE_SLOTS`·`wardrobe_views.py SLOTS`에 다시 넣으면 된다)
+- 칸마다 로비 맵 방향별 그림을 쓴다: `<id>-{back,side,front3q,back3q}.webp`. 옆·대각선은 오른쪽을 향한 그림(왼쪽은 코드가 반전). 안경은 뒤에서 안 보여 `side`·`front3q`만 있다
+- 안경 옆·앞대각선은 별 선글라스만 codex로 만들었고, 나머지는 codex 한도로 `python scripts/wardrobe_views.py synth glasses/<id>`(정면 그림에서 먼 렌즈 좁히기·옆 렌즈+안경다리 합성)로 만들었다. codex로 다시 만들면 `gen` → `split`이 덮어쓴다
+- 새 옷을 추가하면 `python scripts/wardrobe_views.py gen slot/id` (정면 그림 + 서기 스프라이트 4방향을 참고로 가로 4칸 시트 생성) → `python scripts/wardrobe_views.py split` → `python scripts/wardrobe_fit.py`. 원본 시트는 `assets-src/characters/capybara/wardrobe/views/`
+- 자리는 손으로 재지 않는다. `python scripts/wardrobe_fit.py`가 스프라이트마다 머리 타원·몸통·발·앞발·눈을 재고, 방향 묶음(서기 5방향·앉기 앞·옆·뒤)의 대표 스프라이트에서 옷마다 몸을 덮고 덜 삐져나오는 상자를 찾아 `lib/lobby/wardrobe-fit.ts`(생성 파일)에 기준점 상대값으로 쓴다. 걷기·때리기·하품처럼 발·앞발이 움직이는 동작은 그 스프라이트 기준점을 따라간다
+- 새 캐릭터 동작 그림을 넣거나 옷을 바꾸면 `wardrobe_fit.py`를 다시 돌리고 `python scripts/wardrobe_fit.py sheet`(확인 시트 `scripts/make_image/assets/wardrobe-fit-sheet.png`)로 눈으로 확인한다. 자동으로 잘못 잰 스프라이트는 스크립트의 `OVERRIDES`로 고친다. `lib/lobby/wardrobe.test.ts`가 방향별 그림·맞춘 상자 누락을 잡는다
 - 동시 생성은 2개까지 (많이 돌리면 PC 메모리 부족으로 죽는다). Codex 사용량 한도에 걸리면 안내된 시각 이후 `gen`을 다시 돌리면 이미 만든 시트는 건너뛴다
 
 ## 먹이 먹기 이미지

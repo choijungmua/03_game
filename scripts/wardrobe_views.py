@@ -2,6 +2,7 @@
 
 python scripts/wardrobe_views.py gen [slot/id ...]   → 옷마다 가로 4칸 시트 생성 (이미 있으면 건너뜀, 2개씩 동시에 — 메모리 부족으로 죽지 않게)
 python scripts/wardrobe_views.py split               → 시트를 잘라 public/.../wardrobe/<slot>/<id>-<view>.webp 로 저장
+python scripts/wardrobe_views.py synth glasses/id    → codex 없이 안경 정면 그림에서 옆·앞대각선 그림 합성 (안경은 뒤에서 안 보여 두 방향만 쓴다)
 
 칸 순서는 lib/lobby/wardrobe.ts 의 VIEW_ART 순서(back, side, front3q, back3q)와 같아야 한다.
 """
@@ -19,13 +20,15 @@ sys.path.insert(0, str(ROOT / "scripts"))
 from make_image import ASSETS_DIR, make_image  # noqa: E402
 from split_wardrobe import key_magenta  # noqa: E402  (import 시 시트가 없으면 건너뛰기만 한다)
 
-SLOTS = ["top", "bottom", "onepiece", "shoes", "gloves"]
+SLOTS = ["hat", "glasses", "onepiece"]  # lib/lobby/wardrobe.ts WARDROBE_SLOTS 와 같게 (상의·하의·신발·장갑은 보류)
 VIEWS = ["back", "side", "front3q", "back3q"]
 CAPY = ROOT / "assets-src/characters/capybara"
 WARDROBE = ROOT / "public/assets/images/characters/capybara/wardrobe"
 SRC_DIR = ROOT / "assets-src/characters/capybara/wardrobe/views"
 
 HOW = {
+    "hat": "머리에 쓴 모자만 (카피바라 귀가 들어갈 자리는 비워 둔 모양 그대로)",
+    "glasses": "얼굴에 쓴 안경만 (옆에서는 앞 렌즈 하나와 귀로 가는 안경다리가 보이는 모양, 뒤에서는 안경다리 끝만)",
     "top": "몸통에 입은 상의만 (소매 포함)",
     "bottom": "허리~허벅지에 입은 하의만",
     "onepiece": "몸통~다리에 입은 한벌옷만 (후드·꼬리 같은 장식 포함)",
@@ -107,6 +110,11 @@ def split() -> None:
                 runs.append((start, x))
                 start = None
         runs = [r for r in runs if r[1] - r[0] > sheet.width * 0.02]  # 털 부스러기 제거
+        # 한 칸 그림이 떨어진 조각 둘로 잡히면(뒤에서 본 안경다리 두 끝) 가운데가 같은 칸에 드는 조각끼리 합친다
+        cells: dict[int, list[tuple[int, int]]] = {}
+        for x0, x1 in runs:
+            cells.setdefault(min(len(VIEWS) - 1, (x0 + x1) // 2 * len(VIEWS) // sheet.width), []).append((x0, x1))
+        runs = [(min(r[0] for r in rs), max(r[1] for r in rs)) for _, rs in sorted(cells.items())]
         if len(runs) != len(VIEWS):
             print(f"{slot}/{item_id}: 칸 {len(runs)}개 (4개여야 함), 건너뜀")
             continue
@@ -118,10 +126,49 @@ def split() -> None:
         print(f"{slot}/{item_id}: {', '.join(VIEWS)}")
 
 
+def synth_glasses(item_id: str) -> None:
+    """codex로 못 만든 안경의 옆·앞대각선 그림을 정면 그림에서 만든다 (안경은 뒤에서 안 보여 두 방향만 쓴다).
+    앞대각선(오른쪽 아래를 봄)은 멀어지는 화면 오른쪽 렌즈를 좁히고, 옆(오른쪽을 봄)은 렌즈 하나를 옆에서 본 듯 좁혀 앞에 두고 테 색 안경다리를 귀 쪽으로 뻗는다
+    """
+    import numpy as np
+    from PIL import ImageDraw
+
+    front = Image.open(WARDROBE / "glasses" / f"{item_id}.webp").convert("RGBA")
+    w, h = front.size
+    half = w // 2
+    near, far = front.crop((0, 0, half, h)), front.crop((half, 0, w, h))
+
+    quarter = Image.new("RGBA", (round(half * 0.95) + round(half * 0.6), h))
+    quarter.alpha_composite(near.resize((round(half * 0.95), h), Image.LANCZOS), (0, 0))
+    quarter.alpha_composite(far.resize((round(half * 0.6), h), Image.LANCZOS), (round(half * 0.95), 0))
+
+    pixels = np.array(front)
+    solid = pixels[..., 3] > 200
+    lum = pixels[..., :3] @ np.array([0.299, 0.587, 0.114])
+    frame = pixels[solid & (lum > 90)][:, :3]  # 어두운 렌즈 빼고 테 색
+    color = tuple(int(v) for v in np.median(frame if len(frame) else pixels[solid][:, :3], axis=0)) + (255,)
+    lens = far.resize((max(6, round(half * 0.3)), h), Image.LANCZOS)
+    temple, thick = round(h * 0.8), max(4, round(h * 0.11))
+    side = Image.new("RGBA", (temple + lens.width, h))
+    draw = ImageDraw.Draw(side)
+    y = round(h * 0.38)
+    draw.rounded_rectangle((thick // 2, y, temple + lens.width // 2, y + thick), radius=thick // 2, fill=color)
+    draw.rounded_rectangle((0, y, thick, y + round(h * 0.32)), radius=thick // 2, fill=color)  # 귀에 걸리는 끝
+    side.alpha_composite(lens, (temple, 0))
+
+    for view, image in (("front3q", quarter), ("side", side)):
+        image = image.crop(image.getchannel("A").point(lambda v: 255 if v > 16 else 0).getbbox())
+        image.save(WARDROBE / "glasses" / f"{item_id}-{view}.webp", "WEBP", quality=90, method=6)
+    print(f"glasses/{item_id}: side, front3q (정면 그림에서 합성)")
+
+
 if __name__ == "__main__":
     if sys.argv[1:2] == ["gen"]:
         gen(sys.argv[2:])
     elif sys.argv[1:2] == ["split"]:
         split()
+    elif sys.argv[1:2] == ["synth"]:
+        for item in sys.argv[2:]:
+            synth_glasses(item.removeprefix("glasses/"))
     else:
         print(__doc__)

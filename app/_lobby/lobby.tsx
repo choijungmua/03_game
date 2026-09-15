@@ -116,22 +116,17 @@ import {
   type PresenceRequest,
 } from "@/lib/lobby/presence";
 import {
-  BODY_LAYERS,
-  HEAD_ELLIPSE,
+  dressSprite,
   loadOutfit,
   type Outfit,
-  OVER_HEAD_LAYERS,
-  SLOT_INFO,
-  type WardrobeAnchor,
-  type WardrobeSlot,
+  type OutfitPiece,
+  spriteName,
   WARDROBE_SLOTS,
   wardrobeSrc,
+  viewArtOf,
   wardrobeViewSrc,
-  VIEW_ART,
-  VIEW_OF,
-  WORLD_ANCHORS,
-  WORLD_HEAD_ELLIPSE,
 } from "@/lib/lobby/wardrobe";
+import { SPRITE_FIT } from "@/lib/lobby/wardrobe-fit";
 import {
   BATH_RX,
   BATH_RY,
@@ -539,11 +534,11 @@ function drawBathing(
   ctx.ellipse(x, y, 26, 7, 0, 0, Math.PI * 2);
   ctx.fill();
   if (animate) for (const offset of [0, 900]) drawRipple(ctx, x, y - 3, ((now + offset) % 1800) / 1800);
-  // 바라보는 방향 그림의 머리 타원 꼭대기 (왼쪽을 보면 좌우 반전). 머리 타원은 털보다 조금 위까지 잡혀 있어서
+  // 바라보는 방향 서기 스프라이트에서 잰 머리 타원 꼭대기. 머리 타원은 귀 끝까지 잡혀 있어서
   // YUZU_SINK만큼 내려 털에 살짝 묻히게 얹고, 물속을 걸을 때 몸이 들썩이는 만큼(drawCapybara와 같은 식) 같이 올린다
-  const head = WORLD_HEAD_ELLIPSE[VIEW_OF[facing]];
-  const headX = x - STAND_SIZE / 2 + (STAND_SIZE * (facing.endsWith("left") ? 100 - head.x : head.x)) / 100;
-  const headTop = y + BATH_SINK - STAND_SIZE * STAND_FOOT + (STAND_SIZE * (head.y - head.ry)) / 100;
+  const [headCx, headCy, , headRy] = SPRITE_FIT[`stand-${facing}`].head;
+  const headX = x - STAND_SIZE / 2 + (STAND_SIZE * headCx) / 100;
+  const headTop = y + BATH_SINK - STAND_SIZE * STAND_FOOT + (STAND_SIZE * (headCy - headRy)) / 100;
   const lift = stride > 0 && animate ? Math.abs(Math.sin((stride / (STRIDE_PX * 2)) * Math.PI)) * 3 : 0;
   drawYuzu(ctx, headX, headTop + YUZU_SINK - lift);
 }
@@ -697,77 +692,52 @@ interface OutfitDrawer {
    * 옷 입은 스프라이트를 구워 둔 캔버스. size는 화면에 그릴 크기(CSS px)이고, 캔버스는 size × 기기 픽셀 비율로 딱 맞게 굽는다
    * (서 있으면 76 → 152px, 앉으면 64 → 128px). 입은 옷이 없거나 옷 이미지를 아직 불러오는 중이면 null
    */
-  dressed: (base: HTMLImageElement, outfit: Outfit, view: Facing | "sit-down", size: number) => HTMLCanvasElement | null;
+  dressed: (base: HTMLImageElement, outfit: Outfit, size: number) => HTMLCanvasElement | null;
 }
 
 /**
  * 스프라이트 한 장(left, top, 정사각형 size) 위에 옷을 전부 입힌다.
- * 앉은 정면은 옷장 미리보기와 같은 그림이라 옷장 자리(SLOT_INFO), 나머지 동작은 서 있는 몸 상자 자리(WORLD_ANCHORS)에서
- * 바라보는 방향(앞·뒤·옆·앞대각선·뒤대각선)의 자리를 쓴다. 왼쪽을 보는 방향은 오른쪽 기준 자리와 그림을 좌우 반전한다
+ * 자리는 그 스프라이트(이미지 이름)에서 잰 머리·몸통·발·앞발 기준점에 옷마다 맞춘 상자 (lib/lobby/wardrobe.ts dressSprite)
  */
 function drawOutfit(
   ctx: CanvasRenderingContext2D,
   base: HTMLImageElement,
   outfit: Outfit,
-  view: Facing | "sit-down",
   left: number,
   top: number,
   size: number,
   outfitImage: (src: string) => HTMLImageElement,
 ) {
-  const sitting = view === "sit-down";
-  const wardrobeView = sitting ? "front" : VIEW_OF[view];
-  const flip = !sitting && view.endsWith("left");
-  const anchorsOf = (slot: WardrobeSlot) => (sitting ? SLOT_INFO[slot].anchors : (WORLD_ANCHORS[wardrobeView][slot] ?? []));
-  const put = (slot: WardrobeSlot, anchor: WardrobeAnchor) => {
-    const id = outfit[slot];
-    const item = id ? outfitImage(wardrobeViewSrc(slot, id, wardrobeView)) : undefined;
+  const { under, head, over } = dressSprite(spriteName(base.src), outfit);
+  const put = (piece: OutfitPiece) => {
+    const item = outfitImage(piece.src);
     if (!ready(item)) return;
-    // 폭에 맞추되, 높이 상자가 있으면 넘지 않게 줄인다
-    const scale = Math.min(
-      (size * anchor.width) / 100 / item.naturalWidth,
-      anchor.height === undefined ? Infinity : (size * anchor.height) / 100 / item.naturalHeight,
-    );
-    const fullWidth = item.naturalWidth * scale;
-    const height = item.naturalHeight * scale;
-    // 방향별 그림이 없는 모자·안경은 옆모습에서 앞모습 그림을 가로로만 좁혀 쓴다
-    const width = fullWidth * (anchor.squeeze ?? 1);
-    const centerX = left + (size * (flip ? 100 - anchor.x : anchor.x)) / 100;
-    const itemTop = top + (size * anchor.bottom) / 100 - height;
-    // 짝(신발·장갑) 반전과 왼쪽 보기 반전이 겹치면 원래 방향
-    if (anchor.mirror === flip) {
-      ctx.drawImage(item, centerX - width / 2, itemTop, width, height);
+    const x = left + (size * piece.left) / 100;
+    const y = top + (size * piece.top) / 100;
+    const width = (size * piece.width) / 100;
+    const height = (size * piece.height) / 100;
+    if (!piece.mirror) {
+      ctx.drawImage(item, x, y, width, height);
       return;
     }
     ctx.save();
-    ctx.translate(centerX, 0);
+    ctx.translate(x + width, 0);
     ctx.scale(-1, 1);
-    ctx.drawImage(item, -width / 2, itemTop, width, height);
+    ctx.drawImage(item, 0, y, width, height);
     ctx.restore();
   };
-  const layer = (slots: readonly WardrobeSlot[]) => {
-    for (const slot of slots) for (const anchor of anchorsOf(slot)) put(slot, anchor);
-  };
-  layer(BODY_LAYERS);
-  if (BODY_LAYERS.some((slot) => outfit[slot])) {
+  under.forEach(put);
+  if (head) {
     // 머리를 한 번 더 그려 옷이 턱 밑으로 들어가 보이게 한다 (옷장 미리보기와 같은 방식)
-    const head = sitting ? HEAD_ELLIPSE : WORLD_HEAD_ELLIPSE[wardrobeView];
+    const [cx, cy, rx, ry] = head;
     ctx.save();
     ctx.beginPath();
-    ctx.ellipse(
-      left + (size * (flip ? 100 - head.x : head.x)) / 100,
-      top + (size * head.y) / 100,
-      (size * head.rx) / 100,
-      (size * head.ry) / 100,
-      0,
-      0,
-      Math.PI * 2,
-    );
+    ctx.ellipse(left + (size * cx) / 100, top + (size * cy) / 100, (size * rx) / 100, (size * ry) / 100, 0, 0, Math.PI * 2);
     ctx.clip();
     ctx.drawImage(base, left, top, size, size);
     ctx.restore();
   }
-  layer(OVER_HEAD_LAYERS);
+  over.forEach(put);
 }
 
 function drawCapybara(
@@ -783,14 +753,14 @@ function drawCapybara(
   animate: boolean,
 ) {
   /** 옷 입은 스프라이트 한 장. 구워 둔 캔버스가 있으면 한 번에, 옷 이미지를 불러오는 중이면 겹쳐 그린다 */
-  const drawDressed = (image: HTMLImageElement, view: Facing | "sit-down", left: number, top: number, size: number) => {
-    const dressed = wardrobe.dressed(image, outfit, view, size);
+  const drawDressed = (image: HTMLImageElement, left: number, top: number, size: number) => {
+    const dressed = wardrobe.dressed(image, outfit, size);
     if (dressed) {
       ctx.drawImage(dressed, left, top, size, size);
       return;
     }
     ctx.drawImage(image, left, top, size, size);
-    drawOutfit(ctx, image, outfit, view, left, top, size, wardrobe.image);
+    drawOutfit(ctx, image, outfit, left, top, size, wardrobe.image);
   };
   if (!look.sitting) {
     ctx.fillStyle = "rgba(30,40,10,0.25)";
@@ -805,7 +775,7 @@ function drawCapybara(
       ctx.save();
       ctx.translate(x, y);
       ctx.rotate(animate ? Math.sin(now / 90) * 0.07 : 0); // 비틀비틀
-      drawDressed(image, "down", -STAND_SIZE / 2, -STAND_SIZE * STAND_FOOT, STAND_SIZE);
+      drawDressed(image, -STAND_SIZE / 2, -STAND_SIZE * STAND_FOOT, STAND_SIZE);
       ctx.restore();
     }
     for (let i = 0; i < 3; i++) {
@@ -818,7 +788,7 @@ function drawCapybara(
   // 먹을 땐 정면을 보고 한 입마다 입을 벌려 베어 물고(1) 오물오물 씹는다(2)
   const eatImage = sprites.get(look.eating % EAT_BITE_MS < EAT_BITE_MS * 0.3 ? "eat-1" : "eat-2");
   if (look.eating >= 0 && !look.sitting && ready(eatImage)) {
-    drawDressed(eatImage, "down", x - STAND_SIZE / 2, y - STAND_SIZE * STAND_FOOT, STAND_SIZE);
+    drawDressed(eatImage, x - STAND_SIZE / 2, y - STAND_SIZE * STAND_FOOT, STAND_SIZE);
     return;
   }
 
@@ -847,24 +817,12 @@ function drawCapybara(
   if (!ready(image)) return;
   const size = look.sitting ? SIT_SIZE : STAND_SIZE;
   const foot = look.sitting ? SIT_FOOT : STAND_FOOT;
-  // 긁기는 뒷모습, 하품·졸기는 그 스프라이트의 방향(이미지가 없어 정면으로 대신했으면 정면). 앉은 정면만 옷을 전부 입힌다
-  // 잠든 그림은 앉은 정면과 같은 자세·정렬이라 같은 옷 자리를 쓴다
-  const view =
-    look.sitting && (direction === "down" || key.startsWith("sleep"))
-      ? "sit-down"
-      : key.startsWith("scratch")
-        ? "up"
-        : key.startsWith("yawn") || key.startsWith("doze")
-          ? (DIRECTIONS.find((side) => key.endsWith(`-${side}`)) ?? "down")
-          : key === walkKey
-            ? facing // 서기·걷기는 대각선 스프라이트가 있어서 대각선 자리
-            : direction;
   if (key.startsWith("sleep")) {
     // 자는 동안 숨 쉬듯 몸이 발바닥 기준으로 천천히 부풀었다 가라앉고, 머리 옆으로 z가 떠오른다
     ctx.save();
     ctx.translate(x, y);
     if (animate) ctx.scale(1, 1 + Math.sin(now / 700) * 0.02);
-    drawDressed(image, view, -size / 2, -size * foot, size);
+    drawDressed(image, -size / 2, -size * foot, size);
     ctx.restore();
     drawZzz(ctx, x + size * 0.3, y - size * 0.62, now, animate);
     return;
@@ -874,7 +832,7 @@ function drawCapybara(
     ctx.save();
     ctx.translate(x, y);
     ctx.rotate(Math.sin(now / 650) * 0.035);
-    drawDressed(image, view, -size / 2, -size * foot, size);
+    drawDressed(image, -size / 2, -size * foot, size);
     ctx.restore();
     return;
   }
@@ -884,7 +842,7 @@ function drawCapybara(
     ctx.save();
     ctx.translate(x + wiggle * 1.5, y);
     ctx.rotate(wiggle * 0.05);
-    drawDressed(image, view, -size / 2, -size * foot, size);
+    drawDressed(image, -size / 2, -size * foot, size);
     ctx.restore();
     return;
   }
@@ -894,11 +852,11 @@ function drawCapybara(
     ctx.save();
     ctx.translate(x, y - Math.abs(step) * 3);
     ctx.rotate(step * 0.045);
-    drawDressed(image, view, -size / 2, -size * foot, size);
+    drawDressed(image, -size / 2, -size * foot, size);
     ctx.restore();
     return;
   }
-  drawDressed(image, view, x + fx * lunge - size / 2, y + fy * lunge - size * foot, size);
+  drawDressed(image, x + fx * lunge - size / 2, y + fy * lunge - size * foot, size);
 }
 
 /** 잠든 카피바라 머리 옆으로 z 세 개가 차례로 떠오르며 커지고 사라진다 */
@@ -1380,7 +1338,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
     let pixelRatio = 1;
     const wardrobe: OutfitDrawer = {
       image: outfitImage,
-      dressed: (base, outfit, view, size) => {
+      dressed: (base, outfit, size) => {
         const worn = WARDROBE_SLOTS.flatMap((slot) => {
           const id = outfit[slot];
           return id ? [`${slot}:${id}`] : [];
@@ -1388,23 +1346,19 @@ export function Lobby({ games }: { games: DoorGame[] }) {
         if (worn.length === 0) return null;
         // 그릴 크기 그대로 구워서 매 프레임 확대·축소 없이 1:1로 찍는다 (크기가 키에 들어가 화면 배율이 바뀌면 새로 굽는다)
         const px = Math.ceil(size * pixelRatio);
-        const key = `${base.src}|${view}|${px}|${worn.join(",")}`;
+        const key = `${base.src}|${px}|${worn.join(",")}`;
         const cached = dressedCache.get(key);
         if (cached) return cached;
         // 옷 이미지를 다 불러온 뒤에만 굽는다 (덜 불러온 채 구우면 빠진 옷이 그대로 굳는다)
-        const artView = view === "sit-down" ? "front" : VIEW_OF[view];
-        const loaded = WARDROBE_SLOTS.every((slot) => {
-          const id = outfit[slot];
-          return !id || ready(outfitImage(wardrobeViewSrc(slot, id, artView)));
-        });
-        if (!loaded) return null;
+        const { under, over } = dressSprite(spriteName(base.src), outfit);
+        if (![...under, ...over].every((piece) => ready(outfitImage(piece.src)))) return null;
         const canvas = document.createElement("canvas");
         canvas.width = px;
         canvas.height = px;
         const bake = canvas.getContext("2d");
         if (!bake) return null;
         bake.drawImage(base, 0, 0, px, px);
-        drawOutfit(bake, base, outfit, view, 0, 0, px, outfitImage);
+        drawOutfit(bake, base, outfit, 0, 0, px, outfitImage);
         // ponytail: 넘치면 통째로 비운다 (청크 캐시와 같은 방식). 사람이 많아 자주 비워지면 LRU로
         if (dressedCache.size > 300) dressedCache.clear();
         dressedCache.set(key, canvas);
@@ -2483,7 +2437,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
       ...WARDROBE_SLOTS.flatMap((slot) => {
         const id = outfitRef.current[slot];
         // 정면 + 뒤·옆·대각선 그림까지 받아 둬야 방향을 틀 때 옷이 늦게 나타나지 않는다
-        return id ? [wardrobeSrc(slot, id), ...VIEW_ART.map((view) => wardrobeViewSrc(slot, id, view))].map(outfitImage) : [];
+        return id ? [wardrobeSrc(slot, id), ...viewArtOf(slot).map((view) => wardrobeViewSrc(slot, id, view))].map(outfitImage) : [];
       }),
     ];
     let loadedCount = 0;
