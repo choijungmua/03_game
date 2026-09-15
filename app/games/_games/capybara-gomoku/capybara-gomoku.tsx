@@ -47,7 +47,6 @@ export function CapybaraGomoku() {
       onPlay={(index) => room.act("move", index)}
       onResign={() => room.act("resign")}
       resultText={state?.endReason ? describeEnd(state) : ""}
-      adPlacement="capybara-gomoku-result"
     />
   );
 }

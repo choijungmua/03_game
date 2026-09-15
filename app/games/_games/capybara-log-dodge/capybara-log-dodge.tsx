@@ -4,8 +4,8 @@ import { ArrowDown, ArrowUp, ChevronDown } from "lucide-react";
 import Image from "next/image";
 import { useEffect, useEffectEvent, useRef, useState, useSyncExternalStore } from "react";
 
-import { AdSlot } from "@/components/ads/ad-slot";
 import { GameControls } from "@/components/games/game-controls";
+import { GameOverActions } from "@/components/games/game-over-actions";
 import { ShareButton } from "@/components/games/share-button";
 import { cn } from "@/lib";
 import { GAME_SOUNDS, GAME_TITLES } from "@/lib/games/constants";
@@ -813,13 +813,12 @@ export function CapybaraLogDodge() {
               <ShareButton title={TITLE} text={shareText} url={shareUrl} />
             </div>
 
-            <div className="flex flex-col items-center gap-1 opacity-80">
-              <p className="text-caption-1 font-semibold">탭해서 다시 도전</p>
-              <p className="flex items-center gap-1 text-caption-2 font-medium">
-                <ChevronDown aria-hidden="true" className="size-4" />
-                아래로 내리면 순위 기록이 나와요
-              </p>
-            </div>
+            <GameOverActions onRetry={startCountdown} className="max-w-xs" />
+
+            <p className="flex items-center gap-1 text-caption-2 font-medium opacity-80">
+              <ChevronDown aria-hidden="true" className="size-4" />
+              아래로 내리면 순위 기록이 나와요
+            </p>
           </section>
 
           <section
@@ -834,7 +833,6 @@ export function CapybaraLogDodge() {
             )}
           >
             <LogDodgeLeaderboard records={records} highlightId={result.recordId} />
-            <AdSlot placement="capybara-log-dodge-result" />
           </section>
         </div>
       )}

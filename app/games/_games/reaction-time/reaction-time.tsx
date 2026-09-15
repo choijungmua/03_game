@@ -3,8 +3,8 @@
 import { ChevronDown } from "lucide-react";
 import { useEffect, useEffectEvent, useRef, useState } from "react";
 
-import { AdSlot } from "@/components/ads/ad-slot";
 import { GameControls } from "@/components/games/game-controls";
+import { GameOverActions } from "@/components/games/game-over-actions";
 import { ShareButton } from "@/components/games/share-button";
 import { cn } from "@/lib";
 import { FULL_BLEED_LAYER, GAME_SOUNDS, GAME_TITLES } from "@/lib/games/constants";
@@ -307,13 +307,12 @@ export function ReactionTime() {
               <ShareButton title={GAME_TITLES["reaction-time"]} text={shareText} />
             </div>
 
-            <div className="flex flex-col items-center gap-1 opacity-80">
-              <p className="text-caption-1 font-semibold">탭해서 다시 도전</p>
-              <p className="flex items-center gap-1 text-caption-2 font-medium">
-                <ChevronDown aria-hidden="true" className="size-4" />
-                아래로 내리면 순위 기록이 나와요
-              </p>
-            </div>
+            <GameOverActions onRetry={startCountdown} className="max-w-xs" />
+
+            <p className="flex items-center gap-1 text-caption-2 font-medium opacity-80">
+              <ChevronDown aria-hidden="true" className="size-4" />
+              아래로 내리면 순위 기록이 나와요
+            </p>
           </section>
 
           <section
@@ -328,7 +327,6 @@ export function ReactionTime() {
             )}
           >
             <ReactionLeaderboard records={records} highlightId={result.recordId} />
-            <AdSlot placement="reaction-time-result" />
           </section>
         </div>
       )}

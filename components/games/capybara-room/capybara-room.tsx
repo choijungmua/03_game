@@ -3,11 +3,11 @@
 import Image from "next/image";
 import { useEffect, useEffectEvent, useRef, useState } from "react";
 
-import { AdSlot } from "@/components/ads/ad-slot";
 import { Progress } from "@/components/feedback/progress";
 import { GameControls, LEAVE_CONFIRM_MESSAGE } from "@/components/games/game-controls";
-import { Button, buttonVariants } from "@/components/inputs/button";
-import { LobbyLink } from "@/components/navigation/lobby-link";
+import { GameOverActions } from "@/components/games/game-over-actions";
+import { ShareButton } from "@/components/games/share-button";
+import { Button } from "@/components/inputs/button";
 import { Dialog } from "@/components/overlay/dialog";
 import { cn } from "@/lib";
 import { FULL_BLEED_LAYER, GAME_SOUNDS } from "@/lib/games/constants";
@@ -113,7 +113,6 @@ export function CapybaraRoom<S extends BoardRoomState>({
   onPass,
   info,
   resultText,
-  adPlacement,
 }: CapybaraRoomProps<S>) {
   const { view, error, pending, reconnecting, gone, copied, clockOffset, sendEmote, copyInvite, leave } = room;
   const emoteShowing = useEmoteShowing(view?.emote ?? null);
@@ -347,6 +346,15 @@ export function CapybaraRoom<S extends BoardRoomState>({
               )}
               <Dialog.Title className="text-title-1 font-black">{describeStatus(view, stoneName)}</Dialog.Title>
               <Dialog.Description className="tabular-nums">{resultText}</Dialog.Description>
+              <div className="flex items-center gap-3 rounded-full bg-bg-neutral py-1.5 pr-1.5 pl-5">
+                <p className="text-caption-1 font-semibold">친구에게 공유할까요?</p>
+                {/* 방 코드(?code=)가 붙은 주소 대신 게임 페이지를 공유한다 — 끝난 방으로 들어오지 않게 */}
+                <ShareButton
+                  title={title}
+                  text={`${title} 한 판: ${describeStatus(view, stoneName)} ${resultText} 나랑 한 판 둘래?`}
+                  url={`${window.location.origin}${window.location.pathname}`}
+                />
+              </div>
             </div>
           )}
           {gone && !state?.endReason && (
@@ -358,15 +366,8 @@ export function CapybaraRoom<S extends BoardRoomState>({
             </div>
           )}
 
-          <Button type="button" onClick={() => tap(leave)} className="h-12 w-full text-title-3 font-bold">
-            처음으로
-          </Button>
-          {/* 창이 화면을 덮어 왼쪽 위 뒤로 버튼을 누를 수 없으니 창 안에서도 나갈 수 있게 한다 */}
-          <LobbyLink className={cn(buttonVariants({ variant: "ghost" }), "h-12 w-full")}>로비로</LobbyLink>
-
-          <div className="mt-6">
-            <AdSlot placement={adPlacement} />
-          </div>
+          {/* 다시 하기 = 방을 나와 친구·컴퓨터 고르는 첫 화면. 창이 뒤로 버튼을 덮으니 홈으로도 창 안에 둔다 */}
+          <GameOverActions onRetry={leave} />
         </Dialog.Content>
       </Dialog>
     </div>

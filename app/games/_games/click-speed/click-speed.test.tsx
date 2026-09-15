@@ -264,7 +264,7 @@ describe("ClickSpeed", () => {
   });
 
   describe("결과", () => {
-    it("시간이 끝나면 클릭 수, 초당 속도, 등급을 보여주고 광고가 나온다", async () => {
+    it("시간이 끝나면 클릭 수, 초당 속도, 등급과 다시 하기·홈으로 버튼을 보여주고 광고는 없다", async () => {
       render(<ClickSpeed />);
       await playRound(50, 90);
 
@@ -274,7 +274,12 @@ describe("ClickSpeed", () => {
       expect(screen.getByTestId("result-cps")).toHaveTextContent("10.0");
       expect(screen.getByTestId("result-tier")).toHaveTextContent(/^프로게이머$/);
       expect(getScreenEl()).toHaveClass("bg-violet-600");
-      expect(getAdSlot()).not.toBeNull();
+      expect(getAdSlot()).toBeNull();
+      expect(screen.getByRole("link", { name: "홈으로" })).toHaveAttribute("href", "/");
+
+      // 연타 여운(탭 무시 시간)과 상관없이 버튼은 바로 새 판을 연다
+      fireEvent.click(screen.getByRole("button", { name: "다시 하기" }));
+      expect(getScreenEl()).toHaveAttribute("data-phase", "countdown");
     });
 
     it("느린 연타는 그에 맞는 등급 색을 보여준다", async () => {
