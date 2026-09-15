@@ -31,6 +31,7 @@ import { Input } from "@/components/inputs/input";
 import {
   BATH_REACH,
   BATH_SINK,
+  YUZU_SINK,
   CORRECTION_SNAP_PX,
   EAT_BITE_MS,
   EAT_MS,
@@ -86,6 +87,8 @@ import {
   BUBBLE_DEPTH,
   BUBBLE_LINE,
   BUBBLE_TEXT_WIDTH,
+  EMOTE_BAKE_SCALE,
+  EMOTE_OUTLINE,
   EMOTE_SIZE,
   FISH_BUTTON_SRC,
   FRAME_SRC,
@@ -520,6 +523,7 @@ function drawBathing(
   x: number,
   y: number,
   facing: Facing,
+  stride: number,
   now: number,
   animate: boolean,
   drawBody: (x: number, y: number) => void,
@@ -535,11 +539,13 @@ function drawBathing(
   ctx.ellipse(x, y, 26, 7, 0, 0, Math.PI * 2);
   ctx.fill();
   if (animate) for (const offset of [0, 900]) drawRipple(ctx, x, y - 3, ((now + offset) % 1800) / 1800);
-  // 바라보는 방향 그림의 머리 타원 꼭대기 (왼쪽을 보면 좌우 반전)
+  // 바라보는 방향 그림의 머리 타원 꼭대기 (왼쪽을 보면 좌우 반전). 머리 타원은 털보다 조금 위까지 잡혀 있어서
+  // YUZU_SINK만큼 내려 털에 살짝 묻히게 얹고, 물속을 걸을 때 몸이 들썩이는 만큼(drawCapybara와 같은 식) 같이 올린다
   const head = WORLD_HEAD_ELLIPSE[VIEW_OF[facing]];
   const headX = x - STAND_SIZE / 2 + (STAND_SIZE * (facing.endsWith("left") ? 100 - head.x : head.x)) / 100;
   const headTop = y + BATH_SINK - STAND_SIZE * STAND_FOOT + (STAND_SIZE * (head.y - head.ry)) / 100;
-  drawYuzu(ctx, headX, headTop + 2 + (animate ? Math.sin(now / 600) * 1.2 : 0));
+  const lift = stride > 0 && animate ? Math.abs(Math.sin((stride / (STRIDE_PX * 2)) * Math.PI)) * 3 : 0;
+  drawYuzu(ctx, headX, headTop + YUZU_SINK - lift);
 }
 
 function drawLabel(ctx: CanvasRenderingContext2D, text: string, x: number, y: number, strong = false) {
@@ -608,12 +614,41 @@ function fillBubble(ctx: CanvasRenderingContext2D, x: number, bottom: number, wi
 
 /** 카피바라 이모티콘은 말풍선 없이 투명 그림만 띄운다. 배경과 섞이지 않게 그림 테두리에만 옅은 그림자 */
 function drawEmote(ctx: CanvasRenderingContext2D, image: HTMLImageElement, x: number, bottom: number) {
+  const sticker = emoteSticker(image);
+  const size = EMOTE_SIZE + EMOTE_OUTLINE * 2;
   ctx.save();
   ctx.shadowColor = "rgba(40,28,16,0.35)";
   ctx.shadowBlur = 6;
   ctx.shadowOffsetY = 2;
-  ctx.drawImage(image, Math.round(x - EMOTE_SIZE / 2), Math.round(bottom - EMOTE_SIZE), EMOTE_SIZE, EMOTE_SIZE);
+  ctx.drawImage(sticker ?? image, Math.round(x - size / 2), Math.round(bottom - size), size, size);
   ctx.restore();
+}
+
+/** 이모티콘마다 흰 스티커 테두리를 입힌 그림을 한 번만 구워 둔다. 매 프레임엔 그 한 장만 그린다 */
+const emoteStickers = new WeakMap<HTMLImageElement, HTMLCanvasElement>();
+
+/** 그림을 둘레 16방향으로 조금씩 밀어 찍은 뒤 흰색으로 덮어 윤곽을 부풀리고, 그 위에 원래 그림을 올린다 */
+function emoteSticker(image: HTMLImageElement) {
+  const cached = emoteStickers.get(image);
+  if (cached) return cached;
+  const size = EMOTE_SIZE * EMOTE_BAKE_SCALE;
+  const border = EMOTE_OUTLINE * EMOTE_BAKE_SCALE;
+  const canvas = document.createElement("canvas");
+  canvas.width = size + border * 2;
+  canvas.height = size + border * 2;
+  const bake = canvas.getContext("2d");
+  if (!bake) return null;
+  for (let step = 0; step < 16; step++) {
+    const angle = (step / 16) * Math.PI * 2;
+    bake.drawImage(image, border + Math.cos(angle) * border, border + Math.sin(angle) * border, size, size);
+  }
+  bake.globalCompositeOperation = "source-in";
+  bake.fillStyle = "#fff";
+  bake.fillRect(0, 0, canvas.width, canvas.height);
+  bake.globalCompositeOperation = "source-over";
+  bake.drawImage(image, border, border, size, size);
+  emoteStickers.set(image, canvas);
+  return canvas;
 }
 
 /** 꼬리 끝이 (x, bottom)에 오는 말풍선. 한글은 띄어쓰기 없이 길게 쓰기도 해서 글자 단위로 줄을 바꾼다 */
@@ -2314,7 +2349,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
               drawCapybara(ctx, sprites, x, y, remote.facing, look, remote.outfit, wardrobe, now, !reducedMotion);
               if (meal && look.eating >= 0 && !look.sitting) drawFood(ctx, meal.name, x, y, look.eating);
             };
-            if (remoteBathing) drawBathing(ctx, remote.x, remote.y, remote.facing, now, !reducedMotion, body);
+            if (remoteBathing) drawBathing(ctx, remote.x, remote.y, remote.facing, look.stride, now, !reducedMotion, body);
             else body(remote.x, remote.y);
           },
         });
@@ -2344,7 +2379,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
             drawCapybara(ctx, sprites, x, y, me.facing, myLook, outfitRef.current, wardrobe, now, !reducedMotion);
             if (myMeal && myLook.eating >= 0 && !myLook.sitting) drawFood(ctx, myMeal.name, x, y, myLook.eating);
           };
-          if (myBathing) drawBathing(ctx, drawnX, drawnY, me.facing, now, !reducedMotion, body);
+          if (myBathing) drawBathing(ctx, drawnX, drawnY, me.facing, myLook.stride, now, !reducedMotion, body);
           else body(drawnX, drawnY);
         },
       });
