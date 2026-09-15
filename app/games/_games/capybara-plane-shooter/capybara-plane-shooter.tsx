@@ -9,7 +9,7 @@ import { Progress } from "@/components/feedback/progress";
 import { GameControls } from "@/components/games/game-controls";
 import { ShareButton } from "@/components/games/share-button";
 import { cn } from "@/lib";
-import { GAME_SOUNDS, GAME_TITLES } from "@/lib/games/constants";
+import { FULL_BLEED_LAYER, GAME_SOUNDS, GAME_TITLES } from "@/lib/games/constants";
 import { submitGameRecord } from "@/lib/games/game-events";
 import { useInView } from "@/lib/games/use-in-view";
 import { useLockPageScroll } from "@/lib/games/use-lock-page-scroll";
@@ -965,12 +965,19 @@ export function CapybaraPlaneShooter() {
       onPointerCancel={handlePointerUp}
       onClick={handleClick}
       className={cn(
-        "relative flex min-h-dvh w-full cursor-pointer select-none flex-col items-center justify-center overflow-hidden px-5 py-10 transition-colors [-webkit-tap-highlight-color:transparent]",
+        // isolate: 배경 층(-z-10)이 루트 안에서만 뒤로 가서, 아래 소개 섹션보다는 위에 그려진다
+        "relative isolate flex min-h-dvh w-full cursor-pointer select-none flex-col items-center justify-center overflow-hidden px-5 py-10 transition-colors [-webkit-tap-highlight-color:transparent]",
         phase === "playing" ? "h-dvh touch-none" : "touch-manipulation",
         phase === "result" ? "duration-700" : "duration-200",
         screenClass,
       )}
     >
+      {/* 카운트다운·플레이 중엔 페이지가 맨 위에 고정된다 — 사파리 툴바·홈 인디케이터 뒤(아래 소개 섹션 자리)까지 같은 색으로 덮는다.
+          플레이 중 흐린 배경은 반투명이라 이 층이 밑에 있어야 소개가 비치지 않는다.
+          시작·결과 화면은 소개를 읽으러 스크롤해야 하니 깔지 않는다 (고정 층이 소개를 가린다) */}
+      {(phase === "countdown" || phase === "playing") && (
+        <div aria-hidden="true" className={cn(FULL_BLEED_LAYER, "-z-10", screenClass)} />
+      )}
       <p aria-live="polite" className="sr-only">
         {liveMessage}
       </p>
@@ -1025,7 +1032,7 @@ export function CapybaraPlaneShooter() {
         // 넓은 화면의 바깥 여백: 지금 스테이지 배경을 크게 흐리고 어둡게 깔아 몰입감은 유지한다
         <div
           aria-hidden="true"
-          className="pointer-events-none absolute inset-0 scale-110 bg-cover bg-center opacity-40 blur-2xl"
+          className={cn(FULL_BLEED_LAYER, "scale-110 bg-cover bg-center opacity-40 blur-2xl")}
           style={{ backgroundImage: `url(${SPRITES[getBackgroundSpriteKey(hud?.stage ?? 1)]})` }}
         />
       )}

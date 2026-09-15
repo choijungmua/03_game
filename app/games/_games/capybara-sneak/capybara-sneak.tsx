@@ -10,7 +10,7 @@ import { Button, buttonVariants } from "@/components/inputs/button";
 import { LobbyLink } from "@/components/navigation/lobby-link";
 import { Dialog } from "@/components/overlay/dialog";
 import { cn } from "@/lib";
-import { GAME_SOUNDS, GAME_TITLES } from "@/lib/games/constants";
+import { FULL_BLEED_LAYER, GAME_SOUNDS, GAME_TITLES } from "@/lib/games/constants";
 import { useLockPageScroll } from "@/lib/games/use-lock-page-scroll";
 import { SOUNDS } from "@/lib/lobby/constants";
 import { playGameSound } from "@/lib/lobby/settings";
@@ -92,25 +92,28 @@ interface StageProps {
   munching: boolean;
   /** 접시 오른쪽/왼쪽 어느 쪽에서 먹는지. "left"면 카피바라 층을 좌우 반전한다 */
   side: "right" | "left";
+  /** 플레이 중(스크롤 잠금)이면 흐린 배경을 툴바·홈 인디케이터 뒤까지 깐다. 아니면 소개를 읽으러 스크롤할 때 가리지 않게 화면 안에만 둔다 */
+  fullBleed: boolean;
 }
 
 /**
  * 주방 무대(배경·주인·수박·카피바라 그림). 게이지는 누르는 동안 80ms마다 바뀌지만 무대는 그때 바뀌지 않으므로
  * memo로 묶어 그림 10장을 매번 다시 그리지 않는다
  */
-const SneakStage = memo(function SneakStage({ ownerState, ownerImage, foodStage, pose, munching, side }: StageProps) {
+const SneakStage = memo(function SneakStage({ ownerState, ownerImage, foodStage, pose, munching, side, fullBleed }: StageProps) {
   return (
     <>
-      {/* 세로 화면에서 무대 위아래 빈 곳을 같은 배경을 흐리게 깔아 채운다 */}
-      <Image
-        src={`${ASSET}/background/back.webp`}
-        alt=""
-        aria-hidden="true"
-        fill
-        sizes="100vw"
-        draggable={false}
-        className="pointer-events-none scale-110 object-cover opacity-70 blur-2xl"
-      />
+      {/* 세로 화면에서 무대 위아래 빈 곳을 같은 배경을 흐리게 깔아 채운다 (툴바·홈 인디케이터 뒤까지) */}
+      <div aria-hidden="true" className={fullBleed ? `${FULL_BLEED_LAYER} bg-background` : "pointer-events-none absolute inset-0"}>
+        <Image
+          src={`${ASSET}/background/back.webp`}
+          alt=""
+          fill
+          sizes="100vw"
+          draggable={false}
+          className="scale-110 object-cover opacity-70 blur-2xl"
+        />
+      </div>
 
       {/* 가로 화면에서는 16:9 무대가 화면을 꽉 덮도록(넘치는 쪽은 가운데 기준으로 잘림) 정중앙에 고정한다 */}
       <div className="@container absolute top-1/2 left-1/2 aspect-video w-full -translate-x-1/2 -translate-y-1/2 landscape:w-[max(100%,calc(100dvh*16/9))]">
@@ -519,7 +522,7 @@ export function CapybaraSneak() {
       data-testid="capybara-sneak-screen"
       onPointerDown={startPress}
       onContextMenu={preventDefault}
-      className="relative h-dvh w-full cursor-pointer touch-none select-none overflow-hidden bg-background [-webkit-tap-highlight-color:transparent] [-webkit-touch-callout:none]"
+      className="relative isolate h-dvh w-full cursor-pointer touch-none select-none overflow-hidden bg-background [-webkit-tap-highlight-color:transparent] [-webkit-touch-callout:none]"
     >
       <h1 className="sr-only">{GAME_TITLES["capybara-sneak"]}</h1>
       <p aria-live="polite" className="sr-only">
@@ -533,6 +536,7 @@ export function CapybaraSneak() {
         pose={pose}
         munching={munching}
         side={side}
+        fullBleed={status === "playing"}
       />
 
       <div

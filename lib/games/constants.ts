@@ -13,6 +13,13 @@ export const GAME_TITLES = {
 } as const;
 
 /**
+ * 게임 배경을 화면 끝까지 까는 층. 게임 화면은 보이는 영역(dvh)에 맞춰 버튼·HUD를 두지만,
+ * 배경은 노치·홈 인디케이터·사파리 툴바 뒤까지(lvh) 채워 빈 띠가 보이지 않게 한다.
+ * 색만 까는 층은 -z-10을 더해 루트 뒤에 두고, 그림 층은 그리는 순서가 그대로이게 z를 주지 않는다
+ */
+export const FULL_BLEED_LAYER = "pointer-events-none fixed inset-x-0 top-0 h-lvh";
+
+/**
  * 여러 게임이 같이 쓰는 합성 효과음 (playGameSound로 재생). 음원 파일이 없어 저작권 걱정이 없다.
  * 한 게임에서만 쓰는 소리는 그 게임 폴더 constants.ts에 SoundLayer[]로 따로 둔다
  */
