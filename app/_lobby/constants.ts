@@ -6,6 +6,10 @@ export const BUBBLE_LINE = 16;
 export const BUBBLE_DEPTH = 2;
 /** 머리 위에 띄우는 카피바라 이모티콘 그림 크기(px) */
 export const EMOTE_SIZE = 60;
+/** 이모티콘 윤곽을 따라 두르는 흰 스티커 테두리 두께(px). 배경 그림 위에서도 윤곽이 또렷하게 떨어져 보이게 한다 */
+export const EMOTE_OUTLINE = 3;
+/** 스티커 테두리를 입힌 이모티콘을 굽는 배율. 고해상도 화면(기기 픽셀 비율 3까지)에서도 흐리지 않게 크게 굽는다 */
+export const EMOTE_BAKE_SCALE = 3;
 /** 채팅 알약의 이모티콘 버튼에 보이는 이모티콘 번호 (선글라스 카피바라) */
 export const EMOTE_PICKER_ICON = 3;
 /** 이모티콘 창 한 쪽에 보이는 개수 (4×2). 세로로 넘기면 다음 쪽 */

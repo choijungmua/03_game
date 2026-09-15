@@ -86,6 +86,8 @@ import {
   BUBBLE_DEPTH,
   BUBBLE_LINE,
   BUBBLE_TEXT_WIDTH,
+  EMOTE_BAKE_SCALE,
+  EMOTE_OUTLINE,
   EMOTE_SIZE,
   FISH_BUTTON_SRC,
   FRAME_SRC,
@@ -608,12 +610,41 @@ function fillBubble(ctx: CanvasRenderingContext2D, x: number, bottom: number, wi
 
 /** 카피바라 이모티콘은 말풍선 없이 투명 그림만 띄운다. 배경과 섞이지 않게 그림 테두리에만 옅은 그림자 */
 function drawEmote(ctx: CanvasRenderingContext2D, image: HTMLImageElement, x: number, bottom: number) {
+  const sticker = emoteSticker(image);
+  const size = EMOTE_SIZE + EMOTE_OUTLINE * 2;
   ctx.save();
   ctx.shadowColor = "rgba(40,28,16,0.35)";
   ctx.shadowBlur = 6;
   ctx.shadowOffsetY = 2;
-  ctx.drawImage(image, Math.round(x - EMOTE_SIZE / 2), Math.round(bottom - EMOTE_SIZE), EMOTE_SIZE, EMOTE_SIZE);
+  ctx.drawImage(sticker ?? image, Math.round(x - size / 2), Math.round(bottom - size), size, size);
   ctx.restore();
+}
+
+/** 이모티콘마다 흰 스티커 테두리를 입힌 그림을 한 번만 구워 둔다. 매 프레임엔 그 한 장만 그린다 */
+const emoteStickers = new WeakMap<HTMLImageElement, HTMLCanvasElement>();
+
+/** 그림을 둘레 16방향으로 조금씩 밀어 찍은 뒤 흰색으로 덮어 윤곽을 부풀리고, 그 위에 원래 그림을 올린다 */
+function emoteSticker(image: HTMLImageElement) {
+  const cached = emoteStickers.get(image);
+  if (cached) return cached;
+  const size = EMOTE_SIZE * EMOTE_BAKE_SCALE;
+  const border = EMOTE_OUTLINE * EMOTE_BAKE_SCALE;
+  const canvas = document.createElement("canvas");
+  canvas.width = size + border * 2;
+  canvas.height = size + border * 2;
+  const bake = canvas.getContext("2d");
+  if (!bake) return null;
+  for (let step = 0; step < 16; step++) {
+    const angle = (step / 16) * Math.PI * 2;
+    bake.drawImage(image, border + Math.cos(angle) * border, border + Math.sin(angle) * border, size, size);
+  }
+  bake.globalCompositeOperation = "source-in";
+  bake.fillStyle = "#fff";
+  bake.fillRect(0, 0, canvas.width, canvas.height);
+  bake.globalCompositeOperation = "source-over";
+  bake.drawImage(image, border, border, size, size);
+  emoteStickers.set(image, canvas);
+  return canvas;
 }
 
 /** 꼬리 끝이 (x, bottom)에 오는 말풍선. 한글은 띄어쓰기 없이 길게 쓰기도 해서 글자 단위로 줄을 바꾼다 */
