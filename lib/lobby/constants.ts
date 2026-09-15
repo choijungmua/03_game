@@ -116,6 +116,13 @@ export const EAT_MS = 1800;
 export const EAT_BITE_MS = 600;
 export const HEART_LINGER_MS = 900;
 
+/** 온천 목욕: 돌 테두리에서 이만큼(타일) 안에서 Space로 들어간다 */
+export const BATH_REACH = 1;
+/** 목욕 중 몸이 물에 잠기는 깊이(px). 서 있는 키 76px 중 머리·어깨만 남는다 */
+export const BATH_SINK = 30;
+/** 온천 그림 바닥이 온천 가운데보다 아래로 내려오는 거리(타일). 폭 10타일 그림의 물 타원 가운데를 온천 가운데에 맞춘다 */
+export const ONSEN_BOTTOM = 4;
+
 /** 효과음 파일 없이 오실레이터(tone)·걸러낸 잡음(noise)을 겹쳐 합성하는 짧은 소리들 (주파수 Hz, 길이·시작 ms, 최대 크기 0~1) */
 export const SOUNDS: Record<LobbySound, readonly SoundLayer[]> = {
   chat: [{ kind: "tone", wave: "sine", from: 740, to: 1180, ms: 120, level: 0.18 }],
@@ -178,6 +185,26 @@ export const SOUNDS: Record<LobbySound, readonly SoundLayer[]> = {
   fishBite: [
     { kind: "tone", wave: "sine", from: 600, to: 220, ms: 70, level: 0.2 },
     { at: 110, kind: "tone", wave: "sine", from: 600, to: 220, ms: 70, level: 0.2 },
+  ],
+  // 첨벙 → 보글보글 → 아~: 온천에 뛰어들어 몸을 담그고 나른하게 한숨
+  bathIn: [
+    { kind: "noise", filter: "lowpass", q: 1, from: 1800, to: 250, ms: 320, level: 0.35 },
+    { at: 60, kind: "tone", wave: "sine", from: 180, to: 70, ms: 160, level: 0.14 },
+    { at: 200, kind: "tone", wave: "sine", from: 520, to: 880, ms: 45, level: 0.06 },
+    { at: 290, kind: "tone", wave: "sine", from: 600, to: 1000, ms: 45, level: 0.05 },
+    { at: 380, kind: "tone", wave: "sine", from: 480, to: 820, ms: 45, level: 0.05 },
+    { at: 450, kind: "tone", wave: "triangle", from: 330, to: 210, ms: 700, level: 0.08, attack: 180 },
+  ],
+  // 촤르르 → 똑똑: 물에서 나오며 털에서 물이 흘러내린다
+  bathOut: [
+    { kind: "noise", filter: "bandpass", q: 0.9, from: 2600, to: 700, ms: 300, level: 0.22, attack: 30 },
+    { at: 280, kind: "tone", wave: "sine", from: 1300, to: 650, ms: 45, level: 0.08 },
+    { at: 430, kind: "tone", wave: "sine", from: 1150, to: 600, ms: 45, level: 0.06 },
+  ],
+  // 찰박: 온천 물속을 걷는 물장구
+  stepWater: [
+    { kind: "noise", filter: "lowpass", q: 1.2, from: 1400, to: 450, ms: 130, level: 0.16 },
+    { at: 20, kind: "tone", wave: "sine", from: 320, to: 540, ms: 50, level: 0.04 },
   ],
   // 첨벙 → 띠링: 물고기를 끌어올린다
   fishCatch: [

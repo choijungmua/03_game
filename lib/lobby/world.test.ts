@@ -1,7 +1,18 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
 
-import { createWorld, isBlockingTile, LOBBY_SEED, nearestWater, TILE } from "./world";
+import {
+  BATH_RX,
+  BATH_RY,
+  createWorld,
+  ellipseDistance,
+  isBlockingTile,
+  LOBBY_SEED,
+  nearestWater,
+  SPRING_RX,
+  SPRING_RY,
+  TILE,
+} from "./world";
 
 const GAMES = Array.from({ length: 7 }, (_, i) => ({ slug: `game-${i}`, title: `게임 ${i}` }));
 const tileUnder = (world: ReturnType<typeof createWorld>, x: number, y: number) =>
@@ -48,6 +59,26 @@ describe("카피바라 습지 마을", () => {
         expect(tileUnder(world, spotX, seat.seatY)).toBe("log");
         expect(isBlockingTile(tileUnder(world, spotX, seat.standY))).toBe(false);
       }
+    }
+  });
+
+  it("온천은 넓고, 둘레 한 칸까지 데크·오두막·통나무·등불과 겹치지 않으며, 목욕 자리는 전부 온천 안이다", () => {
+    const world = createWorld(LOBBY_SEED, GAMES);
+    const { spring } = world;
+    let springTiles = 0;
+    for (let ty = -15; ty <= 15; ty++) {
+      for (let tx = -15; tx <= 15; tx++) {
+        const tile = world.tileAt(tx, ty);
+        if (tile === "spring") springTiles++;
+        const around = ellipseDistance((tx + 0.5) * TILE - spring.x, (ty + 0.5) * TILE - spring.y, SPRING_RX + 1, SPRING_RY + 1);
+        if (around < 1) expect(["spring", "meadow"]).toContain(tile);
+      }
+    }
+    expect(springTiles).toBeGreaterThan(35); // 예전 반지름 2.6 원은 약 21칸
+    for (let angle = 0; angle < Math.PI * 2; angle += Math.PI / 12) {
+      const x = spring.x + Math.cos(angle) * BATH_RX * TILE;
+      const y = spring.y + Math.sin(angle) * BATH_RY * TILE;
+      expect(tileUnder(world, x, y)).toBe("spring");
     }
   });
 

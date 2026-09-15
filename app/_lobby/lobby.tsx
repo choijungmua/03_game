@@ -8,7 +8,7 @@ import { type FormEvent, useEffect, useEffectEvent, useRef, useState } from "rea
 
 import { pretendard } from "@/config";
 import { cn } from "@/lib";
-import { Armchair, Fish, HandFist, NotebookPen } from "lucide-react";
+import { Armchair, Bath, Fish, HandFist, NotebookPen } from "lucide-react";
 import { API_URL } from "@/lib/api-url";
 
 import { Loading } from "@/components/feedback/loading";
@@ -29,6 +29,8 @@ import {
 } from "@/lib/lobby/assets";
 import { Input } from "@/components/inputs/input";
 import {
+  BATH_REACH,
+  BATH_SINK,
   CORRECTION_SNAP_PX,
   EAT_BITE_MS,
   EAT_MS,
@@ -48,6 +50,7 @@ import {
   MINIMAP_REFRESH_MS,
   MINIMAP_TILES,
   NAME_CONFIRM_MS,
+  ONSEN_BOTTOM,
   REMOTE_GONE_MS,
   REMOTE_RENDER_DELAY_MS,
 } from "@/lib/lobby/constants";
@@ -127,6 +130,8 @@ import {
   WORLD_HEAD_ELLIPSE,
 } from "@/lib/lobby/wardrobe";
 import {
+  BATH_RX,
+  BATH_RY,
   type Building,
   BUILDING_WIDTH,
   createWorld,
@@ -134,6 +139,7 @@ import {
   type Direction,
   type Door,
   type DoorGame,
+  ellipseDistance,
   type Facing,
   FACING_VECTORS,
   FACINGS,
@@ -141,7 +147,8 @@ import {
   isBlockingTile,
   LOBBY_SEED,
   nearestWater,
-  SPRING_RADIUS,
+  SPRING_RX,
+  SPRING_RY,
   TILE,
   type Tile,
   toDirection,
@@ -476,9 +483,63 @@ function drawSteam(ctx: CanvasRenderingContext2D, x: number, y: number, now: num
     const drift = Math.sin(t * 0.8 + k * 1.7) * 14;
     ctx.fillStyle = `rgba(255,255,255,${0.28 * Math.sin(phase * Math.PI)})`;
     ctx.beginPath();
-    ctx.arc(x + (k - 3) * 22 + drift, y - phase * TILE * 2.4, 10 + phase * 16, 0, Math.PI * 2);
+    ctx.arc(x + (k - 3) * 36 + drift, y - phase * TILE * 2.4, 10 + phase * 16, 0, Math.PI * 2);
     ctx.fill();
   }
+}
+
+/** 머리 꼭대기(x, bottom)에 얹은 유자 한 알 */
+function drawYuzu(ctx: CanvasRenderingContext2D, x: number, bottom: number) {
+  const radius = 7;
+  const cy = bottom - radius * 0.7;
+  ctx.fillStyle = "#f5c62e";
+  ctx.strokeStyle = "rgba(120,80,10,0.85)";
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.ellipse(x, cy, radius, radius * 0.85, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+  // 반들반들 윤기
+  ctx.fillStyle = "rgba(255,255,230,0.8)";
+  ctx.beginPath();
+  ctx.arc(x - radius * 0.35, cy - radius * 0.3, radius * 0.25, 0, Math.PI * 2);
+  ctx.fill();
+  // 꼭지 잎
+  ctx.fillStyle = "#5e9a2e";
+  ctx.beginPath();
+  ctx.ellipse(x + 3, cy - radius * 0.85 - 1, 4, 2, -0.5, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+/**
+ * 온천에 몸을 담근 카피바라. 그림을 BATH_SINK만큼 물속으로 내리고 수면(발 위치 y) 아래는 잘라낸 뒤,
+ * 잘린 선을 물빛 타원·물결로 덮고 머리에 유자를 얹는다. drawBody는 (x, y)를 발 위치로 캐릭터를 그린다
+ */
+function drawBathing(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  facing: Facing,
+  now: number,
+  animate: boolean,
+  drawBody: (x: number, y: number) => void,
+) {
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(x - STAND_SIZE, y - STAND_SIZE * 2, STAND_SIZE * 2, STAND_SIZE * 2);
+  ctx.clip();
+  drawBody(x, y + BATH_SINK);
+  ctx.restore();
+  ctx.fillStyle = "rgba(214,232,190,0.7)";
+  ctx.beginPath();
+  ctx.ellipse(x, y, 26, 7, 0, 0, Math.PI * 2);
+  ctx.fill();
+  if (animate) for (const offset of [0, 900]) drawRipple(ctx, x, y - 3, ((now + offset) % 1800) / 1800);
+  // 바라보는 방향 그림의 머리 타원 꼭대기 (왼쪽을 보면 좌우 반전)
+  const head = WORLD_HEAD_ELLIPSE[VIEW_OF[facing]];
+  const headX = x - STAND_SIZE / 2 + (STAND_SIZE * (facing.endsWith("left") ? 100 - head.x : head.x)) / 100;
+  const headTop = y + BATH_SINK - STAND_SIZE * STAND_FOOT + (STAND_SIZE * (head.y - head.ry)) / 100;
+  drawYuzu(ctx, headX, headTop + 2 + (animate ? Math.sin(now / 600) * 1.2 : 0));
 }
 
 function drawLabel(ctx: CanvasRenderingContext2D, text: string, x: number, y: number, strong = false) {
@@ -1160,7 +1221,7 @@ function facingOf(dx: number, dy: number): Facing {
 export function Lobby({ games }: { games: DoorGame[] }) {
   const router = useRouter();
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  /** Space(앉기·낚시 버튼): 통나무 앞이면 앉기·일어나기, 물가면 계속 낚기 시작·그만하기 */
+  /** Space(앉기·목욕·낚시 버튼): 통나무 앞이면 앉기·일어나기, 온천 둘레면 목욕·나오기, 물가면 계속 낚기 시작·그만하기 */
   const spaceRequest = useRef(false);
   const attackRequest = useRef(false);
   const joystickRef = useRef<HTMLDivElement>(null);
@@ -1179,6 +1240,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
   const attackButtonRef = useRef<HTMLButtonElement>(null);
   const sitButtonRef = useRef<HTMLButtonElement>(null);
   const fishButtonRef = useRef<HTMLButtonElement>(null);
+  const bathButtonRef = useRef<HTMLButtonElement>(null);
   const guestbookButtonRef = useRef<HTMLButtonElement>(null);
   const lastChatAt = useRef(-Infinity);
   /** 화면(소리 버튼)은 저장값을 구독하고(다른 탭·게임 화면에서 바꿔도 따라간다), 게임 루프는 ref로 같은 설정을 읽는다 */
@@ -1198,6 +1260,8 @@ export function Lobby({ games }: { games: DoorGame[] }) {
   const [guestbookNearby, setGuestbookNearby] = useState(false);
   const [guestbookOpen, setGuestbookOpen] = useState(false);
   const [fishing, setFishing] = useState(false);
+  /** 온천: 둘레에 서 있으면 near(목욕 버튼), 물 안이면 in(나오기 버튼) */
+  const [bath, setBath] = useState<"near" | "in" | null>(null);
   /** 계속 낚기: 물가에서 Space로 던지면 켜져서 입질마다 알아서 당기고 다시 던진다. Space를 다시 누르거나 걷기·때리기·기절이면 꺼진다. 게임 루프는 ref로 읽는다 */
   const [autoFishing, setAutoFishing] = useState(false);
   const autoFishingRef = useRef(false);
@@ -1348,6 +1412,12 @@ export function Lobby({ games }: { games: DoorGame[] }) {
       return false;
     };
 
+    const { spring } = world;
+    /** 발 위치가 온천 물 안(목욕 중)인지. 목욕 상태를 따로 보내지 않고 위치로 판단해서 남의 카피바라도 똑같이 그린다 */
+    const inBath = (x: number, y: number) => ellipseDistance(x - spring.x, y - spring.y, BATH_RX + 0.3, BATH_RY + 0.3) <= 1;
+    const nearSpring = () =>
+      ellipseDistance(me.x - spring.x, me.y - spring.y, SPRING_RX + BATH_REACH, SPRING_RY + BATH_REACH) <= 1;
+
     // 게임에서 돌아오면 들어갔던 오두막 문 앞에서 다시 시작한다
     const positionKey = "lobby-position-v3";
     const me = {
@@ -1415,6 +1485,33 @@ export function Lobby({ games }: { games: DoorGame[] }) {
       me.sitting = false;
       me.seatIndex = -1;
     };
+    /** 선 자리에서 온천 가운데 쪽으로 폴짝 뛰어들어 물 안쪽 가장자리에 담근다 */
+    const enterBath = () => {
+      const angle = Math.atan2((me.y - spring.y) / BATH_RY, (me.x - spring.x) / BATH_RX);
+      startHop();
+      me.x = spring.x + Math.cos(angle) * BATH_RX * TILE * 0.8;
+      me.y = spring.y + Math.sin(angle) * BATH_RY * TILE * 0.8;
+      me.facing = "down";
+      playSound("bathIn", settingsRef.current);
+      showNotice("아~ 따끈따끈해요 · Space로 나오기");
+    };
+    /** 가까운 둘레부터 좌우로 번갈아 돌아보며 발 디딜 풀밭으로 폴짝 나온다 (등불·데크 갈래길에 막히면 옆자리) */
+    const leaveBath = () => {
+      const angle = Math.atan2((me.y - spring.y) / SPRING_RY, (me.x - spring.x) / SPRING_RX);
+      for (let i = 0; i < 16; i++) {
+        const turn = angle + (i % 2 === 0 ? 1 : -1) * Math.ceil(i / 2) * (Math.PI / 8);
+        for (const extra of [0.6, 1.2]) {
+          const x = spring.x + Math.cos(turn) * (SPRING_RX + extra) * TILE;
+          const y = spring.y + Math.sin(turn) * (SPRING_RY + extra) * TILE;
+          if (blocked(x, y)) continue;
+          startHop();
+          me.x = x;
+          me.y = y;
+          playSound("bathOut", settingsRef.current);
+          return;
+        }
+      }
+    };
 
     // 문 앞에서 시작하면(돌아온 직후 등) 한 번 벗어났다 다시 다가가야 입장한다
     let doorArmed = nearestDoor() === null;
@@ -1425,6 +1522,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
     let shownDoor: Door | null = null;
     let shownSitting = false;
     let shownSeat = false;
+    let shownBath: typeof bath = null;
     let shownWater = false;
     let shownGuestbook = false;
     let shownFishing = false;
@@ -1567,7 +1665,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
         event.preventDefault();
         if (!event.repeat) {
           spaceRequest.current = true;
-          flashButton(sitButtonRef.current ?? fishButtonRef.current ?? guestbookButtonRef.current);
+          flashButton(sitButtonRef.current ?? bathButtonRef.current ?? fishButtonRef.current ?? guestbookButtonRef.current);
         }
       } else if (event.code === "Enter") {
         const door = nearestDoor();
@@ -1697,7 +1795,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
       } else if (
         data.corrected &&
         Math.hypot(data.you.x - me.x, data.you.y - me.y) > CORRECTION_SNAP_PX &&
-        !blocked(data.you.x, data.you.y)
+        (inBath(data.you.x, data.you.y) || !blocked(data.you.x, data.you.y))
       ) {
         // 서버가 순간이동으로 판단해 위치를 크게 고쳤을 때만 따른다 (you는 조금 전에 보낸 위치라 작은 보정까지 따르면 뒤로 튄다.
         // 작은 차이는 다음 전송들로 서버가 곧 따라온다)
@@ -1873,6 +1971,10 @@ export function Lobby({ games }: { games: DoorGame[] }) {
           stopAuto();
         } else if (me.sitting) {
           standUp();
+        } else if (inBath(me.x, me.y)) {
+          leaveBath();
+        } else if (nearestSeat() < 0 && nearSpring()) {
+          enterBath();
         } else if (nearGuestbook()) {
           setGuestbookOpen(true);
         } else if (nearestSeat() < 0 && water) {
@@ -1893,7 +1995,11 @@ export function Lobby({ games }: { games: DoorGame[] }) {
             me.sitSince = now;
             playSound("sit", settingsRef.current);
           } else {
-            showNotice(index >= 0 ? "통나무 두 자리가 다 찼어요" : "통나무 의자 앞에서 앉고, 물가에서 낚시하고, 게시판 앞에서 방명록을 쓸 수 있어요");
+            showNotice(
+              index >= 0
+                ? "통나무 두 자리가 다 찼어요"
+                : "통나무 의자 앞에서 앉고, 온천 앞에서 목욕하고, 물가에서 낚시하고, 게시판 앞에서 방명록을 쓸 수 있어요",
+            );
           }
         }
       }
@@ -1977,14 +2083,18 @@ export function Lobby({ games }: { games: DoorGame[] }) {
       if (wantsMove && !me.sitting) {
         const length = Math.hypot(dx, dy); // 대각선도 같은 속도
         const step = Math.min(WALK_SPEED * speed * (dt / 1000), distance);
+        // 목욕 중엔 물 안쪽 타원 밖으로 못 걸어 나가고(나오기는 Space), 뭍에선 막히는 타일에 막힌다
+        const bathing = inBath(me.x, me.y);
+        const stuck = (x: number, y: number) =>
+          bathing ? ellipseDistance(x - spring.x, y - spring.y, BATH_RX, BATH_RY) > 1 : blocked(x, y);
         // x·y를 따로 검사해서 벽에 비스듬히 부딪히면 벽을 따라 미끄러진다
         const nextX = me.x + (dx / length) * step;
-        if (!blocked(nextX, me.y)) {
+        if (!stuck(nextX, me.y)) {
           me.x = nextX;
           moved = true;
         }
         const nextY = me.y + (dy / length) * step;
-        if (!blocked(me.x, nextY)) {
+        if (!stuck(me.x, nextY)) {
           me.y = nextY;
           moved = true;
         }
@@ -2004,12 +2114,15 @@ export function Lobby({ games }: { games: DoorGame[] }) {
       me.walkDist = moved ? me.walkDist + Math.hypot(me.x - startX, me.y - startY) : 0;
       me.pose = moved ? walkPose(me.walkDist) : "stand";
       const attacking = now < me.attackUntil;
-      me.idleMs = moved || wantsMove || me.sitting || me.fishing || me.meal || isStunned || attacking ? 0 : nextIdle(me.idleMs, dt);
+      const bathingNow = inBath(me.x, me.y);
+      // 목욕 중엔 긁기·하품 동작을 쉰다 (물에 잘린 몸으로는 어색하다)
+      me.idleMs =
+        moved || wantsMove || me.sitting || me.fishing || me.meal || isStunned || attacking || bathingNow ? 0 : nextIdle(me.idleMs, dt);
       // 발을 내딛는 프레임마다 톡, 긁는 박자마다 슥슥, 하품을 시작할 때 하아암
       if (me.pose !== soundPose && me.pose !== "stand") {
-        // 발 밑 타일에 따라 풀밭 사각, 나무 데크 통, 진흙 철퍽
+        // 발 밑 타일에 따라 풀밭 사각, 나무 데크 통, 진흙 철퍽, 온천 물속 찰박
         const ground = tileAt(Math.floor(me.x / TILE), Math.floor(me.y / TILE));
-        playSound(ground === "deck" ? "stepDeck" : ground === "mud" ? "stepMud" : "step", settingsRef.current);
+        playSound(bathingNow ? "stepWater" : ground === "deck" ? "stepDeck" : ground === "mud" ? "stepMud" : "step", settingsRef.current);
       }
       soundPose = me.pose;
       const idleFrame = idleSprite(me.idleMs);
@@ -2035,9 +2148,12 @@ export function Lobby({ games }: { games: DoorGame[] }) {
       if (me.sitting !== shownSitting) setSitting((shownSitting = me.sitting));
       const seatHere = !me.sitting && nearestSeat() >= 0;
       if (seatHere !== shownSeat) setSeatNearby((shownSeat = seatHere));
+      const bathHere = bathingNow ? "in" : !me.sitting && !seatHere && nearSpring() ? "near" : null;
+      if (bathHere !== shownBath) setBath((shownBath = bathHere));
       // 당기고 끌어올리는 중엔 이미 낚시가 끝난 것으로 보여 준다
       const fishingActive = me.fishing !== null && me.fishing.reelAt === Infinity;
-      const waterHere = !fishingActive && !me.sitting && !seatHere && nearestWater(tileAt, me.x, me.y, FISH_REACH) !== null;
+      const waterHere =
+        !fishingActive && !me.sitting && !seatHere && bathHere === null && nearestWater(tileAt, me.x, me.y, FISH_REACH) !== null;
       if (waterHere !== shownWater) setWaterNearby((shownWater = waterHere));
       const guestbookHere = !me.sitting && !fishingActive && nearGuestbook();
       if (guestbookHere !== shownGuestbook) setGuestbookNearby((shownGuestbook = guestbookHere));
@@ -2055,7 +2171,13 @@ export function Lobby({ games }: { games: DoorGame[] }) {
         if (remote.fishing && fishingDone(remote.fishing, now)) remote.fishing = null;
         if (remote.meal && (moving || mealDone(remote.meal, now))) remote.meal = null;
         const busy =
-          moving || remote.sitting || remote.fishing !== null || remote.meal !== null || now < remote.stunUntil || now < remote.attackUntil;
+          moving ||
+          remote.sitting ||
+          remote.fishing !== null ||
+          remote.meal !== null ||
+          now < remote.stunUntil ||
+          now < remote.attackUntil ||
+          inBath(remote.x, remote.y);
         remote.idleMs = busy ? 0 : nextIdle(remote.idleMs, dt);
       }
 
@@ -2149,14 +2271,13 @@ export function Lobby({ games }: { games: DoorGame[] }) {
         if (!inView(item.x, item.y, TILE * 4)) continue;
         drawables.push({ y: item.y - TILE * 0.45, draw: () => drawDoorLight(ctx, item, now, !reducedMotion, item === door) });
       }
-      const { spring } = world;
-      if (inView(spring.x, spring.y, TILE * 6)) {
-        // 온천은 납작해서 늘 캐릭터보다 먼저 그린다. 뒤(북쪽)는 물 타일이 막아 캐릭터가 그림과 겹칠 만큼 못 다가가고,
+      if (inView(spring.x, spring.y, TILE * 8)) {
+        // 온천은 납작해서 뒤(북쪽) 둘레에 선 캐릭터 말고는 먼저 그린다. 목욕 중인 캐릭터는 물 위에 그려지고,
         // 가운데보다 아래를 기준으로 두면 옆에 선 캐릭터가 둘레 돌 그림에 가려진다
         drawables.push({
-          y: spring.y - SPRING_RADIUS * TILE,
+          y: spring.y - SPRING_RY * TILE,
           draw: () => {
-            sprite("onsen", spring.x, spring.y + SPRING_RADIUS * TILE);
+            sprite("onsen", spring.x, spring.y + ONSEN_BOTTOM * TILE);
             drawSteam(ctx, spring.x, spring.y, now, !reducedMotion);
           },
         });
@@ -2184,12 +2305,17 @@ export function Lobby({ games }: { games: DoorGame[] }) {
           eating: eatingMs(remote.meal, now),
         };
         const { meal } = remote;
+        const remoteBathing = inBath(remote.x, remote.y);
         // 통나무에 앉으면 통나무 그림보다 앞에 그린다
         drawables.push({
           y: remote.y + (remote.sitting ? TILE * 0.5 : 0),
           draw: () => {
-            drawCapybara(ctx, sprites, remote.x, remote.y, remote.facing, look, remote.outfit, wardrobe, now, !reducedMotion);
-            if (meal && look.eating >= 0 && !look.sitting) drawFood(ctx, meal.name, remote.x, remote.y, look.eating);
+            const body = (x: number, y: number) => {
+              drawCapybara(ctx, sprites, x, y, remote.facing, look, remote.outfit, wardrobe, now, !reducedMotion);
+              if (meal && look.eating >= 0 && !look.sitting) drawFood(ctx, meal.name, x, y, look.eating);
+            };
+            if (remoteBathing) drawBathing(ctx, remote.x, remote.y, remote.facing, now, !reducedMotion, body);
+            else body(remote.x, remote.y);
           },
         });
       }
@@ -2209,11 +2335,17 @@ export function Lobby({ games }: { games: DoorGame[] }) {
       const hopEase = 1 - (1 - hop) * (1 - hop);
       const drawnX = me.hop.fromX + (me.x - me.hop.fromX) * hopEase;
       const drawnY = me.hop.fromY + (me.y - me.hop.fromY) * hopEase - Math.sin(hop * Math.PI) * 12;
+      // 폴짝 뛰어드는 그림이 물 안에 닿는 순간부터 몸을 담근다
+      const myBathing = inBath(drawnX, drawnY);
       drawables.push({
         y: me.y + (me.sitting ? TILE * 0.5 : 0),
         draw: () => {
-          drawCapybara(ctx, sprites, drawnX, drawnY, me.facing, myLook, outfitRef.current, wardrobe, now, !reducedMotion);
-          if (myMeal && myLook.eating >= 0 && !myLook.sitting) drawFood(ctx, myMeal.name, drawnX, drawnY, myLook.eating);
+          const body = (x: number, y: number) => {
+            drawCapybara(ctx, sprites, x, y, me.facing, myLook, outfitRef.current, wardrobe, now, !reducedMotion);
+            if (myMeal && myLook.eating >= 0 && !myLook.sitting) drawFood(ctx, myMeal.name, x, y, myLook.eating);
+          };
+          if (myBathing) drawBathing(ctx, drawnX, drawnY, me.facing, now, !reducedMotion, body);
+          else body(drawnX, drawnY);
         },
       });
       drawables.sort((a, b) => a.y - b.y);
@@ -2223,7 +2355,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
         if (inView(item.x, item.y, TILE * 4)) drawLabel(ctx, item.title, item.x, item.y + TILE * 0.85, true);
       }
       for (const remote of remotes.values()) {
-        const labelY = remote.y - (remote.sitting ? SIT_SIZE : STAND_SIZE) - 8;
+        const labelY = remote.y - (remote.sitting ? SIT_SIZE : STAND_SIZE) - 8 + (inBath(remote.x, remote.y) ? BATH_SINK : 0);
         drawLabel(ctx, remote.name, remote.x, labelY);
         // 낚싯대·공중의 찌와 물고기는 이름표를 가리지 않게 머리 위로 끌어올려 이름표 다음에 그린다
         if (remote.fishing) drawFishingRod(ctx, remote.fishing, remote.x, remote.y, remote.facing, now, !reducedMotion, labelY);
@@ -2231,7 +2363,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
         const actionChat = parseFishChat(remote.chat) !== null || parseFeedChat(remote.chat) !== null;
         if (now < remote.chatUntil && !actionChat) drawSpeech(remote.chat, remote.x, labelY - 10);
       }
-      const myLabelY = drawnY - (me.sitting ? SIT_SIZE : STAND_SIZE) - 8;
+      const myLabelY = drawnY - (me.sitting ? SIT_SIZE : STAND_SIZE) - 8 + (myBathing ? BATH_SINK : 0);
       if (me.name) drawLabel(ctx, me.name, drawnX, myLabelY);
       const mySpeechY = me.name ? myLabelY - 10 : myLabelY + 4;
       if (me.fishing) drawFishingRod(ctx, me.fishing, drawnX, drawnY, me.facing, now, !reducedMotion, mySpeechY + 10);
@@ -2537,6 +2669,34 @@ export function Lobby({ games }: { games: DoorGame[] }) {
                 </span>
               </span>
               <span className="rounded-full bg-card/85 px-2 py-0.5 text-caption-3 font-semibold text-text-strong">{sitting ? "일어나기" : "앉기"}</span>
+            </button>
+          )}
+          {bath && (
+            <button
+              ref={bathButtonRef}
+              type="button"
+              onClick={() => {
+                spaceRequest.current = true;
+              }}
+              aria-pressed={bath === "in"}
+              aria-label={bath === "in" ? "온천에서 나오기" : "온천에서 목욕하기"}
+              aria-keyshortcuts="Space"
+              className="group flex flex-col items-center gap-0.5 rounded-full focus-visible:outline-2 focus-visible:outline-primary"
+            >
+              {/* 나무 테(방명록·옷장과 같은 그림) 안 펠트 판 위에 욕조 아이콘. 누르면 그림과 아이콘이 같이 줄어든다 */}
+              <span className="relative block size-14 transition-transform md:size-18 duration-100 motion-safe:group-active:scale-90">
+                <span
+                  aria-hidden
+                  className={cn(
+                    "absolute inset-[16%] flex items-center justify-center rounded-full bg-capybara-light text-capybara-dark",
+                    bath === "in" && "brightness-90",
+                  )}
+                >
+                  <Bath className="size-6 md:size-7" />
+                </span>
+                <NextImage src={FRAME_SRC} alt="" fill unoptimized sizes="72px" draggable={false} className="drop-shadow-md" />
+              </span>
+              <span className="rounded-full bg-card/85 px-2 py-0.5 text-caption-3 font-semibold text-text-strong">{bath === "in" ? "나오기" : "목욕"}</span>
             </button>
           )}
           {guestbookNearby && (

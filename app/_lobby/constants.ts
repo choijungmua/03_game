@@ -34,7 +34,10 @@ export const KEYBOARD_ROWS = [
 export const LOBBY_KEY_GUIDE = [
   { keys: ["W", "A", "S", "D", "↑", "←", "↓", "→"], label: "걷기" },
   { keys: ["F", "J"], label: "때리기" },
-  { keys: ["Space"], label: "통나무 앞에서 앉기 · 물가에서 계속 낚시(한 번 더 누르면 그만) · 게시판 앞에서 방명록" },
+  {
+    keys: ["Space"],
+    label: "통나무 앞에서 앉기 · 온천 앞에서 목욕(한 번 더 누르면 나오기) · 물가에서 계속 낚시(한 번 더 누르면 그만) · 게시판 앞에서 방명록",
+  },
   { keys: ["Enter"], label: "채팅 · 오두막 문 앞이면 바로 입장" },
   { keys: [","], label: "이모티콘" },
   { keys: ["P"], label: "프로필(옷장)" },
