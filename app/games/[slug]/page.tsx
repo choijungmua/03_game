@@ -6,6 +6,7 @@ import { GAMES, getGame } from "@/lib/games/registry";
 import { breadcrumbJsonLd, gameJsonLd, JsonLd } from "@/lib/seo/json-ld";
 import { pageMetadata } from "@/lib/seo/site";
 
+import { ButtonFocusGuard } from "./button-focus-guard";
 import { GameVisitTracker } from "./visit-tracker";
 
 interface GamePageProps {
@@ -42,6 +43,7 @@ export default async function GamePage({ params }: GamePageProps) {
   return (
     <main>
       <GameVisitTracker slug={slug} />
+      <ButtonFocusGuard />
       <JsonLd data={gameJsonLd(game, seo)} />
       <JsonLd
         data={breadcrumbJsonLd([

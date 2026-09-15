@@ -226,8 +226,10 @@ interface Drag {
   downAt: number;
   /** 누른 뒤 가장 멀리 움직인 거리(CSS px) */
   moved: number;
-  /** 이번 터치에서 위·아래 쓸기를 이미 썼는지 */
-  swiped: boolean;
+  /** 먼저 댄 손가락만 좌우 이동을 맡는다. 나머지 손가락은 탭·쓸기(점프·숙이기)만 한다 */
+  mover: boolean;
+  /** 이번 터치에서 쓴 위·아래 쓸기(한 번만). "down"이면 이 손가락을 뗄 때까지 숙인다 */
+  swipe: "up" | "down" | null;
 }
 
 export function CapybaraLogDodge() {
@@ -244,8 +246,9 @@ export function CapybaraLogDodge() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const keysRef = useRef({ left: false, right: false });
   /** 점프는 다음 프레임에 한 번 소비하고, 숙이기는 키·버튼·쓸기 중 하나라도 누르고 있으면 유지 */
-  const actionRef = useRef({ jump: false, duckKey: false, duckButton: false, duckSwipe: false });
-  const dragRef = useRef<Drag | null>(null);
+  const actionRef = useRef({ jump: false, duckKey: false, duckButton: false });
+  /** 화면에 닿아 있는 손가락마다(pointerId) 따로 본다 */
+  const dragsRef = useRef(new Map<number, Drag>());
   const stateRef = useRef<GameState | null>(null);
   /** 게임 좌표 1px이 화면에서 몇 CSS px인지. 드래그 거리를 게임 좌표로 바꿀 때 쓴다 */
   const scaleRef = useRef(1);
@@ -256,8 +259,8 @@ export function CapybaraLogDodge() {
 
   function clearInput() {
     keysRef.current = { left: false, right: false };
-    actionRef.current = { jump: false, duckKey: false, duckButton: false, duckSwipe: false };
-    dragRef.current = null;
+    actionRef.current = { jump: false, duckKey: false, duckButton: false };
+    dragsRef.current.clear();
   }
 
   // 멈출 때 입력을 비운다 — 방향키를 누른 채 멈추면 keyup을 놓쳐 이어할 때 한쪽으로 흘러간다
@@ -336,7 +339,7 @@ export function CapybaraLogDodge() {
     }
 
     stateRef.current = createRound();
-    dragRef.current = null;
+    dragsRef.current.clear();
     resize();
     window.addEventListener("resize", resize);
 
@@ -407,12 +410,18 @@ export function CapybaraLogDodge() {
         nextId: state.nextId,
         nearMisses: state.nearMisses,
       };
+      let targetX: number | null = null;
+      let duckSwipe = false;
+      for (const drag of dragsRef.current.values()) {
+        if (drag.mover) targetX = drag.targetX;
+        if (drag.swipe === "down") duckSwipe = true;
+      }
       // rAF는 백그라운드 탭에서 멈추고, step이 프레임 간격에 상한을 둬서 자연히 일시정지된다
       step(state, now - lastAt, {
         direction: left === right ? 0 : left ? -1 : 1,
-        targetX: dragRef.current?.targetX ?? null,
+        targetX,
         jump: action.jump,
-        duck: action.duckKey || action.duckButton || action.duckSwipe,
+        duck: action.duckKey || action.duckButton || duckSwipe,
       });
       action.jump = false;
       lastAt = now;
@@ -458,42 +467,43 @@ export function CapybaraLogDodge() {
   }
 
   // 좌우 드래그는 손가락이 움직인 거리만큼 카피바라를 옮기고(손가락이 카피바라를 가리지 않게),
-  // 위로 쓸거나 탭하면 점프, 아래로 쓸면 손을 뗄 때까지 숙인다
+  // 위로 쓸거나 탭하면 점프, 아래로 쓸면 손을 뗄 때까지 숙인다.
+  // 손가락마다 따로 봐서, 한 손가락으로 옮기는 동안 다른 손가락으로 탭·쓸어 점프·숙이기를 할 수 있다
   function handlePointerDown(event: React.PointerEvent<HTMLDivElement>) {
     const state = stateRef.current;
     if (phase !== "playing" || !state || pausedRef.current) return;
     event.currentTarget.setPointerCapture(event.pointerId);
-    dragRef.current = {
+    const drags = dragsRef.current;
+    drags.set(event.pointerId, {
       pointerX: event.clientX,
       pointerY: event.clientY,
       startX: state.x,
       targetX: state.x,
       downAt: performance.now(),
       moved: 0,
-      swiped: false,
-    };
+      mover: ![...drags.values()].some((drag) => drag.mover),
+      swipe: null,
+    });
   }
 
   function handlePointerMove(event: React.PointerEvent<HTMLDivElement>) {
-    const drag = dragRef.current;
+    const drag = dragsRef.current.get(event.pointerId);
     if (phase !== "playing" || !drag) return;
     const dx = event.clientX - drag.pointerX;
     const dy = event.clientY - drag.pointerY;
     drag.moved = Math.max(drag.moved, Math.hypot(dx, dy));
-    drag.targetX = drag.startX + dx / scaleRef.current;
-    if (drag.swiped || Math.abs(dy) < SWIPE_PX || Math.abs(dy) < Math.abs(dx)) return;
-    drag.swiped = true;
+    if (drag.mover) drag.targetX = drag.startX + dx / scaleRef.current;
+    if (drag.swipe || Math.abs(dy) < SWIPE_PX || Math.abs(dy) < Math.abs(dx)) return;
+    drag.swipe = dy < 0 ? "up" : "down";
     if (dy < 0) actionRef.current.jump = true;
-    else actionRef.current.duckSwipe = true;
   }
 
-  function handlePointerUp() {
-    const drag = dragRef.current;
-    if (phase === "playing" && drag && !drag.swiped && drag.moved < TAP_PX && performance.now() - drag.downAt < TAP_MS) {
+  function handlePointerUp(event: React.PointerEvent<HTMLDivElement>) {
+    const drag = dragsRef.current.get(event.pointerId);
+    if (phase === "playing" && drag && !drag.swipe && drag.moved < TAP_PX && performance.now() - drag.downAt < TAP_MS) {
       actionRef.current.jump = true;
     }
-    actionRef.current.duckSwipe = false;
-    dragRef.current = null;
+    dragsRef.current.delete(event.pointerId);
   }
 
   // 시작/재시작은 click으로 받아 스크롤하려고 끄는 동작에는 반응하지 않게 한다
@@ -629,7 +639,7 @@ export function CapybaraLogDodge() {
             />
             <h1 className="px-12 text-title-1 font-bold text-text-strong">{TITLE}</h1>
             <p className="text-caption-1 text-balance text-text-caption">
-              비탈 위에서 통나무가 굴러 내려와요. 좌우로 드래그해 피하고, 바닥에 깔린 통나무는 탭하거나 위로 쓸어 점프, 머리 높이로 날아오는 통나무는 아래로 쓸어 숙이세요. 키보드는 방향키(←→ 이동, ↑·Space 점프, ↓ 숙이기)예요. 한 번 맞으면 끝, 아슬아슬하게 스치면 잠깐 느려져요.
+              비탈 위에서 통나무가 굴러 내려와요. 좌우로 드래그해 피하고, 바닥에 깔린 통나무는 탭하거나 위로 쓸어 점프, 머리 높이로 날아오는 통나무는 아래로 쓸어 숙이세요. 한 손가락으로 옮기면서 다른 손가락으로 점프·숙이기를 해도 돼요. 키보드는 방향키(←→ 이동, ↑·Space 점프, ↓ 숙이기)예요. 한 번 맞으면 끝, 아슬아슬하게 스치면 잠깐 느려져요.
             </p>
           </header>
 

@@ -659,7 +659,7 @@ export function CapybaraPlaneShooter() {
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const keysRef = useRef({ left: false, right: false });
-  const dragRef = useRef<{ pointerX: number; planeX: number; targetX: number } | null>(null);
+  const dragRef = useRef<{ pointerId: number; pointerX: number; planeX: number; targetX: number } | null>(null);
   const stateRef = useRef<GameState | null>(null);
   /** 게임 좌표 1px이 화면에서 몇 CSS px인지. 드래그 거리를 게임 좌표로 바꿀 때 쓴다 */
   const scaleRef = useRef(1);
@@ -865,21 +865,22 @@ export function CapybaraPlaneShooter() {
   }
 
   // 드래그는 손가락이 움직인 거리만큼 비행기를 옮긴다 (손가락이 비행기를 가리지 않게)
+  // 먼저 댄 손가락만 이동을 맡는다 — 옮기는 중에 다른 손가락이 화면에 닿아도 비행기가 튀거나 멈추지 않는다
   function handlePointerDown(event: React.PointerEvent<HTMLDivElement>) {
     const state = stateRef.current;
-    if (phase !== "playing" || !state || pausedRef.current) return;
+    if (phase !== "playing" || !state || pausedRef.current || dragRef.current) return;
     event.currentTarget.setPointerCapture(event.pointerId);
-    dragRef.current = { pointerX: event.clientX, planeX: state.planeX, targetX: state.planeX };
+    dragRef.current = { pointerId: event.pointerId, pointerX: event.clientX, planeX: state.planeX, targetX: state.planeX };
   }
 
   function handlePointerMove(event: React.PointerEvent<HTMLDivElement>) {
     const drag = dragRef.current;
-    if (phase !== "playing" || !drag) return;
+    if (phase !== "playing" || drag?.pointerId !== event.pointerId) return;
     drag.targetX = drag.planeX + (event.clientX - drag.pointerX) / scaleRef.current;
   }
 
-  function handlePointerUp() {
-    dragRef.current = null;
+  function handlePointerUp(event: React.PointerEvent<HTMLDivElement>) {
+    if (dragRef.current?.pointerId === event.pointerId) dragRef.current = null;
   }
 
   // 시작/재시작은 click으로 받아 스크롤하려고 끄는 동작에는 반응하지 않게 한다
