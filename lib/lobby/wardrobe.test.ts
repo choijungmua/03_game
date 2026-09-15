@@ -3,26 +3,17 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
-import { dressSprite, parseOutfit, SLOT_INFO, spriteName, viewArtOf, WARDROBE_SLOTS, wardrobeSrc, wardrobeViewSrc, wear } from "./wardrobe";
+import { dressSprite, outfitImageSrcs, parseOutfit, SLOT_INFO, spriteName, WARDROBE_SLOTS, wear } from "./wardrobe";
 import { ITEM_FIT, SPRITE_FIT } from "./wardrobe-fit";
 import { FACINGS } from "./world";
 
 const EVERY_SLOT = { hat: "crown", glasses: "star", onepiece: "dino" } as const;
 
 describe("로비 옷장", () => {
-  it("옷마다 이미지가 있다", () => {
+  it("옷마다 로비에서 쓰는 그림(정면·방향별·한벌옷 채운 그림)이 있다", () => {
     for (const slot of WARDROBE_SLOTS) {
       for (const item of SLOT_INFO[slot].items) {
-        expect(existsSync(join(process.cwd(), "public", wardrobeSrc(slot, item.id))), `${slot}/${item.id}`).toBe(true);
-      }
-    }
-  });
-
-  it("옷마다 로비에서 그리는 방향별 그림이 있다", () => {
-    for (const slot of WARDROBE_SLOTS) {
-      for (const item of SLOT_INFO[slot].items) {
-        for (const view of viewArtOf(slot)) {
-          const src = wardrobeViewSrc(slot, item.id, view);
+        for (const src of outfitImageSrcs(slot, item.id)) {
           expect(existsSync(join(process.cwd(), "public", src)), src).toBe(true);
         }
       }
@@ -40,8 +31,9 @@ describe("로비 옷장", () => {
   it("서기 8방향과 앉은 정면 스프라이트는 모든 칸이 몸 위에 입혀진다", () => {
     for (const sprite of [...FACINGS.map((facing) => `stand-${facing}`), "idle-down"]) {
       const { under, redraw, over } = dressSprite(sprite, EVERY_SLOT);
-      // 한벌옷 위에 다시 그리는 발(서 있으면 보이는 발 하나 이상)과 머리
-      expect(redraw.length, sprite).toBeGreaterThanOrEqual(sprite.startsWith("stand-") ? 2 : 1);
+      // 발 달린 공룡 잠옷이라 머리만 다시 그리고, 한벌옷은 몸 윤곽 안 채운 그림 + 자르지 않는 원래 그림 두 조각
+      expect(redraw.length, sprite).toBe(1);
+      expect(under.map((piece) => piece.clip), sprite).toEqual([true, false]);
       for (const slot of Object.keys(EVERY_SLOT)) {
         // 뒷모습에서는 안경이 안 보인다
         if (slot === "glasses" && sprite.startsWith("stand-up")) continue;

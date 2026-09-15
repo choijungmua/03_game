@@ -128,7 +128,7 @@ python -m make_image "정사각형 한 장을 2×2 네 칸으로 똑같이 나�
 ## 옷장 방향별 옷 그림
 
 - 옷장 정면 그림: `public/assets/images/characters/capybara/wardrobe/<slot>/<id>.webp` (시트 3칸 → `scripts/split_wardrobe.py`)
-- 한벌옷은 몸에 딱 붙게 입힌다: `wardrobe_fit.py`가 그림의 빈틈을 옷 색으로 채운 `<id>-<view>-fill.webp`(정면 포함)를 만들고 머리 가운데~몸 맨 아래 윤곽 상자에 늘린다. 로비는 스프라이트 윤곽 안에만 그리고(`source-atop`, 옷장 미리보기는 CSS mask) 그 위에 발·머리 타원만큼 스프라이트를 다시 그린다 — 옷이 몸보다 뚱뚱하게 튀어나오지 않고 몸도 비치지 않는다
+- 한벌옷은 두 겹으로 입힌다: `wardrobe_fit.py`가 그림 속 몸통 상자(후드·칼라 아래 `COLLAR`, 소매·꼬리를 깎은 몸통 폭, 품 여유 `LOOSE`)를 카피바라 턱~발바닥·몸통 폭에 맞춰 놓는다. ① 빈틈을 옷 색으로 채운 `<id>-<view>-fill.webp`를 스프라이트 윤곽 안에만 깔아(로비 `source-atop`, 옷장 미리보기 CSS mask) 몸이 비치지 않게 하고 ② 원래 그림을 자르지 않고 그 위에 그려 공룡 후드·꼬리, 유카타 소매처럼 몸 밖으로 나오는 부분을 살린다. 그 위에 머리(발 없는 옷은 발도)를 다시 그린다. 발까지 달린 옷은 `wardrobe.ts`에 `coversFeet`. 몸통 상자는 `python scripts/wardrobe_fit.py boxes`로 확인하고, 틀리면 `COLLAR`·`ART_BODY_X`·`LOOSE`를 고친다
 - 로비 옷장 칸은 모자·안경·한벌옷 3개만 쓴다 (상의·하의·신발·장갑은 보류 — 그림은 남아 있고 `WARDROBE_SLOTS`·`wardrobe_views.py SLOTS`에 다시 넣으면 된다)
 - 칸마다 로비 맵 방향별 그림을 쓴다: `<id>-{back,side,front3q,back3q}.webp`. 옆·대각선은 오른쪽을 향한 그림(왼쪽은 코드가 반전). 안경은 뒤에서 안 보여 `side`·`front3q`만 있다
 - 안경 옆·앞대각선은 별 선글라스만 codex로 만들었고, 나머지는 codex 한도로 `python scripts/wardrobe_views.py synth glasses/<id>`(정면 그림에서 먼 렌즈 좁히기·옆 렌즈+안경다리 합성)로 만들었다. codex로 다시 만들면 `gen` → `split`이 덮어쓴다
