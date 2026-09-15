@@ -31,6 +31,7 @@ import { Input } from "@/components/inputs/input";
 import {
   BATH_REACH,
   BATH_SINK,
+  YUZU_SINK,
   CORRECTION_SNAP_PX,
   EAT_BITE_MS,
   EAT_MS,
@@ -522,6 +523,7 @@ function drawBathing(
   x: number,
   y: number,
   facing: Facing,
+  stride: number,
   now: number,
   animate: boolean,
   drawBody: (x: number, y: number) => void,
@@ -537,11 +539,13 @@ function drawBathing(
   ctx.ellipse(x, y, 26, 7, 0, 0, Math.PI * 2);
   ctx.fill();
   if (animate) for (const offset of [0, 900]) drawRipple(ctx, x, y - 3, ((now + offset) % 1800) / 1800);
-  // 바라보는 방향 그림의 머리 타원 꼭대기 (왼쪽을 보면 좌우 반전)
+  // 바라보는 방향 그림의 머리 타원 꼭대기 (왼쪽을 보면 좌우 반전). 머리 타원은 털보다 조금 위까지 잡혀 있어서
+  // YUZU_SINK만큼 내려 털에 살짝 묻히게 얹고, 물속을 걸을 때 몸이 들썩이는 만큼(drawCapybara와 같은 식) 같이 올린다
   const head = WORLD_HEAD_ELLIPSE[VIEW_OF[facing]];
   const headX = x - STAND_SIZE / 2 + (STAND_SIZE * (facing.endsWith("left") ? 100 - head.x : head.x)) / 100;
   const headTop = y + BATH_SINK - STAND_SIZE * STAND_FOOT + (STAND_SIZE * (head.y - head.ry)) / 100;
-  drawYuzu(ctx, headX, headTop + 2 + (animate ? Math.sin(now / 600) * 1.2 : 0));
+  const lift = stride > 0 && animate ? Math.abs(Math.sin((stride / (STRIDE_PX * 2)) * Math.PI)) * 3 : 0;
+  drawYuzu(ctx, headX, headTop + YUZU_SINK - lift);
 }
 
 function drawLabel(ctx: CanvasRenderingContext2D, text: string, x: number, y: number, strong = false) {
@@ -2345,7 +2349,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
               drawCapybara(ctx, sprites, x, y, remote.facing, look, remote.outfit, wardrobe, now, !reducedMotion);
               if (meal && look.eating >= 0 && !look.sitting) drawFood(ctx, meal.name, x, y, look.eating);
             };
-            if (remoteBathing) drawBathing(ctx, remote.x, remote.y, remote.facing, now, !reducedMotion, body);
+            if (remoteBathing) drawBathing(ctx, remote.x, remote.y, remote.facing, look.stride, now, !reducedMotion, body);
             else body(remote.x, remote.y);
           },
         });
@@ -2375,7 +2379,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
             drawCapybara(ctx, sprites, x, y, me.facing, myLook, outfitRef.current, wardrobe, now, !reducedMotion);
             if (myMeal && myLook.eating >= 0 && !myLook.sitting) drawFood(ctx, myMeal.name, x, y, myLook.eating);
           };
-          if (myBathing) drawBathing(ctx, drawnX, drawnY, me.facing, now, !reducedMotion, body);
+          if (myBathing) drawBathing(ctx, drawnX, drawnY, me.facing, myLook.stride, now, !reducedMotion, body);
           else body(drawnX, drawnY);
         },
       });

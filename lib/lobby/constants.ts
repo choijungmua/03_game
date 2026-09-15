@@ -120,6 +120,8 @@ export const HEART_LINGER_MS = 900;
 export const BATH_REACH = 1;
 /** 목욕 중 몸이 물에 잠기는 깊이(px). 서 있는 키 76px 중 머리·어깨만 남는다 */
 export const BATH_SINK = 30;
+/** 유자 밑면을 머리 타원 꼭대기에서 이만큼(px) 내려 털에 살짝 묻힌다 (머리 타원이 털보다 3~5px 위까지 잡혀 있다) */
+export const YUZU_SINK = 8;
 /** 온천 그림 바닥이 온천 가운데보다 아래로 내려오는 거리(타일). 폭 10타일 그림의 물 타원 가운데를 온천 가운데에 맞춘다 */
 export const ONSEN_BOTTOM = 4;
 
