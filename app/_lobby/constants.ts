@@ -14,8 +14,14 @@ export const EMOTE_BAKE_SCALE = 3;
 export const EMOTE_PICKER_ICON = 3;
 /** 이모티콘 창 한 쪽에 보이는 개수 (4×2). 세로로 넘기면 다음 쪽 */
 export const EMOTES_PER_PAGE = 8;
-/** 앉기·때리기 버튼과 같은 나무 테두리 (punch.webp에서 테두리만 오려낸 그림). 프로필·효과음 원 위에 덮는다 */
+/** 앉기·때리기 버튼과 같은 나무 테두리 (punch.webp에서 테두리만 오려낸 그림) */
 export const FRAME_SRC = "/assets/images/ui/lobby/frame.webp";
+/** 오른쪽 옷장 버튼 그림 (나무 테·펠트 판 위 나무 옷걸이에 걸린 펠트 셔츠) */
+export const WARDROBE_BUTTON_SRC = "/assets/images/ui/lobby/wardrobe.webp";
+/** 오른쪽 효과음 버튼 그림 (나무 테·펠트 판 위 눈 감고 음악 듣는 카피바라 + 잎 음표). 헤드폰은 코드가 위에 씌운다 */
+export const SOUND_BUTTON_SRC = "/assets/images/ui/lobby/sound.webp";
+/** 오른쪽 이름 바꾸기 버튼 그림 (나무 테·펠트 판 위 빈 나무 이름표를 목에 건 카피바라) */
+export const PROFILE_BUTTON_SRC = "/assets/images/ui/lobby/profile.webp";
 /** 물가에서 뜨는 낚시 버튼 그림 (나무 테·펠트 판 위 낚싯대 든 카피바라) */
 export const FISH_BUTTON_SRC = "/assets/images/ui/lobby/fish.webp";
 /** 오른쪽 위 낚시 가방 버튼 그림 (나무 테·펠트 판 위 카피바라 얼굴 백팩) */
