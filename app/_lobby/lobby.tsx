@@ -334,6 +334,14 @@ function saveSession(key: string, value: string) {
 
 const mod = (value: number, size: number) => ((value % size) + size) % size;
 
+/** 발밑 접지 그림자. 캐릭터·오두막·나무·소품 모두 같은 색으로 깔아야 투명 배경 그림이 바닥에 떠 보이지 않는다 */
+function drawGroundShadow(ctx: CanvasRenderingContext2D, x: number, y: number, radiusX: number, radiusY = radiusX / 3) {
+  ctx.fillStyle = "rgba(30,40,10,0.25)";
+  ctx.beginPath();
+  ctx.ellipse(x, y, radiusX, radiusY, 0, 0, Math.PI * 2);
+  ctx.fill();
+}
+
 /** 이미지를 가운데·바닥 기준으로 폭에 맞춰 그리고 그린 영역을 돌려준다 */
 function drawImageBottom(ctx: CanvasRenderingContext2D, image: HTMLImageElement, centerX: number, bottomY: number, width: number) {
   const height = (width * image.naturalHeight) / image.naturalWidth;
@@ -382,20 +390,13 @@ function drawChunk(
       ctx.fillRect(x, y, TILE, TILE);
     }
     if (kind === "meadow") {
-      // 같은 풀 텍스처가 반복돼 보이지 않게 짙은 풀 얼룩과 작은 들꽃을 섞는다
+      // 같은 풀 텍스처가 반복돼 보이지 않게 짙고 옅은 풀 얼룩을 섞는다 (펠트 텍스처와 안 맞는 평면 들꽃 점은 그리지 않는다)
       const noise = hash2(3, tx, ty);
       if (noise < 0.14) {
         ctx.fillStyle = noise < 0.07 ? "rgba(50,90,10,0.16)" : "rgba(255,245,160,0.12)";
         ctx.beginPath();
         ctx.ellipse(x + TILE / 2, y + TILE / 2, TILE * (0.5 + noise * 2), TILE * (0.35 + noise), 0, 0, Math.PI * 2);
         ctx.fill();
-      } else if (noise > 0.95) {
-        ctx.fillStyle = noise > 0.975 ? "#fff6f0" : "#ffd84a";
-        for (let i = 0; i < 3; i++) {
-          ctx.beginPath();
-          ctx.arc(x + 10 + hash2(i + 4, tx, ty) * 28, y + 10 + hash2(i + 7, tx, ty) * 28, 2.2, 0, Math.PI * 2);
-          ctx.fill();
-        }
       }
     }
 
@@ -408,23 +409,19 @@ function drawChunk(
     for (const [dx, dy] of neighbors) {
       const other = TEXTURE_OF[tileAt(tx + dx, ty + dy)];
       if (other === kind) continue;
-      const band = (thick: number) =>
-        [dx > 0 ? x + TILE - thick : x, dy > 0 ? y + TILE - thick : y, dx === 0 ? TILE : thick, dy === 0 ? TILE : thick] as const;
-      if (kind === "deck") {
-        // 데크 가장자리 짙은 테두리목
-        ctx.fillStyle = "#6e3f22";
-        ctx.fillRect(...band(4));
-      } else if (kind === "water") {
-        // 물가: 진흙 둑 + 얕은 물 밝은 띠
-        ctx.fillStyle = "#8a5634";
-        ctx.fillRect(...band(6));
-        ctx.fillStyle = "rgba(255,255,255,0.25)";
-        const [bx, by, bw, bh] = band(9);
-        ctx.fillRect(dx > 0 ? bx : dx < 0 ? bx + 6 : bx, dy > 0 ? by : dy < 0 ? by + 6 : by, dx === 0 ? bw : 3, dy === 0 ? bh : 3);
-      } else if (kind === "mud" && other === "meadow") {
-        ctx.fillStyle = "rgba(70,110,30,0.28)";
-        ctx.fillRect(...band(5));
-      }
+      /** 경계 쪽이 진하고 안쪽으로 옅어지는 띠. 단색 직선 띠는 펠트 텍스처 위에서 계단처럼 튀어 보인다 */
+      const softBand = (thick: number, rgb: string, alpha: number) => {
+        const edgeX = dx > 0 ? x + TILE : x;
+        const edgeY = dy > 0 ? y + TILE : y;
+        const gradient = ctx.createLinearGradient(edgeX, edgeY, edgeX - dx * thick, edgeY - dy * thick);
+        gradient.addColorStop(0, `rgba(${rgb},${alpha})`);
+        gradient.addColorStop(1, `rgba(${rgb},0)`);
+        ctx.fillStyle = gradient;
+        ctx.fillRect(dx > 0 ? x + TILE - thick : x, dy > 0 ? y + TILE - thick : y, dx === 0 ? TILE : thick, dy === 0 ? TILE : thick);
+      };
+      if (kind === "deck") softBand(10, "110,63,34", 0.5); // 데크 가장자리 그늘
+      else if (kind === "water") softBand(14, "138,86,52", 0.55); // 물가 진흙 둑
+      else if (kind === "mud" && other === "meadow") softBand(12, "70,110,30", 0.3);
     }
   });
   return canvas;
@@ -441,6 +438,7 @@ function drawBuilding(
   const centerX = (building.tx + BUILDING_WIDTH / 2) * TILE;
   const bottom = building.frontY + TILE * 0.5;
   if (!ready(image)) return;
+  drawGroundShadow(ctx, centerX, bottom - TILE * 0.3, asset.width * TILE * 0.45, TILE * 0.55);
   const box = drawImageBottom(ctx, image, centerX, bottom, asset.width * TILE);
   if (!ready(icon)) return;
 
@@ -479,34 +477,23 @@ function drawSteam(ctx: CanvasRenderingContext2D, x: number, y: number, now: num
   for (let k = 0; k < 7; k++) {
     const phase = (t * 0.22 + k / 7) % 1;
     const drift = Math.sin(t * 0.8 + k * 1.7) * 14;
-    ctx.fillStyle = `rgba(255,255,255,${0.28 * Math.sin(phase * Math.PI)})`;
+    const cx = x + (k - 3) * 36 + drift;
+    const cy = y - phase * TILE * 2.4;
+    const radius = 16 + phase * 22;
+    // 가장자리가 딱 끊기는 원 대신 안에서 밖으로 흩어지는 김
+    const puff = ctx.createRadialGradient(cx, cy, 0, cx, cy, radius);
+    puff.addColorStop(0, `rgba(255,255,255,${0.3 * Math.sin(phase * Math.PI)})`);
+    puff.addColorStop(1, "rgba(255,255,255,0)");
+    ctx.fillStyle = puff;
     ctx.beginPath();
-    ctx.arc(x + (k - 3) * 36 + drift, y - phase * TILE * 2.4, 10 + phase * 16, 0, Math.PI * 2);
+    ctx.arc(cx, cy, radius, 0, Math.PI * 2);
     ctx.fill();
   }
 }
 
-/** 머리 꼭대기(x, bottom)에 얹은 유자 한 알 */
-function drawYuzu(ctx: CanvasRenderingContext2D, x: number, bottom: number) {
-  const radius = 7;
-  const cy = bottom - radius * 0.7;
-  ctx.fillStyle = "#f5c62e";
-  ctx.strokeStyle = "rgba(120,80,10,0.85)";
-  ctx.lineWidth = 1.5;
-  ctx.beginPath();
-  ctx.ellipse(x, cy, radius, radius * 0.85, 0, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.stroke();
-  // 반들반들 윤기
-  ctx.fillStyle = "rgba(255,255,230,0.8)";
-  ctx.beginPath();
-  ctx.arc(x - radius * 0.35, cy - radius * 0.3, radius * 0.25, 0, Math.PI * 2);
-  ctx.fill();
-  // 꼭지 잎
-  ctx.fillStyle = "#5e9a2e";
-  ctx.beginPath();
-  ctx.ellipse(x + 3, cy - radius * 0.85 - 1, 4, 2, -0.5, 0, Math.PI * 2);
-  ctx.fill();
+/** 머리 꼭대기(x, bottom)에 얹은 펠트 유자 한 알 (온천 그림 속 유자와 같은 그림). 밑면이 털에 묻히게 조금 내린다 */
+function drawYuzu(ctx: CanvasRenderingContext2D, image: HTMLImageElement | undefined, x: number, bottom: number) {
+  if (ready(image)) drawImageBottom(ctx, image, x, bottom + 3, 16);
 }
 
 /**
@@ -521,6 +508,7 @@ function drawBathing(
   stride: number,
   now: number,
   animate: boolean,
+  yuzu: HTMLImageElement | undefined,
   drawBody: (x: number, y: number) => void,
 ) {
   ctx.save();
@@ -540,7 +528,7 @@ function drawBathing(
   const headX = x - STAND_SIZE / 2 + (STAND_SIZE * headCx) / 100;
   const headTop = y + BATH_SINK - STAND_SIZE * STAND_FOOT + (STAND_SIZE * (headCy - headRy)) / 100;
   const lift = stride > 0 && animate ? Math.abs(Math.sin((stride / (STRIDE_PX * 2)) * Math.PI)) * 3 : 0;
-  drawYuzu(ctx, headX, headTop + YUZU_SINK - lift);
+  drawYuzu(ctx, yuzu, headX, headTop + YUZU_SINK - lift);
 }
 
 function drawLabel(ctx: CanvasRenderingContext2D, text: string, x: number, y: number, strong = false) {
@@ -757,12 +745,7 @@ function drawCapybara(
   const drawDressed = (image: HTMLImageElement, left: number, top: number, size: number) => {
     ctx.drawImage(wardrobe.dressed(image, outfit, size) ?? image, left, top, size, size);
   };
-  if (!look.sitting) {
-    ctx.fillStyle = "rgba(30,40,10,0.25)";
-    ctx.beginPath();
-    ctx.ellipse(x, y, 18, 6, 0, 0, Math.PI * 2);
-    ctx.fill();
-  }
+  if (!look.sitting) drawGroundShadow(ctx, x, y, 18);
 
   if (look.stunned) {
     const image = sprites.get("stun");
@@ -2203,7 +2186,11 @@ export function Lobby({ games }: { games: DoorGame[] }) {
       const sprite = (id: SpriteId, x: number, bottom: number, scale = 1) => {
         const entry = images.get(id);
         if (entry && ready(entry.image)) {
-          drawImageBottom(ctx, entry.image, x, bottom + (entry.asset.offsetY ?? 0), entry.asset.width * TILE * scale);
+          const width = entry.asset.width * TILE * scale;
+          const base = bottom + (entry.asset.offsetY ?? 0);
+          // 물 위에 뜬 수련·납작한 온천은 그림에 이미 바닥이 그려져 있어 그림자를 깔지 않는다
+          if (id !== "lotus" && id !== "onsen") drawGroundShadow(ctx, x, base - 3, width * 0.38);
+          drawImageBottom(ctx, entry.image, x, base, width);
         }
       };
 
@@ -2294,7 +2281,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
               drawCapybara(ctx, sprites, x, y, remote.facing, look, remote.outfit, wardrobe, now, !reducedMotion);
               if (meal && look.eating >= 0 && !look.sitting) drawFood(ctx, meal.name, x, y, look.eating);
             };
-            if (remoteBathing) drawBathing(ctx, remote.x, remote.y, remote.facing, look.stride, now, !reducedMotion, body);
+            if (remoteBathing) drawBathing(ctx, remote.x, remote.y, remote.facing, look.stride, now, !reducedMotion, images.get("yuzu")?.image, body);
             else body(remote.x, remote.y);
           },
         });
@@ -2324,7 +2311,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
             drawCapybara(ctx, sprites, x, y, me.facing, myLook, outfitRef.current, wardrobe, now, !reducedMotion);
             if (myMeal && myLook.eating >= 0 && !myLook.sitting) drawFood(ctx, myMeal.name, x, y, myLook.eating);
           };
-          if (myBathing) drawBathing(ctx, drawnX, drawnY, me.facing, myLook.stride, now, !reducedMotion, body);
+          if (myBathing) drawBathing(ctx, drawnX, drawnY, me.facing, myLook.stride, now, !reducedMotion, images.get("yuzu")?.image, body);
           else body(drawnX, drawnY);
         },
       });
