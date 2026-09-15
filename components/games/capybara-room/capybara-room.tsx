@@ -10,7 +10,7 @@ import { ShareButton } from "@/components/games/share-button";
 import { Button } from "@/components/inputs/button";
 import { Dialog } from "@/components/overlay/dialog";
 import { cn } from "@/lib";
-import { GAME_SOUNDS } from "@/lib/games/constants";
+import { FULL_BLEED_LAYER, GAME_SOUNDS } from "@/lib/games/constants";
 import type { Cell, RoomView, Stone } from "@/lib/games/rooms";
 import { useLockPageScroll } from "@/lib/games/use-lock-page-scroll";
 import { playGameSound } from "@/lib/lobby/settings";
@@ -147,26 +147,27 @@ export function CapybaraRoom<S extends BoardRoomState>({
     <div className="relative h-dvh w-full touch-manipulation select-none overflow-hidden bg-background text-text-strong [-webkit-tap-highlight-color:transparent]">
       <h1 className="sr-only">{title}</h1>
 
-      <Image
-        src={`${ASSET}/background-landscape.webp`}
-        alt=""
-        aria-hidden="true"
-        fill
-        priority
-        sizes="100vw"
-        draggable={false}
-        className="pointer-events-none object-cover portrait:hidden"
-      />
-      <Image
-        src={`${ASSET}/background-portrait.webp`}
-        alt=""
-        aria-hidden="true"
-        fill
-        priority
-        sizes="100vw"
-        draggable={false}
-        className="pointer-events-none object-cover landscape:hidden"
-      />
+      {/* 배경 그림은 툴바·홈 인디케이터 뒤까지 깐다 */}
+      <div aria-hidden="true" className={FULL_BLEED_LAYER}>
+        <Image
+          src={`${ASSET}/background-landscape.webp`}
+          alt=""
+          fill
+          priority
+          sizes="100vw"
+          draggable={false}
+          className="object-cover portrait:hidden"
+        />
+        <Image
+          src={`${ASSET}/background-portrait.webp`}
+          alt=""
+          fill
+          priority
+          sizes="100vw"
+          draggable={false}
+          className="object-cover landscape:hidden"
+        />
+      </div>
 
       {!view || !state ? (
         <RoomLobby title={title} guide={guide} room={room} record={record} />
