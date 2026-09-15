@@ -39,8 +39,9 @@ describe("로비 옷장", () => {
 
   it("서기 8방향과 앉은 정면 스프라이트는 모든 칸이 몸 위에 입혀진다", () => {
     for (const sprite of [...FACINGS.map((facing) => `stand-${facing}`), "idle-down"]) {
-      const { under, head, over } = dressSprite(sprite, EVERY_SLOT);
-      expect(head, sprite).not.toBeNull();
+      const { under, redraw, over } = dressSprite(sprite, EVERY_SLOT);
+      // 한벌옷 위에 다시 그리는 발(서 있으면 보이는 발 하나 이상)과 머리
+      expect(redraw.length, sprite).toBeGreaterThanOrEqual(sprite.startsWith("stand-") ? 2 : 1);
       for (const slot of Object.keys(EVERY_SLOT)) {
         // 뒷모습에서는 안경이 안 보인다
         if (slot === "glasses" && sprite.startsWith("stand-up")) continue;

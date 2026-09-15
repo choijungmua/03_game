@@ -15,7 +15,7 @@ import sys
 from pathlib import Path
 
 import numpy as np
-from PIL import Image, ImageDraw
+from PIL import Image, ImageChops, ImageDraw
 from scipy import ndimage as nd
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -29,6 +29,7 @@ S = 384  # 기준점을 재는 해상도 (서기 스프라이트 원본 크기)
 G = 128  # 맞추기 점수를 매기는 격자
 
 BODY_SLOTS = ["onepiece"]
+VIEW_ART = ["back", "side", "front3q", "back3q"]
 DIRECTION_VIEW = {
     "down": "front", "up": "back", "left": "side", "right": "side",
     "down-left": "front3q", "down-right": "front3q", "up-left": "back3q", "up-right": "back3q",
@@ -151,10 +152,10 @@ def landmarks(name: str) -> dict:
     feet = sorted(feet, key=lambda c: -c["area"])[:2]
     feet = [f for f in feet if f["area"] > feet[0]["area"] * 0.25]
     if not sit:
-        # 띠로 자른 발은 납작하니, 신발이 덮을 곳은 발 폭의 0.6배 높이까지 몸 알파로 넓힌다
+        # 띠로 자른 발은 납작하니, 발 폭의 0.4배 높이까지 몸 알파로 넓힌다 (한벌옷 위에 다시 그리는 발. 더 높이면 발목 위 털까지 보인다)
         for f in feet:
             region = np.zeros_like(body)
-            region[int(f["y1"] - (f["x1"] - f["x0"]) * 0.6):f["y1"], f["x0"]:f["x1"]] = True
+            region[int(f["y1"] - (f["x1"] - f["x0"]) * 0.4):f["y1"], f["x0"]:f["x1"]] = True
             f["mask"] = region & body
     foot_top = min((f["y0"] for f in feet), default=bot) if not sit else bot - h * 0.18
 
@@ -286,6 +287,36 @@ GLASSES_FRONT = dict(width=180, bottom=161)
 HAT_DX = {"side": -0.11}
 
 
+def fill_path(item_id: str, view: str) -> Path:
+    return WARDROBE / "onepiece" / f"{item_id}-{view}-fill.webp"
+
+
+def make_fill(item_id: str) -> None:
+    """한벌옷 그림의 빈틈(소매 사이·가랑이·반투명 가장자리)을 가장 가까운 옷 색으로 채운 그림. 몸 윤곽으로 잘라 그리면 윤곽 안이 빈틈 없이 덮인다"""
+    for view in ("front", *VIEW_ART):
+        pixels = np.array(Image.open(art_path("onepiece", item_id, view)).convert("RGBA"))
+        # 가장자리는 지운 마젠타 배경이 섞인 색이라, 3px 안쪽 옷 색으로만 채운다 (안 그러면 보라·분홍이 번진다)
+        inner = nd.binary_erosion(pixels[..., 3] > 128, iterations=3)
+        _, (iy, ix) = nd.distance_transform_edt(~inner, return_indices=True)
+        filled = pixels[iy, ix]
+        filled[..., 3] = 255
+        Image.fromarray(filled.astype(np.uint8)).save(fill_path(item_id, view), "WEBP", quality=88, method=6)
+
+
+def onepiece_fit(lm: dict, anchor: dict) -> list[float]:
+    """한벌옷: 채운 그림(-fill)을 머리 가운데~몸 맨 아래 윤곽 상자에 딱 맞게(조금 넉넉히) 늘린다.
+    그릴 때 스프라이트 윤곽으로 잘라서 옷이 몸보다 뚱뚱하게 튀어나오지 않고, 윤곽 안 몸은 보이지 않는다.
+    머리와 발은 옷 위에 타원으로 다시 그린다 (발 윗선에서 옷을 끊으면 앉았을 때 허벅지·배가 드러난다)"""
+    top, bottom = lm["head"]["cy"], lm["bot"]
+    xs = np.flatnonzero(lm["body"][int(top):int(bottom)].any(0))
+    pad = (xs.max() + 1 - xs.min()) * 0.04
+    x0, x1 = xs.min() - pad, xs.max() + 1 + pad
+    aw = anchor["w"]
+    sign = -1 if lm["flip"] else 1
+    return [round(sign * ((x0 + x1) / 2 - anchor["cx"]) / aw, 3), round((bottom - anchor["y"]) / aw, 3),
+            round((x1 - x0) / aw, 3), round((bottom - top) * 1.03 / aw, 3)]
+
+
 def column_top(body: np.ndarray, x: float) -> float:
     """x 둘레 세로줄들에서 몸 알파가 시작되는 높이 (중앙값)"""
     tops = [int(np.argmax(body[:, c])) for c in range(int(x) - 3, int(x) + 4) if body[:, c].any()]
@@ -330,6 +361,9 @@ def fit_item(slot: str, item_id: str, lm: dict, front: dict) -> list[list[float]
     # 앉은 발바닥은 정면을 향해 커서, 다 덮으려 하면 신발이 거인 신발이 된다. 서 있을 때 신발 크기를 넘지 않게 줄이려고 먼저 잰다
     stand_shoes = fit_item(slot, item_id, front, front) if slot == "shoes" and lm["group"].startswith("sit") and front["feet"] else None
     for index, anchor in enumerate(anchors):
+        if slot == "onepiece":
+            fits.append(onepiece_fit(lm, anchor))
+            continue
         mirror = index == 1 and lm["view"] in ("front", "back")
         if slot in ("top", "bottom", "onepiece"):
             y0, y1 = {"top": (chin, chin + (foot_top - chin) * 0.62), "bottom": (chin + (foot_top - chin) * 0.5, foot_top),
@@ -387,9 +421,16 @@ def pct(v: float) -> float:
 def sprite_record(lm: dict) -> dict:
     point = lambda a: [pct(a["cx"]), pct(a["y"]), pct(a["w"])]  # noqa: E731
     head = lm["head"]
+
+    def foot_ellipse(mask: np.ndarray) -> list[float]:
+        # 발 둘레 털까지 들어가게 조금 넉넉한 타원
+        ys, xs = np.nonzero(mask)
+        return [pct((xs.min() + xs.max() + 1) / 2), pct((ys.min() + ys.max() + 1) / 2), pct((xs.max() + 1 - xs.min()) * 0.58), pct((ys.max() + 1 - ys.min()) * 0.62)]
+
     return dict(
         view=lm["view"], group=lm["group"], flip=lm["flip"],
         head=[pct(head["cx"]), pct(head["cy"]), pct(head["rx"]), pct(head["ry"])],
+        feet=[foot_ellipse(f["mask"]) for f in lm["feet"]],
         **{slot: [point(a) for a in anchor_of(lm, slot)] for slot in ("hat", "glasses", "top")},
     )
 
@@ -413,6 +454,8 @@ def build() -> None:
                            w=e["w"] * scale, box=e["box"]) for e in ref["eyes"]]
     fits: dict[str, dict[str, list]] = {}
     for slot, item_id, _ in items():
+        if slot == "onepiece":
+            make_fill(item_id)
         key = f"{slot}/{item_id}"
         fits[key] = {}
         for group, ref in REFERENCE.items():
@@ -448,7 +491,8 @@ def placements(sprite: dict, outfit: dict[str, str]) -> list[tuple[str, Path, fl
             dx, dy, rw, rh = rels[min(index, len(rels) - 1)]
             sign = -1 if sprite["flip"] else 1
             mirror = sprite["flip"]
-            out.append((slot, art_path(slot, item_id, sprite["view"]), cx + sign * dx * w, y + dy * w, rw * w, rh * w, mirror))
+            path = fill_path(item_id, sprite["view"]) if slot == "onepiece" else art_path(slot, item_id, sprite["view"])
+            out.append((slot, path, cx + sign * dx * w, y + dy * w, rw * w, rh * w, mirror))
     return out
 
 
@@ -457,15 +501,19 @@ def dress(name: str, sprite: dict, outfit: dict[str, str], size: int) -> Image.I
     canvas = base.copy()
     head_drawn = False
 
-    def draw_head():
-        # dressSprite 와 같이 몸 옷을 입었으면 몸 옷 다음에 머리를 다시 그린다
-        if any(s in outfit for s in BODY_SLOTS):
-            cx, cy, rx, ry = (v * size / 100 for v in sprite["head"])
-            mask = Image.new("L", (size, size), 0)
+    def redraw(ellipses):
+        mask = Image.new("L", (size, size), 0)
+        for ellipse in ellipses:
+            cx, cy, rx, ry = (v * size / 100 for v in ellipse)
             ImageDraw.Draw(mask).ellipse([cx - rx, cy - ry, cx + rx, cy + ry], fill=255)
-            head = Image.new("RGBA", (size, size))
-            head.paste(base, (0, 0), Image.composite(base.getchannel("A"), Image.new("L", (size, size)), mask))
-            canvas.alpha_composite(head)
+        part = Image.new("RGBA", (size, size))
+        part.paste(base, (0, 0), Image.composite(base.getchannel("A"), Image.new("L", (size, size)), mask))
+        canvas.alpha_composite(part)
+
+    def draw_head():
+        # dressSprite 와 같이 한벌옷을 입었으면 한벌옷 다음에 발·머리를 다시 그린다
+        if any(s in outfit for s in BODY_SLOTS):
+            redraw([*sprite["feet"], sprite["head"]])
 
     for slot, path, x, bottom, w, h, mirror in placements(sprite, outfit):
         if slot in ("glasses", "hat") and not head_drawn:
@@ -474,7 +522,12 @@ def dress(name: str, sprite: dict, outfit: dict[str, str], size: int) -> Image.I
         art = Image.open(path).convert("RGBA").resize((max(1, round(w * size / 100)), max(1, round(h * size / 100))), Image.LANCZOS)
         if mirror:
             art = art.transpose(Image.FLIP_LEFT_RIGHT)
-        canvas.alpha_composite(art, (round((x - w / 2) * size / 100), round((bottom - h) * size / 100)))
+        position = (round((x - w / 2) * size / 100), round((bottom - h) * size / 100))
+        layer = Image.new("RGBA", (size, size))
+        layer.paste(art, position, art)
+        if slot == "onepiece":  # 로비의 source-atop 과 같이 스프라이트 윤곽 안에만
+            layer.putalpha(ImageChops.multiply(layer.getchannel("A"), base.getchannel("A")))
+        canvas.alpha_composite(layer)
     if not head_drawn:
         draw_head()
     return canvas

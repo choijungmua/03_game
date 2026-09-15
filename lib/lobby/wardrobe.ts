@@ -67,12 +67,16 @@ export type FitGroup = WardrobeView | "sit-front" | "sit-side" | "sit-back";
 export type FitPoint = readonly [number, number, number];
 /** 기준점에 붙이는 옷 상자 [dx, dy(아래 끝), 폭, 높이] — 기준점 폭 단위, dx는 오른쪽 보기 기준 */
 export type FitRel = readonly [number, number, number, number];
+/** 타원 [cx, cy, rx, ry] — 스프라이트 이미지 % */
+export type FitEllipse = readonly [number, number, number, number];
 export interface SpriteFit {
   view: WardrobeView;
   group: FitGroup;
   flip: boolean;
-  /** 머리 타원 [cx, cy, rx, ry] (%) */
-  head: readonly [number, number, number, number];
+  /** 머리 타원. 한벌옷 위에 머리를 다시 그린다 */
+  head: FitEllipse;
+  /** 보이는 발마다 타원. 한벌옷 위에 발을 다시 그린다 (앉은 뒷모습은 없다) */
+  feet: readonly FitEllipse[];
   /** 모자: 머리 꼭대기 (폭 자리에 머리 높이) */
   hat: readonly FitPoint[];
   /** 안경: 두 눈 가운데 (폭 자리에 머리 높이). 뒷모습은 없다 */
@@ -86,12 +90,20 @@ export const wardrobeSrc = (slot: WardrobeSlot, id: string) => `/assets/images/c
 
 /** 옷마다 방향별 그림이 따로 있다 (scripts/wardrobe_views.py 로 생성). 정면·앉은 정면은 wardrobeSrc 그림 그대로 */
 export const VIEW_ART: readonly WardrobeView[] = ["back", "side", "front3q", "back3q"];
-/** 칸마다 실제로 그리는 방향별 그림. 안경은 뒤·뒤대각선에서 안 보여 옆·앞대각선만 있다 */
-export const viewArtOf = (slot: WardrobeSlot): readonly WardrobeView[] => (slot === "glasses" ? ["side", "front3q"] : VIEW_ART);
+/** 칸마다 로비에서 그리는 방향별 그림. 안경은 뒤·뒤대각선에서 안 보여 옆·앞대각선만, 한벌옷은 정면까지 빈틈을 채운 그림(-fill)을 쓴다 */
+export const viewArtOf = (slot: WardrobeSlot): readonly WardrobeView[] =>
+  slot === "glasses" ? ["side", "front3q"] : slot === "onepiece" ? ["front", ...VIEW_ART] : VIEW_ART;
 
-/** 로비 맵에서 그 방향에 쓸 옷 그림 */
+/**
+ * 로비 맵에서 그 방향에 쓸 옷 그림.
+ * 한벌옷은 옷 그림의 빈틈을 옷 색으로 채운 그림이다 — 몸 윤곽으로 잘라 그려서, 몸보다 뚱뚱하게 튀어나오지 않고 윤곽 안 몸은 보이지 않게 (scripts/wardrobe_fit.py)
+ */
 export const wardrobeViewSrc = (slot: WardrobeSlot, id: string, view: WardrobeView) =>
-  VIEW_ART.includes(view) ? `/assets/images/characters/capybara/wardrobe/${slot}/${id}-${view}.webp` : wardrobeSrc(slot, id);
+  slot === "onepiece"
+    ? `/assets/images/characters/capybara/wardrobe/onepiece/${id}-${view}-fill.webp`
+    : VIEW_ART.includes(view)
+      ? `/assets/images/characters/capybara/wardrobe/${slot}/${id}-${view}.webp`
+      : wardrobeSrc(slot, id);
 
 /** 옷 한 조각을 그릴 자리 — 스프라이트 이미지 %: 왼쪽·위 끝, 폭·높이. mirror면 좌우 뒤집어 그린다 */
 export interface OutfitPiece {
@@ -107,11 +119,11 @@ export interface OutfitPiece {
 export const spriteName = (src: string) => /capybara-([^/.]+)\.webp/.exec(src)?.[1] ?? "";
 
 /**
- * 스프라이트 한 장에 입힐 옷. under(몸 옷) → head(머리 타원으로 머리를 다시 그림, 몸 옷을 입었을 때만) → over(장갑·안경·모자) 순서로 그린다.
+ * 스프라이트 한 장에 입힐 옷. under(한벌옷, 스프라이트 윤곽 안에만) → redraw(발·머리 타원만큼 스프라이트를 다시 그림, 한벌옷을 입었을 때만) → over(안경·모자) 순서로 그린다.
  * 기준점이 없는 스프라이트나 안 보이는 칸(뒷모습 안경, 안 보이는 앞발)은 빠진다.
  * 옷 그림은 스프라이트가 바라보는 방향의 그림을 쓰고, 옆·대각선 그림은 왼쪽을 보는 스프라이트에서 반전한다
  */
-export function dressSprite(sprite: string, outfit: Outfit): { under: OutfitPiece[]; head: SpriteFit["head"] | null; over: OutfitPiece[] } {
+export function dressSprite(sprite: string, outfit: Outfit): { under: OutfitPiece[]; redraw: readonly FitEllipse[]; over: OutfitPiece[] } {
   const fit = SPRITE_FIT[sprite];
   const pieces = (slots: readonly WardrobeSlot[]) =>
     slots.flatMap((slot) => {
@@ -132,7 +144,11 @@ export function dressSprite(sprite: string, outfit: Outfit): { under: OutfitPiec
         };
       });
     });
-  return { under: pieces(BODY_LAYERS), head: fit && BODY_LAYERS.some((slot) => outfit[slot]) ? fit.head : null, over: pieces(OVER_HEAD_LAYERS) };
+  return {
+    under: pieces(BODY_LAYERS),
+    redraw: fit && BODY_LAYERS.some((slot) => outfit[slot]) ? [...fit.feet, fit.head] : [],
+    over: pieces(OVER_HEAD_LAYERS),
+  };
 }
 
 /** 입거나(id) 벗는다(null) */
