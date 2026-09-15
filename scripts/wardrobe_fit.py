@@ -284,6 +284,12 @@ GLASSES_FRONT = dict(width=180, bottom=161)
 HAT_DX = {"side": -0.11}
 
 
+def column_top(body: np.ndarray, x: float) -> float:
+    """x 둘레 세로줄들에서 몸 알파가 시작되는 높이 (중앙값)"""
+    tops = [int(np.argmax(body[:, c])) for c in range(int(x) - 3, int(x) + 4) if body[:, c].any()]
+    return float(np.median(tops))
+
+
 def head_item_fit(slot: str, item_id: str, lm: dict, front: dict) -> list[float]:
     """모자·안경: 정면 그림 높이를 머리 높이에 비례시켜 그 방향 그림을 같은 높이로 그린다 (옆·대각선 그림은 폭만 다르다)"""
     front_art = art_alpha(art_path(slot, item_id, "front"))
@@ -294,7 +300,14 @@ def head_item_fit(slot: str, item_id: str, lm: dict, front: dict) -> list[float]
     w = h * art.shape[1] / art.shape[0]
     view = lm["view"]
     if slot == "hat":
-        return [round(HAT_DX.get(view, 0), 3), round((spec["bottom"] - front["top"]) / front_head_h, 3), round(w, 3), round(h, 3)]
+        # 모자 아래 끝은 모자 가운데 열의 머리 윤곽 꼭대기에서 정면과 같은 비율(모자 높이 단위)만큼 파묻는다.
+        # 귀 끝 기준으로 두면 옆모습처럼 좁은 모자가 귀 사이 머리 위에 떠 보인다
+        dx = HAT_DX.get(view, 0)
+        sink = (spec["bottom"] - column_top(front["body"], front["head"]["cx"])) / (h * front_head_h)
+        scale = lm["head_scale"]
+        center = lm["head"]["cx"] + (-dx if lm["flip"] else dx) * scale
+        bottom = column_top(lm["body"], center) + sink * h * scale
+        return [round(dx, 3), round((bottom - lm["top"]) / scale, 3), round(w, 3), round(h, 3)]
     front_eye = anchor_of(front, "glasses")[0]
     center = (spec["bottom"] - h * front_head_h / 2 - front_eye["y"]) / front_head_h
     # 옆모습 안경 그림은 오른쪽 끝이 렌즈라서, 렌즈(그림 높이 정도 크기)가 눈에 오게 민다
@@ -320,10 +333,13 @@ def fit_item(slot: str, item_id: str, lm: dict, front: dict) -> list[list[float]
             band = ((rows >= y0) & (rows < y1))[:, None]
             target = body & band & ~head
             weights = (1.0, 0.25 if slot == "bottom" else 0.4, 0.7)
+            # 턱보다 위인데 머리 타원 밖(목 뒤·머리 옆)은 머리를 다시 그려도 가려지지 않아 옷이 목까지 올라와 보인다
+            above_chin = (rows < chin)[:, None] & ~head
 
-            def score(m, target=target):
+            def score(m, target=target, above_chin=above_chin):
                 v = m & ~head
-                return (v & target).sum() - weights[0] * (target & ~v).sum() - weights[1] * (v & body & ~target).sum() - weights[2] * (v & ~body).sum()
+                return ((v & target).sum() - weights[0] * (target & ~v).sum() - weights[1] * (v & body & ~target).sum()
+                        - weights[2] * (v & ~body).sum() - 1.5 * (v & above_chin).sum())
 
             ys, xs = np.nonzero(target)
             start = (xs.mean(), y1 + (2 if slot != "top" else 4), float(np.median(target.sum(1)[target.sum(1) > 0])))
@@ -423,20 +439,27 @@ def dress(name: str, sprite: dict, outfit: dict[str, str], size: int) -> Image.I
     base = Image.open(CAPY / f"capybara-{name}.webp").convert("RGBA").resize((size, size), Image.LANCZOS)
     canvas = base.copy()
     head_drawn = False
+
+    def draw_head():
+        # dressSprite 와 같이 몸 옷을 입었으면 몸 옷 다음에 머리를 다시 그린다
+        if any(s in outfit for s in BODY_SLOTS):
+            cx, cy, rx, ry = (v * size / 100 for v in sprite["head"])
+            mask = Image.new("L", (size, size), 0)
+            ImageDraw.Draw(mask).ellipse([cx - rx, cy - ry, cx + rx, cy + ry], fill=255)
+            head = Image.new("RGBA", (size, size))
+            head.paste(base, (0, 0), Image.composite(base.getchannel("A"), Image.new("L", (size, size)), mask))
+            canvas.alpha_composite(head)
+
     for slot, path, x, bottom, w, h, mirror in placements(sprite, outfit):
         if slot in ("gloves", "glasses", "hat") and not head_drawn:
             head_drawn = True
-            if any(s in outfit for s in BODY_SLOTS):
-                cx, cy, rx, ry = (v * size / 100 for v in sprite["head"])
-                mask = Image.new("L", (size, size), 0)
-                ImageDraw.Draw(mask).ellipse([cx - rx, cy - ry, cx + rx, cy + ry], fill=255)
-                head = Image.new("RGBA", (size, size))
-                head.paste(base, (0, 0), Image.composite(base.getchannel("A"), Image.new("L", (size, size)), mask))
-                canvas.alpha_composite(head)
+            draw_head()
         art = Image.open(path).convert("RGBA").resize((max(1, round(w * size / 100)), max(1, round(h * size / 100))), Image.LANCZOS)
         if mirror:
             art = art.transpose(Image.FLIP_LEFT_RIGHT)
         canvas.alpha_composite(art, (round((x - w / 2) * size / 100), round((bottom - h) * size / 100)))
+    if not head_drawn:
+        draw_head()
     return canvas
 
 
