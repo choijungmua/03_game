@@ -12,6 +12,7 @@ import { Dialog } from "@/components/overlay/dialog";
 import { cn } from "@/lib";
 import { GAME_SOUNDS } from "@/lib/games/constants";
 import type { Cell, RoomView, Stone } from "@/lib/games/rooms";
+import { useLockPageScroll } from "@/lib/games/use-lock-page-scroll";
 import { playGameSound } from "@/lib/lobby/settings";
 
 import { EmoteBubble, EmotePicker, useEmoteShowing } from "./capybara-emotes";
@@ -129,6 +130,7 @@ export function CapybaraRoom<S extends BoardRoomState>({
   const code = view?.code ?? null;
   const opponentIn = Boolean(view?.joined.white);
   const playing = Boolean(view?.you && opponentIn && !state?.endReason);
+  useLockPageScroll(playing);
   const heard = useRef({ code, opponentIn, error, copied, reconnecting, gone });
   useEffect(() => {
     const before = heard.current;
