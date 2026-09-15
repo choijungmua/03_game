@@ -686,8 +686,6 @@ function drawStar(ctx: CanvasRenderingContext2D, x: number, y: number, radius: n
 }
 
 interface OutfitDrawer {
-  /** 옷 이미지 (처음 부를 때 불러온다) */
-  image: (src: string) => HTMLImageElement;
   /**
    * 옷 입은 스프라이트를 구워 둔 캔버스. size는 화면에 그릴 크기(CSS px)이고, 캔버스는 size × 기기 픽셀 비율로 딱 맞게 굽는다
    * (서 있으면 76 → 152px, 앉으면 64 → 128px). 입은 옷이 없거나 옷 이미지를 아직 불러오는 중이면 null
@@ -696,8 +694,9 @@ interface OutfitDrawer {
 }
 
 /**
- * 스프라이트 한 장(left, top, 정사각형 size) 위에 옷을 전부 입힌다.
- * 자리는 그 스프라이트(이미지 이름)에서 잰 머리·몸통·발·앞발 기준점에 옷마다 맞춘 상자 (lib/lobby/wardrobe.ts dressSprite)
+ * 스프라이트만 그린 캔버스(left, top, 정사각형 size) 위에 옷을 전부 입힌다.
+ * 자리는 그 스프라이트(이미지 이름)에서 잰 머리·몸통·눈 기준점에 옷마다 맞춘 상자 (lib/lobby/wardrobe.ts dressSprite).
+ * 한벌옷은 source-atop으로 스프라이트 윤곽 안에만 그리므로, 다른 그림이 깔린 캔버스에서는 쓰면 안 된다
  */
 function drawOutfit(
   ctx: CanvasRenderingContext2D,
@@ -708,7 +707,7 @@ function drawOutfit(
   size: number,
   outfitImage: (src: string) => HTMLImageElement,
 ) {
-  const { under, head, over } = dressSprite(spriteName(base.src), outfit);
+  const { under, redraw, over } = dressSprite(spriteName(base.src), outfit);
   const put = (piece: OutfitPiece) => {
     const item = outfitImage(piece.src);
     if (!ready(item)) return;
@@ -726,10 +725,12 @@ function drawOutfit(
     ctx.drawImage(item, 0, y, width, height);
     ctx.restore();
   };
+  ctx.save();
+  ctx.globalCompositeOperation = "source-atop";
   under.forEach(put);
-  if (head) {
-    // 머리를 한 번 더 그려 옷이 턱 밑으로 들어가 보이게 한다 (옷장 미리보기와 같은 방식)
-    const [cx, cy, rx, ry] = head;
+  ctx.restore();
+  // 발·머리를 한 번 더 그려 한벌옷이 턱 밑으로 들어가고 발은 옷 밖으로 나와 보이게 한다 (옷장 미리보기와 같은 방식)
+  for (const [cx, cy, rx, ry] of redraw) {
     ctx.save();
     ctx.beginPath();
     ctx.ellipse(left + (size * cx) / 100, top + (size * cy) / 100, (size * rx) / 100, (size * ry) / 100, 0, 0, Math.PI * 2);
@@ -752,15 +753,9 @@ function drawCapybara(
   now: number,
   animate: boolean,
 ) {
-  /** 옷 입은 스프라이트 한 장. 구워 둔 캔버스가 있으면 한 번에, 옷 이미지를 불러오는 중이면 겹쳐 그린다 */
+  /** 옷 입은 스프라이트 한 장. 구워 둔 캔버스가 있으면 그것을, 안 입었거나 옷 이미지를 불러오는 중이면 스프라이트만 그린다 */
   const drawDressed = (image: HTMLImageElement, left: number, top: number, size: number) => {
-    const dressed = wardrobe.dressed(image, outfit, size);
-    if (dressed) {
-      ctx.drawImage(dressed, left, top, size, size);
-      return;
-    }
-    ctx.drawImage(image, left, top, size, size);
-    drawOutfit(ctx, image, outfit, left, top, size, wardrobe.image);
+    ctx.drawImage(wardrobe.dressed(image, outfit, size) ?? image, left, top, size, size);
   };
   if (!look.sitting) {
     ctx.fillStyle = "rgba(30,40,10,0.25)";
@@ -1337,7 +1332,6 @@ export function Lobby({ games }: { games: DoorGame[] }) {
     /** 캔버스의 기기 픽셀 비율 (resize에서 갱신). 옷 입은 스프라이트를 화면 크기에 딱 맞게 굽는 데 쓴다 */
     let pixelRatio = 1;
     const wardrobe: OutfitDrawer = {
-      image: outfitImage,
       dressed: (base, outfit, size) => {
         const worn = WARDROBE_SLOTS.flatMap((slot) => {
           const id = outfit[slot];
