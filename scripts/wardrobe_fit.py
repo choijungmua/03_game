@@ -325,6 +325,8 @@ def fit_item(slot: str, item_id: str, lm: dict, front: dict) -> list[list[float]
     rows = GY[:, 0]
     chin, foot_top, top, bot = lm["chin"] / k, lm["foot_top"] / k, lm["top"] / k, lm["bot"] / k
     fits = []
+    # 앉은 발바닥은 정면을 향해 커서, 다 덮으려 하면 신발이 거인 신발이 된다. 서 있을 때 신발 크기를 넘지 않게 줄이려고 먼저 잰다
+    stand_shoes = fit_item(slot, item_id, front, front) if slot == "shoes" and lm["group"].startswith("sit") and front["feet"] else None
     for index, anchor in enumerate(anchors):
         mirror = index == 1 and lm["view"] in ("front", "back")
         if slot in ("top", "bottom", "onepiece"):
@@ -335,11 +337,15 @@ def fit_item(slot: str, item_id: str, lm: dict, front: dict) -> list[list[float]
             weights = (1.0, 0.25 if slot == "bottom" else 0.4, 0.7)
             # 턱보다 위인데 머리 타원 밖(목 뒤·머리 옆)은 머리를 다시 그려도 가려지지 않아 옷이 목까지 올라와 보인다
             above_chin = (rows < chin)[:, None] & ~head
+            # 신발은 몸 옷 아래 층이라, 밑단이 발을 덮으면 신발이 가려진다 (앉으면 발바닥이 몸 앞으로 나와 특히 잘 덮인다)
+            feet = np.zeros((G, G), bool)
+            for foot in lm["feet"]:
+                feet |= shrink(nd.binary_fill_holes(foot["mask"]))
 
-            def score(m, target=target, above_chin=above_chin):
+            def score(m, target=target, above_chin=above_chin, feet=feet):
                 v = m & ~head
                 return ((v & target).sum() - weights[0] * (target & ~v).sum() - weights[1] * (v & body & ~target).sum()
-                        - weights[2] * (v & ~body).sum() - 1.5 * (v & above_chin).sum())
+                        - weights[2] * (v & ~body).sum() - 1.5 * (v & above_chin).sum() - 1.5 * (v & feet).sum())
 
             ys, xs = np.nonzero(target)
             start = (xs.mean(), y1 + (2 if slot != "top" else 4), float(np.median(target.sum(1)[target.sum(1) > 0])))
@@ -355,6 +361,15 @@ def fit_item(slot: str, item_id: str, lm: dict, front: dict) -> list[list[float]
             fits.append(head_item_fit(slot, item_id, lm, front))
             continue
         x, b, w, h = fit_box(alpha, mirror, score, start)
+        if stand_shoes:
+            i = min(index, len(stand_shoes) - 1)
+            cap = stand_shoes[i][2] * front["feet"][min(index, len(front["feet"]) - 1)]["w"] / k * lm["head_scale"] / front["head_scale"] * 1.15
+            if w > cap:  # 줄인 신발은 발 가운데·발바닥에 붙인다 (크게 맞춘 아래 끝을 그대로 두면 발 아래로 처진다)
+                w, h = cap, h * cap / w
+                x, b = anchor["cx"] / k, anchor["y"] / k + 1
+                if lm["view"] in ("side", "front3q"):
+                    # 옆·대각선 신발 그림은 앞코가 오른쪽으로 뻗어 있어, 가운데에 두면 앞코가 발 밖으로 떠 보인다. 앞코를 발 끝에 맞춘다
+                    x = (anchor["cx"] + anchor["w"] / 2) / k - w / 2
         sign = -1 if lm["flip"] else 1
         aw = anchor["w"] / k
         fits.append([round(sign * (x - anchor["cx"] / k) / aw, 3), round((b - anchor["y"] / k) / aw, 3), round(w / aw, 3), round(h / aw, 3)])
