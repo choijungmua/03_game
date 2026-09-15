@@ -72,7 +72,7 @@ export function EmotePicker({ onPick }: { onPick: (id: number) => void }) {
         <div
           role="group"
           aria-label="카피바라 이모티콘 고르기"
-          className="fixed inset-x-3 top-[max(0.75rem,env(safe-area-inset-top))] z-20 mx-auto aspect-2/1 max-h-[45dvh] max-w-3xl snap-y snap-mandatory overflow-y-auto overscroll-contain scroll-smooth rounded-2xl bg-card/95 shadow-lg backdrop-blur animate-in fade-in slide-in-from-top-4 duration-200 motion-reduce:animate-none motion-reduce:scroll-auto"
+          className="fixed right-[max(0.75rem,env(safe-area-inset-right))] left-[max(0.75rem,env(safe-area-inset-left))] top-[max(0.75rem,env(safe-area-inset-top))] z-20 mx-auto aspect-2/1 max-h-[45dvh] max-w-3xl snap-y snap-mandatory overflow-y-auto overscroll-contain scroll-smooth rounded-2xl bg-card/95 shadow-lg backdrop-blur animate-in fade-in slide-in-from-top-4 duration-200 motion-reduce:animate-none motion-reduce:scroll-auto"
         >
           {Array.from({ length: Math.ceil(CAPYBARA_EMOTES.length / EMOTES_PER_PAGE) }, (_, page) => (
             <div key={page} className="grid h-full snap-start snap-always grid-cols-4 grid-rows-2 gap-2 p-2">

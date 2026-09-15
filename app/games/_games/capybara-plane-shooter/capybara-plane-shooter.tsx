@@ -977,7 +977,7 @@ export function CapybaraPlaneShooter() {
 
       {phase === "idle" && (
         <ShareButton
-          className="absolute right-4 top-[max(1rem,env(safe-area-inset-top))]"
+          className="absolute right-[max(1rem,env(safe-area-inset-right))] top-[max(1rem,env(safe-area-inset-top))]"
           title={TITLE}
           text={shareText}
         />

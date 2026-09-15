@@ -40,7 +40,7 @@ export function RoomLobby({ title, guide, room, record }: RoomLobbyProps) {
   const { pending, create, error, spectateCode, watch } = room;
 
   return (
-    <div className="absolute inset-0 overflow-y-auto px-4 pt-[calc(max(1rem,env(safe-area-inset-top))_+_3.5rem)] pb-[max(1rem,env(safe-area-inset-bottom))] lg:flex lg:items-center lg:justify-center lg:overflow-hidden">
+    <div className="absolute inset-0 overflow-y-auto px-4 pt-[calc(max(1rem,env(safe-area-inset-top))_+_3.5rem)] max-sm:pt-[calc(max(1rem,env(safe-area-inset-top))_+_7rem)] pb-[max(1rem,env(safe-area-inset-bottom))] lg:flex lg:items-center lg:justify-center lg:overflow-hidden">
       {/* 넓은 화면: 왼쪽 소개 카드가 남는 높이를 채워 왼쪽(소개+전적)과 오른쪽(방 목록+방 만들기)의 위·아래 끝이 맞는다 */}
       <div className="mx-auto grid w-full max-w-md gap-4 lg:mx-0 lg:h-[min(38rem,100%)] lg:max-w-4xl lg:grid-cols-[minmax(0,1fr)_26rem] lg:grid-rows-[minmax(0,1fr)_auto] lg:gap-6">
         <div className={cn(CARD, "flex flex-col items-center justify-center gap-3 p-6 text-center lg:p-8")}>

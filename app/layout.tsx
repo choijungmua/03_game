@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 
 import { Toaster } from "@/components/feedback/sonner";
 import { pretendard } from "@/config";
@@ -33,6 +33,14 @@ export const metadata: Metadata = {
     google: process.env.GOOGLE_SITE_VERIFICATION,
     other: { "naver-site-verification": naverVerification },
   },
+};
+
+// viewport-fit=cover: 화면을 노치·다이나믹 아일랜드·홈 인디케이터 밑까지 채운다.
+// 이게 없으면 iOS가 env(safe-area-inset-*)를 0으로 줘서, 가장자리 버튼·HUD의 안전 영역 여백이 전부 무시된다
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

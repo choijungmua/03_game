@@ -2592,7 +2592,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
       {/* 있는 듯 없는 듯: 평소엔 반투명 알약, 입력할 때만 넓어지고 또렷해진다. 보내기는 Enter(모바일은 키보드 전송). 오른쪽 위 버튼 줄 자리는 비워 둔다 */}
       <form
         onSubmit={sendChat}
-        className="group absolute left-3 top-[max(0.75rem,env(safe-area-inset-top))] flex w-44 max-w-[calc(100%-5.5rem)] items-center rounded-full bg-black/25 transition-[width,background-color] duration-150 has-[input:focus]:w-72 has-[input:focus]:bg-card/90 has-[input:focus-visible]:ring-1 has-[input:focus-visible]:ring-primary motion-reduce:transition-none"
+        className="group absolute left-[max(0.75rem,env(safe-area-inset-left))] top-[max(0.75rem,env(safe-area-inset-top))] flex w-44 max-w-[calc(100%-5.5rem)] items-center rounded-full bg-black/25 transition-[width,background-color] duration-150 has-[input:focus]:w-72 has-[input:focus]:bg-card/90 has-[input:focus-visible]:ring-1 has-[input:focus-visible]:ring-primary motion-reduce:transition-none"
       >
         <Input
           ref={chatInputRef}
@@ -2616,7 +2616,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
 
       {/* 오른쪽 위 세로 줄: 카피바라 옷장 → 낚시 가방 → 효과음 → 이름 바꾸기. 설정 버튼은 나중에 이 줄에 다시 넣는다 */}
       {/* 효과음 버튼의 헤드폰이 원 밖으로 삐져나오는 만큼 위(옷장)·오른쪽(화면 끝)을 띄운다. 두 버튼은 앉기·때리기와 같은 크기(모바일 size-14, md 이상 size-18) */}
-      <div className="absolute right-5 top-[max(0.75rem,env(safe-area-inset-top))] flex flex-col items-center gap-6">
+      <div className="absolute right-[max(1.25rem,env(safe-area-inset-right))] top-[max(0.75rem,env(safe-area-inset-top))] flex flex-col items-center gap-6">
         <Wardrobe
           onChange={(outfit) => {
             outfitRef.current = outfit;
@@ -2637,7 +2637,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
       <canvas
         ref={minimapRef}
         aria-hidden="true"
-        className="pointer-events-none absolute bottom-[max(0.75rem,env(safe-area-inset-bottom))] left-3 size-20 rounded-lg border-2 border-white/40 shadow-md sm:size-32"
+        className="pointer-events-none absolute bottom-[max(0.75rem,env(safe-area-inset-bottom))] left-[max(0.75rem,env(safe-area-inset-left))] size-20 rounded-lg border-2 border-white/40 shadow-md sm:size-32"
       />
 
       {/* 가운데 안내 글: 왼쪽 아래 미니맵(모바일 폭 ~5.75rem, sm 이상 ~8.75rem)·오른쪽 아래 버튼 줄(폭 ~5.5rem)을 가리지 않게 양옆을 비우고, 맨 아래 사이트 링크 줄 위에 둔다 */}
@@ -2664,7 +2664,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
       </div>
 
       {/* 오른쪽 아래 세로 줄: 앉기 → 때리기 → 사이트 링크. 오른쪽 끝은 위 옷장·효과음 줄(right-5)과 맞추고, 링크는 맨 아래 줄에 둔다 */}
-      <div className="absolute bottom-[max(0.75rem,env(safe-area-inset-bottom))] right-5 flex flex-col items-end gap-3">
+      <div className="absolute bottom-[max(0.75rem,env(safe-area-inset-bottom))] right-[max(1.25rem,env(safe-area-inset-right))] flex flex-col items-end gap-3">
         <div className="flex flex-col items-center gap-2">
           {(seatNearby || sitting) && (
             <button

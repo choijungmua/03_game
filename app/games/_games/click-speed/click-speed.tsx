@@ -64,7 +64,7 @@ function PlayTimer({ startAt, seconds }: { startAt: number; seconds: number }) {
   return (
     <p
       data-testid="play-timer"
-      className="pointer-events-none absolute right-4 bottom-[max(1rem,env(safe-area-inset-bottom))] rounded-full bg-black/15 px-3 py-1.5 text-title-3 font-bold tabular-nums"
+      className="pointer-events-none absolute right-[max(1rem,env(safe-area-inset-right))] bottom-[max(1rem,env(safe-area-inset-bottom))] rounded-full bg-black/15 px-3 py-1.5 text-title-3 font-bold tabular-nums"
     >
       <span ref={valueRef}>{remaining(0)}</span>초
     </p>
@@ -303,7 +303,7 @@ export function ClickSpeed() {
 
       {phase === "idle" && (
         <ShareButton
-          className="absolute right-4 top-[max(1rem,env(safe-area-inset-top))]"
+          className="absolute right-[max(1rem,env(safe-area-inset-right))] top-[max(1rem,env(safe-area-inset-top))]"
           title={GAME_TITLES["click-speed"]}
           text={shareText}
         />
