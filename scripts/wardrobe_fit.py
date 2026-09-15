@@ -28,7 +28,7 @@ OUT = ROOT / "lib/lobby/wardrobe-fit.ts"
 S = 384  # 기준점을 재는 해상도 (서기 스프라이트 원본 크기)
 G = 128  # 맞추기 점수를 매기는 격자
 
-BODY_SLOTS = ["shoes", "bottom", "top", "onepiece"]
+BODY_SLOTS = ["onepiece"]
 DIRECTION_VIEW = {
     "down": "front", "up": "back", "left": "side", "right": "side",
     "down-left": "front3q", "down-right": "front3q", "up-left": "back3q", "up-right": "back3q",
@@ -173,9 +173,11 @@ def landmarks(name: str) -> dict:
     if view not in ("back", "back3q"):
         black = body & (lum < 60)
         # 눈은 머리 윗부분에만 있다 (아래쪽 검정은 입 선). 정면에서 두 개가 안 잡히면 버리고 대표 스프라이트 눈 자리를 쓴다
+        # 납작한 검정(눈썹·감은 눈 선)은 눈이 아니다
         eyes = [c for c in components(black, lum, 25) if top + h * 0.15 < c["cy"] < min(chin, top + h * 0.28) and c["area"] < 900
+                and c["x1"] - c["x0"] <= (c["y1"] - c["y0"]) * 2
                 and (muzzle is None or not (muzzle["x0"] <= c["cx"] <= muzzle["x1"] and muzzle["y0"] <= c["cy"] <= muzzle["y1"]))]
-        eyes = sorted(eyes, key=lambda c: -c["area"])[:2]
+        eyes = sorted(eyes, key=lambda c: -c["area"])[: 1 if view == "side" else 2]
         if view == "front" and len(eyes) < 2:
             eyes = []
 
@@ -310,8 +312,8 @@ def head_item_fit(slot: str, item_id: str, lm: dict, front: dict) -> list[float]
         return [round(dx, 3), round((bottom - lm["top"]) / scale, 3), round(w, 3), round(h, 3)]
     front_eye = anchor_of(front, "glasses")[0]
     center = (spec["bottom"] - h * front_head_h / 2 - front_eye["y"]) / front_head_h
-    # 옆모습 안경 그림은 오른쪽 끝이 렌즈라서, 렌즈(그림 높이 정도 크기)가 눈에 오게 민다
-    dx = (192 - front_eye["cx"]) / front_head_h if view == "front" else (h * 0.55 - w / 2 if view == "side" else 0)
+    # 옆모습 안경 그림은 오른쪽 끝이 렌즈라서, 렌즈가 눈 위에 오게 그림 오른쪽 끝을 눈에서 조금만 앞에 둔다
+    dx = (192 - front_eye["cx"]) / front_head_h if view == "front" else (h * 0.25 - w / 2 if view == "side" else 0)
     return [round(dx, 3), round(center + h / 2, 3), round(w, 3), round(h, 3)]
 
 
@@ -388,7 +390,7 @@ def sprite_record(lm: dict) -> dict:
     return dict(
         view=lm["view"], group=lm["group"], flip=lm["flip"],
         head=[pct(head["cx"]), pct(head["cy"]), pct(head["rx"]), pct(head["ry"])],
-        **{slot: [point(a) for a in anchor_of(lm, slot)] for slot in ("hat", "glasses", "top", "shoes", "gloves")},
+        **{slot: [point(a) for a in anchor_of(lm, slot)] for slot in ("hat", "glasses", "top")},
     )
 
 
@@ -420,7 +422,7 @@ def build() -> None:
     body = (
         "// 생성 파일 — 고치지 말고 `python scripts/wardrobe_fit.py` 로 다시 만든다\n"
         "// SPRITE_FIT: 스프라이트(capybara-<이름>.webp)마다 옷 그림 방향·맞추기 묶음·좌우 반전, 머리 타원 [cx, cy, rx, ry],\n"
-        "//   칸별 기준점 [cx, y, w] (이미지 %; hat·glasses 는 머리, top 은 몸통(상의·하의·한벌옷), shoes 는 발, gloves 는 앞발)\n"
+        "//   칸별 기준점 [cx, y, w] (이미지 %; hat 은 머리 꼭대기, glasses 는 두 눈, top 은 몸통(한벌옷))\n"
         "// ITEM_FIT: 옷(<칸>/<id>)마다 묶음별, 기준점마다 상자 [dx, dy, w, h] — 기준점 폭 단위, dx 는 오른쪽 보기 기준\n"
         'import type { FitGroup, FitRel, SpriteFit } from "./wardrobe";\n\n'
         f"export const SPRITE_FIT: Record<string, SpriteFit> = {json.dumps(sprites, separators=(',', ':'))};\n\n"
@@ -435,9 +437,9 @@ def build() -> None:
 def placements(sprite: dict, outfit: dict[str, str]) -> list[tuple[str, Path, float, float, float, float, bool]]:
     ts = OUT.read_text(encoding="utf-8")
     item_fit = json.loads(re.search(r"export const ITEM_FIT[^=]*= (\{.*\});", ts).group(1))
-    anchors = {"hat": "hat", "glasses": "glasses", "top": "top", "bottom": "top", "onepiece": "top", "shoes": "shoes", "gloves": "gloves"}
+    anchors = {"hat": "hat", "glasses": "glasses", "onepiece": "top"}
     out = []
-    for slot in ["shoes", "bottom", "top", "onepiece", "gloves", "glasses", "hat"]:
+    for slot in ["onepiece", "glasses", "hat"]:
         item_id = outfit.get(slot)
         rels = item_fit.get(f"{slot}/{item_id}", {}).get(sprite["group"]) if item_id else None
         if not rels:
@@ -445,7 +447,7 @@ def placements(sprite: dict, outfit: dict[str, str]) -> list[tuple[str, Path, fl
         for index, (cx, y, w) in enumerate(sprite[anchors[slot]]):
             dx, dy, rw, rh = rels[min(index, len(rels) - 1)]
             sign = -1 if sprite["flip"] else 1
-            mirror = (index == 1 and sprite["view"] in ("front", "back")) != sprite["flip"]
+            mirror = sprite["flip"]
             out.append((slot, art_path(slot, item_id, sprite["view"]), cx + sign * dx * w, y + dy * w, rw * w, rh * w, mirror))
     return out
 
@@ -466,7 +468,7 @@ def dress(name: str, sprite: dict, outfit: dict[str, str], size: int) -> Image.I
             canvas.alpha_composite(head)
 
     for slot, path, x, bottom, w, h, mirror in placements(sprite, outfit):
-        if slot in ("gloves", "glasses", "hat") and not head_drawn:
+        if slot in ("glasses", "hat") and not head_drawn:
             head_drawn = True
             draw_head()
         art = Image.open(path).convert("RGBA").resize((max(1, round(w * size / 100)), max(1, round(h * size / 100))), Image.LANCZOS)
@@ -479,12 +481,12 @@ def dress(name: str, sprite: dict, outfit: dict[str, str], size: int) -> Image.I
 
 
 SHEET_OUTFITS = [
-    {"top": "hoodie", "bottom": "denim", "shoes": "sneakers", "gloves": "mitten", "hat": "beanie", "glasses": "wood"},
-    {"onepiece": "dino", "shoes": "rocket", "gloves": "boxing", "hat": "crown", "glasses": "star"},
-    {"top": "marching", "bottom": "tutu", "shoes": "rain-boots", "gloves": "crab", "hat": "straw", "glasses": "goggles"},
-    {"onepiece": "yukata", "shoes": "geta", "gloves": "cat-paw", "hat": "watermelon", "glasses": "heart"},
-    {"top": "aloha", "bottom": "grass-skirt", "shoes": "flippers", "gloves": "champion", "hat": "leaf", "glasses": "rainbow"},
-    {"onepiece": "shark", "shoes": "bunny", "gloves": "rubber", "hat": "yuzu-towel", "glasses": "sunglasses"},
+    {"onepiece": "overalls", "hat": "beanie", "glasses": "wood"},
+    {"onepiece": "dino", "hat": "crown", "glasses": "star"},
+    {"onepiece": "raincoat", "hat": "straw", "glasses": "goggles"},
+    {"onepiece": "yukata", "hat": "watermelon", "glasses": "heart"},
+    {"onepiece": "strawberry", "hat": "leaf", "glasses": "rainbow"},
+    {"onepiece": "shark", "hat": "yuzu-towel", "glasses": "sunglasses"},
 ]
 SHEET_SPRITES = ["stand-down", "stand-down-right", "stand-right", "stand-up-right", "stand-up", "stand-left", "walk1-down", "walk2-right",
                  "punch-down", "punch-right", "yawn-2-down", "doze-2-right", "scratch-2", "eating-1", "idle-down", "idle-right", "idle-up"]

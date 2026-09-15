@@ -123,8 +123,8 @@ import {
   spriteName,
   WARDROBE_SLOTS,
   wardrobeSrc,
+  viewArtOf,
   wardrobeViewSrc,
-  VIEW_ART,
 } from "@/lib/lobby/wardrobe";
 import { SPRITE_FIT } from "@/lib/lobby/wardrobe-fit";
 import {
@@ -2437,7 +2437,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
       ...WARDROBE_SLOTS.flatMap((slot) => {
         const id = outfitRef.current[slot];
         // 정면 + 뒤·옆·대각선 그림까지 받아 둬야 방향을 틀 때 옷이 늦게 나타나지 않는다
-        return id ? [wardrobeSrc(slot, id), ...VIEW_ART.map((view) => wardrobeViewSrc(slot, id, view))].map(outfitImage) : [];
+        return id ? [wardrobeSrc(slot, id), ...viewArtOf(slot).map((view) => wardrobeViewSrc(slot, id, view))].map(outfitImage) : [];
       }),
     ];
     let loadedCount = 0;

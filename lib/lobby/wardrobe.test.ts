@@ -3,11 +3,11 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
-import { dressSprite, parseOutfit, SLOT_INFO, spriteName, VIEW_ART, WARDROBE_SLOTS, wardrobeSrc, wardrobeViewSrc, wear } from "./wardrobe";
+import { dressSprite, parseOutfit, SLOT_INFO, spriteName, viewArtOf, WARDROBE_SLOTS, wardrobeSrc, wardrobeViewSrc, wear } from "./wardrobe";
 import { ITEM_FIT, SPRITE_FIT } from "./wardrobe-fit";
 import { FACINGS } from "./world";
 
-const EVERY_SLOT = { hat: "crown", glasses: "star", top: "hoodie", bottom: "denim", shoes: "sneakers", gloves: "boxing" } as const;
+const EVERY_SLOT = { hat: "crown", glasses: "star", onepiece: "dino" } as const;
 
 describe("로비 옷장", () => {
   it("옷마다 이미지가 있다", () => {
@@ -18,10 +18,10 @@ describe("로비 옷장", () => {
     }
   });
 
-  it("옷마다 뒤·옆·대각선 그림이 있다", () => {
+  it("옷마다 로비에서 그리는 방향별 그림이 있다", () => {
     for (const slot of WARDROBE_SLOTS) {
       for (const item of SLOT_INFO[slot].items) {
-        for (const view of VIEW_ART) {
+        for (const view of viewArtOf(slot)) {
           const src = wardrobeViewSrc(slot, item.id, view);
           expect(existsSync(join(process.cwd(), "public", src)), src).toBe(true);
         }
@@ -42,7 +42,7 @@ describe("로비 옷장", () => {
       const { under, head, over } = dressSprite(sprite, EVERY_SLOT);
       expect(head, sprite).not.toBeNull();
       for (const slot of Object.keys(EVERY_SLOT)) {
-        // 뒷모습에서는 안경이 안 보이고, 옆모습에서는 앞발이 하나만 보인다
+        // 뒷모습에서는 안경이 안 보인다
         if (slot === "glasses" && sprite.startsWith("stand-up")) continue;
         expect([...under, ...over].some((piece) => piece.src.includes(`/wardrobe/${slot}/`)), `${sprite} ${slot}`).toBe(true);
       }
@@ -63,18 +63,13 @@ describe("로비 옷장", () => {
     expect(spriteName("https://ggpli.com/assets/images/characters/capybara/capybara-walk1-up-left.webp")).toBe("walk1-up-left");
   });
 
-  it("한벌옷을 입으면 상의·하의를 벗고, 상의를 입으면 한벌옷을 벗는다", () => {
-    const dressed = wear(wear({ hat: "straw" }, "top", "aloha"), "bottom", "denim");
-    expect(wear(dressed, "onepiece", "yukata")).toEqual({ hat: "straw", onepiece: "yukata" });
-    expect(wear({ onepiece: "yukata" }, "top", "aloha")).toEqual({ top: "aloha" });
+  it("입으면 그 칸만 바뀌고, 벗으면 그 칸만 빠진다", () => {
+    expect(wear({ hat: "straw" }, "onepiece", "yukata")).toEqual({ hat: "straw", onepiece: "yukata" });
+    expect(wear({ hat: "straw", glasses: "wood" }, "hat", null)).toEqual({ glasses: "wood" });
   });
 
-  it("벗으면 그 칸만 빠진다", () => {
-    expect(wear({ hat: "straw", shoes: "geta" }, "hat", null)).toEqual({ shoes: "geta" });
-  });
-
-  it("저장값에서 모르는 칸·옷·깨진 JSON은 버린다", () => {
-    expect(parseOutfit('{"hat":"straw","glasses":"nope","wings":"x"}')).toEqual({ hat: "straw" });
+  it("저장값에서 모르는 칸·옷·깨진 JSON은 버린다 (보류한 상의·신발 저장값도)", () => {
+    expect(parseOutfit('{"hat":"straw","glasses":"nope","wings":"x","top":"hoodie","shoes":"geta"}')).toEqual({ hat: "straw" });
     expect(parseOutfit("{broken")).toEqual({});
     expect(parseOutfit(null)).toEqual({});
   });

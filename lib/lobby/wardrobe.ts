@@ -4,7 +4,8 @@
 
 import { ITEM_FIT, SPRITE_FIT } from "./wardrobe-fit";
 
-export const WARDROBE_SLOTS = ["hat", "glasses", "top", "bottom", "onepiece", "shoes", "gloves"] as const;
+// 상의·하의·신발·장갑은 보류 (그림은 public/.../wardrobe 에 남아 있다). 칸을 다시 넣으면 scripts/wardrobe_fit.py 를 다시 돌린다
+export const WARDROBE_SLOTS = ["hat", "glasses", "onepiece"] as const;
 export type WardrobeSlot = (typeof WARDROBE_SLOTS)[number];
 export type Outfit = Partial<Record<WardrobeSlot, string>>;
 
@@ -38,28 +39,6 @@ export const SLOT_INFO: Record<WardrobeSlot, { label: string; items: readonly Wa
       { id: "heart", label: "하트 안경" },
     ],
   },
-  top: {
-    label: "상의",
-    items: [
-      { id: "marching", label: "마칭밴드 재킷", special: true },
-      { id: "hero", label: "히어로 티", special: true },
-      { id: "cloud", label: "구름 스웨터", special: true },
-      { id: "knit-vest", label: "줄무늬 조끼" },
-      { id: "aloha", label: "나뭇잎 셔츠" },
-      { id: "hoodie", label: "노란 후드" },
-    ],
-  },
-  bottom: {
-    label: "하의",
-    items: [
-      { id: "duck-swim", label: "오리 수영바지", special: true },
-      { id: "tutu", label: "반짝이 튀튀", special: true },
-      { id: "pumpkin", label: "호박 반바지", special: true },
-      { id: "denim", label: "청 반바지" },
-      { id: "check", label: "체크 반바지" },
-      { id: "grass-skirt", label: "풀잎 치마" },
-    ],
-  },
   onepiece: {
     label: "한벌옷",
     items: [
@@ -71,36 +50,11 @@ export const SLOT_INFO: Record<WardrobeSlot, { label: string; items: readonly Wa
       { id: "yukata", label: "유카타" },
     ],
   },
-  shoes: {
-    label: "신발",
-    items: [
-      { id: "rocket", label: "로켓 부츠", special: true },
-      { id: "flippers", label: "오리발", special: true },
-      { id: "bunny", label: "토끼 슬리퍼", special: true },
-      { id: "rain-boots", label: "장화" },
-      { id: "sneakers", label: "운동화" },
-      { id: "geta", label: "나막신" },
-    ],
-  },
-  gloves: {
-    label: "장갑",
-    items: [
-      { id: "crab", label: "게 집게", special: true },
-      { id: "cat-paw", label: "고양이 발 장갑", special: true },
-      { id: "champion", label: "챔피언 글러브", special: true },
-      { id: "mitten", label: "벙어리장갑" },
-      { id: "rubber", label: "고무장갑" },
-      { id: "boxing", label: "권투 글러브" },
-    ],
-  },
 };
 
-/**
- * 겹쳐 그리는 순서 (아래 → 위). 몸 옷 위에 카피바라 머리(스프라이트마다 잰 머리 타원)를 한 번 더 그려서 옷이 턱 밑으로 들어가 보이게 한다.
- * 신발은 하의·한벌옷 밑단 아래에 깔고 밑단을 발 위에서 끝내서 신발 앞코만 보이게 한다 (위에 그리면 옷 다리 위로 겹쳐 보인다)
- */
-export const BODY_LAYERS: readonly WardrobeSlot[] = ["shoes", "bottom", "top", "onepiece"];
-export const OVER_HEAD_LAYERS: readonly WardrobeSlot[] = ["gloves", "glasses", "hat"];
+/** 겹쳐 그리는 순서 (아래 → 위). 한벌옷 위에 카피바라 머리(스프라이트마다 잰 머리 타원)를 한 번 더 그려서 옷이 턱 밑으로 들어가 보이게 한다 */
+export const BODY_LAYERS: readonly WardrobeSlot[] = ["onepiece"];
+export const OVER_HEAD_LAYERS: readonly WardrobeSlot[] = ["glasses", "hat"];
 
 /**
  * 스프라이트가 보여 주는 몸 방향. front3q·back3q는 앞·뒤 대각선(3/4 시점).
@@ -123,27 +77,17 @@ export interface SpriteFit {
   hat: readonly FitPoint[];
   /** 안경: 두 눈 가운데 (폭 자리에 머리 높이). 뒷모습은 없다 */
   glasses: readonly FitPoint[];
-  /** 상의·하의·한벌옷: 몸통 가운데·발바닥 */
+  /** 한벌옷: 몸통 가운데·발바닥 */
   top: readonly FitPoint[];
-  /** 발마다 */
-  shoes: readonly FitPoint[];
-  /** 보이는 앞발마다 */
-  gloves: readonly FitPoint[];
 }
-const ANCHOR: Record<WardrobeSlot, "hat" | "glasses" | "top" | "shoes" | "gloves"> = {
-  hat: "hat",
-  glasses: "glasses",
-  top: "top",
-  bottom: "top",
-  onepiece: "top",
-  shoes: "shoes",
-  gloves: "gloves",
-};
+const ANCHOR: Record<WardrobeSlot, "hat" | "glasses" | "top"> = { hat: "hat", glasses: "glasses", onepiece: "top" };
 
 export const wardrobeSrc = (slot: WardrobeSlot, id: string) => `/assets/images/characters/capybara/wardrobe/${slot}/${id}.webp`;
 
 /** 옷마다 방향별 그림이 따로 있다 (scripts/wardrobe_views.py 로 생성). 정면·앉은 정면은 wardrobeSrc 그림 그대로 */
 export const VIEW_ART: readonly WardrobeView[] = ["back", "side", "front3q", "back3q"];
+/** 칸마다 실제로 그리는 방향별 그림. 안경은 뒤·뒤대각선에서 안 보여 옆·앞대각선만 있다 */
+export const viewArtOf = (slot: WardrobeSlot): readonly WardrobeView[] => (slot === "glasses" ? ["side", "front3q"] : VIEW_ART);
 
 /** 로비 맵에서 그 방향에 쓸 옷 그림 */
 export const wardrobeViewSrc = (slot: WardrobeSlot, id: string, view: WardrobeView) =>
@@ -165,7 +109,7 @@ export const spriteName = (src: string) => /capybara-([^/.]+)\.webp/.exec(src)?.
 /**
  * 스프라이트 한 장에 입힐 옷. under(몸 옷) → head(머리 타원으로 머리를 다시 그림, 몸 옷을 입었을 때만) → over(장갑·안경·모자) 순서로 그린다.
  * 기준점이 없는 스프라이트나 안 보이는 칸(뒷모습 안경, 안 보이는 앞발)은 빠진다.
- * 옆·대각선 그림은 왼쪽을 보는 스프라이트에서 반전하고, 앞·뒤에서는 두 번째 짝(신발·장갑)을 반전한다
+ * 옷 그림은 스프라이트가 바라보는 방향의 그림을 쓰고, 옆·대각선 그림은 왼쪽을 보는 스프라이트에서 반전한다
  */
 export function dressSprite(sprite: string, outfit: Outfit): { under: OutfitPiece[]; head: SpriteFit["head"] | null; over: OutfitPiece[] } {
   const fit = SPRITE_FIT[sprite];
@@ -184,27 +128,18 @@ export function dressSprite(sprite: string, outfit: Outfit): { under: OutfitPiec
           top: y + dy * w - height,
           width,
           height,
-          mirror: (index === 1 && (fit.view === "front" || fit.view === "back")) !== fit.flip,
+          mirror: fit.flip,
         };
       });
     });
   return { under: pieces(BODY_LAYERS), head: fit && BODY_LAYERS.some((slot) => outfit[slot]) ? fit.head : null, over: pieces(OVER_HEAD_LAYERS) };
 }
 
-/** 입거나(id) 벗는다(null). 한벌옷은 상의·하의와 함께 입을 수 없어서 서로 벗긴다 */
+/** 입거나(id) 벗는다(null) */
 export function wear(outfit: Outfit, slot: WardrobeSlot, id: string | null): Outfit {
   const next: Outfit = { ...outfit };
-  if (id === null) {
-    delete next[slot];
-    return next;
-  }
-  next[slot] = id;
-  if (slot === "onepiece") {
-    delete next.top;
-    delete next.bottom;
-  } else if (slot === "top" || slot === "bottom") {
-    delete next.onepiece;
-  }
+  if (id === null) delete next[slot];
+  else next[slot] = id;
   return next;
 }
 

@@ -216,7 +216,6 @@ export function Wardrobe({ onChange }: { onChange: (outfit: Outfit) => void }) {
             </button>
           ))}
         </div>
-        {slot === "onepiece" && <p className="text-caption-3 text-text-caption">한벌옷을 입으면 상의·하의는 벗어요</p>}
       </section>
     </div>
   );
