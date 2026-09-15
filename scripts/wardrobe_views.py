@@ -19,13 +19,15 @@ sys.path.insert(0, str(ROOT / "scripts"))
 from make_image import ASSETS_DIR, make_image  # noqa: E402
 from split_wardrobe import key_magenta  # noqa: E402  (import 시 시트가 없으면 건너뛰기만 한다)
 
-SLOTS = ["top", "bottom", "onepiece", "shoes", "gloves"]
+SLOTS = ["hat", "glasses", "top", "bottom", "onepiece", "shoes", "gloves"]
 VIEWS = ["back", "side", "front3q", "back3q"]
 CAPY = ROOT / "assets-src/characters/capybara"
 WARDROBE = ROOT / "public/assets/images/characters/capybara/wardrobe"
 SRC_DIR = ROOT / "assets-src/characters/capybara/wardrobe/views"
 
 HOW = {
+    "hat": "머리에 쓴 모자만 (카피바라 귀가 들어갈 자리는 비워 둔 모양 그대로)",
+    "glasses": "얼굴에 쓴 안경만 (옆에서는 앞 렌즈 하나와 귀로 가는 안경다리가 보이는 모양, 뒤에서는 안경다리 끝만)",
     "top": "몸통에 입은 상의만 (소매 포함)",
     "bottom": "허리~허벅지에 입은 하의만",
     "onepiece": "몸통~다리에 입은 한벌옷만 (후드·꼬리 같은 장식 포함)",

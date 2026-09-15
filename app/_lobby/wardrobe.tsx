@@ -6,13 +6,13 @@ import { useEffect, useEffectEvent, useRef, useState } from "react";
 
 import { cn } from "@/lib";
 import {
-  BODY_LAYERS,
-  HEAD_CLIP,
+  dressSprite,
   loadOutfit,
   type Outfit,
-  OVER_HEAD_LAYERS,
+  type OutfitPiece,
   saveOutfit,
   SLOT_INFO,
+  spriteName,
   WARDROBE_SLOTS,
   type WardrobeSlot,
   wardrobeSrc,
@@ -57,28 +57,27 @@ export function Wardrobe({ onChange }: { onChange: (outfit: Outfit) => void }) {
     onChange(next);
   };
 
-  const layers = (slots: readonly WardrobeSlot[]) =>
-    slots.map((drawSlot) => {
-      const id = outfit[drawSlot];
-      if (!id) return null;
-      return SLOT_INFO[drawSlot].anchors.map((anchor, index) => (
-        <NextImage
-          key={`${drawSlot}-${index}`}
-          src={wardrobeSrc(drawSlot, id)}
-          alt=""
-          width={256}
-          height={256}
-          unoptimized
-          className="absolute h-auto max-w-none"
-          style={{
-            left: `${anchor.x}%`,
-            top: `${anchor.bottom}%`,
-            width: `${anchor.width}%`,
-            transform: `translate(-50%, -100%)${anchor.mirror ? " scaleX(-1)" : ""}`,
-          }}
-        />
-      ));
-    });
+  // 로비 맵의 앉은 정면과 같은 스프라이트·같은 자리
+  const { under, head, over } = dressSprite(spriteName(CAPYBARA_SRC), outfit);
+  const layers = (pieces: readonly OutfitPiece[]) =>
+    pieces.map((piece, index) => (
+      <NextImage
+        key={`${piece.src}-${index}`}
+        src={piece.src}
+        alt=""
+        width={256}
+        height={256}
+        unoptimized
+        className="absolute max-w-none"
+        style={{
+          left: `${piece.left}%`,
+          top: `${piece.top}%`,
+          width: `${piece.width}%`,
+          height: `${piece.height}%`,
+          transform: piece.mirror ? "scaleX(-1)" : undefined,
+        }}
+      />
+    ));
 
   const close = () => {
     setOpen(false);
@@ -147,9 +146,18 @@ export function Wardrobe({ onChange }: { onChange: (outfit: Outfit) => void }) {
         {/* 키 큰 모자가 머리 위로 삐져나오는 만큼 위를 비워 둔다 */}
         <div className="relative mx-auto mt-10 aspect-square w-full max-w-56">
           <NextImage src={CAPYBARA_SRC} alt="" fill unoptimized sizes="224px" />
-          {layers(BODY_LAYERS)}
-          <NextImage src={CAPYBARA_SRC} alt="" fill unoptimized sizes="224px" style={{ clipPath: HEAD_CLIP }} />
-          {layers(OVER_HEAD_LAYERS)}
+          {layers(under)}
+          {head && (
+            <NextImage
+              src={CAPYBARA_SRC}
+              alt=""
+              fill
+              unoptimized
+              sizes="224px"
+              style={{ clipPath: `ellipse(${head[2]}% ${head[3]}% at ${head[0]}% ${head[1]}%)` }}
+            />
+          )}
+          {layers(over)}
         </div>
         <p className="sr-only" aria-live="polite">
           {WARDROBE_SLOTS.flatMap((s) => SLOT_INFO[s].items.filter((item) => item.id === outfit[s]).map((item) => item.label)).join(", ") ||
