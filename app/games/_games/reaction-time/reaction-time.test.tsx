@@ -215,10 +215,14 @@ describe("ReactionTime", () => {
       expect(getArea()).toHaveClass("bg-violet-600");
     });
 
-    it("결과 화면에서만 광고가 보인다", async () => {
+    it("결과 화면에는 광고 없이 다시 하기·홈으로 버튼이 있다", async () => {
       render(<ReactionTime />);
       await playRound(180);
-      expect(getAdSlot()).not.toBeNull();
+      expect(getAdSlot()).toBeNull();
+      expect(screen.getByRole("link", { name: "홈으로" })).toHaveAttribute("href", "/");
+
+      fireEvent.click(screen.getByRole("button", { name: "다시 하기" }));
+      expect(screen.getByTestId("countdown")).toHaveTextContent("3");
     });
 
     it("결과를 멈춘 탭이 곧바로 재시작으로 이어지지 않는다", async () => {

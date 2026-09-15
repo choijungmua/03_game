@@ -341,13 +341,15 @@ describe("CapybaraSneak", () => {
       expect(gaugeValue()).toBe(gaugeAtFail);
     });
 
-    it("광고는 결과 팝업에서만 보인다", async () => {
+    it("결과 팝업에는 광고 없이 공유·다시 하기·홈으로가 있다", async () => {
       render(<CapybaraSneak />);
-      await eatUntil(99);
-      expect(getAdSlot()).toBeNull();
-
       await eatUntil(100);
-      expect(screen.getByRole("dialog")).toContainElement(getAdSlot() as HTMLElement);
+
+      const dialog = screen.getByRole("dialog");
+      expect(getAdSlot()).toBeNull();
+      expect(dialog).toContainElement(screen.getByRole("button", { name: "공유하기" }));
+      expect(dialog).toContainElement(screen.getByRole("button", { name: "다시 하기" }));
+      expect(screen.getByRole("link", { name: "홈으로" })).toHaveAttribute("href", "/");
     });
 
     it("다시 하기를 누르면 처음 상태로 돌아간다", async () => {

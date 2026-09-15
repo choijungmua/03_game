@@ -30,5 +30,4 @@ export interface CapybaraRoomProps<S extends BoardRoomState> {
   info?: ReactNode;
   /** 판이 끝났을 때 결과 팝업 설명 */
   resultText: string;
-  adPlacement: string;
 }

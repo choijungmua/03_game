@@ -106,7 +106,6 @@ export function CapybaraBaduk() {
         )
       }
       resultText={state?.endReason ? describeEnd(state) : ""}
-      adPlacement="capybara-baduk-result"
     />
   );
 }

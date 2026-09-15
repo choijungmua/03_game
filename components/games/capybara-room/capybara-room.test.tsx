@@ -42,7 +42,6 @@ function renderRoom(view: RoomView<GomokuState>, sendEmote = vi.fn(), error = ""
       onPlay={onPlay}
       onResign={vi.fn()}
       resultText=""
-      adPlacement="test"
     />,
   );
   return onPlay;
