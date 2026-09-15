@@ -3,11 +3,10 @@
 import Image from "next/image";
 import { memo, useEffect, useEffectEvent, useRef, useState } from "react";
 
-import { AdSlot } from "@/components/ads/ad-slot";
 import { Progress } from "@/components/feedback/progress";
 import { GameControls } from "@/components/games/game-controls";
-import { Button, buttonVariants } from "@/components/inputs/button";
-import { LobbyLink } from "@/components/navigation/lobby-link";
+import { GameOverActions } from "@/components/games/game-over-actions";
+import { ShareButton } from "@/components/games/share-button";
 import { Dialog } from "@/components/overlay/dialog";
 import { cn } from "@/lib";
 import { GAME_SOUNDS, GAME_TITLES } from "@/lib/games/constants";
@@ -588,24 +587,21 @@ export function CapybaraSneak() {
                 ? "주인에게 들키지 않고 수박을 다 먹었어요."
                 : `주인이 보고 있을 때 먹다가 들켰어요. 게이지 ${gauge}%에서 멈췄어요.`}
             </Dialog.Description>
+            <div className="flex items-center gap-3 rounded-full bg-bg-neutral py-1.5 pr-1.5 pl-5">
+              <p className="text-caption-1 font-semibold">친구에게 공유할까요?</p>
+              <ShareButton
+                title={GAME_TITLES["capybara-sneak"]}
+                text={
+                  status === "success"
+                    ? `${GAME_TITLES["capybara-sneak"]}에서 주인에게 들키지 않고 수박을 다 먹었어요! 너도 할 수 있어?`
+                    : `${GAME_TITLES["capybara-sneak"]}에서 게이지 ${gauge}%까지 먹다가 들켰어요. 너는 다 먹을 수 있어?`
+                }
+              />
+            </div>
           </div>
 
-          <Button
-            type="button"
-            onClick={() => {
-              playGameSound(GAME_SOUNDS.tap);
-              restart();
-            }}
-            className="h-12 w-full text-title-3 font-bold">
-            다시 하기
-          </Button>
           {/* 창이 화면을 덮어 왼쪽 위 뒤로 버튼을 누를 수 없으니 창 안에서도 나갈 수 있게 한다 */}
-          <LobbyLink className={cn(buttonVariants({ variant: "ghost" }), "h-12 w-full")}>로비로</LobbyLink>
-
-          {/* 광고는 버튼과 충분히 떼어 둔다 (실수 클릭 방지) */}
-          <div className="mt-6">
-            <AdSlot placement="capybara-sneak-result" />
-          </div>
+          <GameOverActions onRetry={restart} />
         </Dialog.Content>
       </Dialog>
     </div>
