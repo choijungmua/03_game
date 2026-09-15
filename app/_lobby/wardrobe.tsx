@@ -146,13 +146,14 @@ export function Wardrobe({ onChange }: { onChange: (outfit: Outfit) => void }) {
         {/* 키 큰 모자가 머리 위로 삐져나오는 만큼 위를 비워 둔다 */}
         <div className="relative mx-auto mt-10 aspect-square w-full max-w-56">
           <NextImage src={CAPYBARA_SRC} alt="" fill unoptimized sizes="224px" />
-          {/* 한벌옷은 로비 맵과 같이 카피바라 윤곽 안에만 (몸보다 튀어나오지 않고, 윤곽 안 몸은 가린다) */}
+          {/* 로비 맵과 같이: 한벌옷의 채운 그림은 카피바라 윤곽 안에만 깔아 몸을 가리고, 원래 그림은 자르지 않아 후드·꼬리·소매가 몸 밖으로 나온다 */}
           <div
             className="absolute inset-0"
             style={{ maskImage: `url(${CAPYBARA_SRC})`, maskSize: "100% 100%", WebkitMaskImage: `url(${CAPYBARA_SRC})`, WebkitMaskSize: "100% 100%" }}
           >
-            {layers(under)}
+            {layers(under.filter((piece) => piece.clip))}
           </div>
+          {layers(under.filter((piece) => !piece.clip))}
           {/* 발·머리를 다시 그려 옷 밖으로 */}
           {redraw.map(([cx, cy, rx, ry], index) => (
             <NextImage

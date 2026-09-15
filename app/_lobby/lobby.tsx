@@ -120,11 +120,9 @@ import {
   loadOutfit,
   type Outfit,
   type OutfitPiece,
+  outfitImageSrcs,
   spriteName,
   WARDROBE_SLOTS,
-  wardrobeSrc,
-  viewArtOf,
-  wardrobeViewSrc,
 } from "@/lib/lobby/wardrobe";
 import { SPRITE_FIT } from "@/lib/lobby/wardrobe-fit";
 import {
@@ -684,7 +682,7 @@ interface OutfitDrawer {
 /**
  * 스프라이트만 그린 캔버스(left, top, 정사각형 size) 위에 옷을 전부 입힌다.
  * 자리는 그 스프라이트(이미지 이름)에서 잰 머리·몸통·눈 기준점에 옷마다 맞춘 상자 (lib/lobby/wardrobe.ts dressSprite).
- * 한벌옷은 source-atop으로 스프라이트 윤곽 안에만 그리므로, 다른 그림이 깔린 캔버스에서는 쓰면 안 된다
+ * 한벌옷의 채운 그림(clip)은 source-atop으로 스프라이트 윤곽 안에만 그리므로, 다른 그림이 깔린 캔버스에서는 쓰면 안 된다
  */
 function drawOutfit(
   ctx: CanvasRenderingContext2D,
@@ -715,8 +713,10 @@ function drawOutfit(
   };
   ctx.save();
   ctx.globalCompositeOperation = "source-atop";
-  under.forEach(put);
+  under.filter((piece) => piece.clip).forEach(put);
   ctx.restore();
+  // 원래 옷 그림은 자르지 않아 후드·꼬리·소매가 몸 밖으로 나온다
+  under.filter((piece) => !piece.clip).forEach(put);
   // 발·머리를 한 번 더 그려 한벌옷이 턱 밑으로 들어가고 발은 옷 밖으로 나와 보이게 한다 (옷장 미리보기와 같은 방식)
   for (const [cx, cy, rx, ry] of redraw) {
     ctx.save();
@@ -2418,7 +2418,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
       ...WARDROBE_SLOTS.flatMap((slot) => {
         const id = outfitRef.current[slot];
         // 정면 + 뒤·옆·대각선 그림까지 받아 둬야 방향을 틀 때 옷이 늦게 나타나지 않는다
-        return id ? [wardrobeSrc(slot, id), ...viewArtOf(slot).map((view) => wardrobeViewSrc(slot, id, view))].map(outfitImage) : [];
+        return id ? outfitImageSrcs(slot, id).map(outfitImage) : [];
       }),
     ];
     let loadedCount = 0;
