@@ -1677,11 +1677,8 @@ export function Lobby({ games }: { games: DoorGame[] }) {
     const onKeyDown = (event: KeyboardEvent) => {
       // 채팅·방명록 입력 중엔 WASD·F·Space가 글자로 들어가야 한다
       if (event.target instanceof HTMLElement && event.target.closest("input, textarea, [contenteditable]")) return;
-      // \ 키 조작법 창은 KeyboardGuide가 연다. 여는 순간 처음 안내 글은 치운다
-      if (isShortcutKey(event, "Backslash")) {
-        setNotice("");
-        return;
-      }
+      // \ 키 조작법 창은 KeyboardGuide가 연다
+      if (isShortcutKey(event, "Backslash")) return;
       if (KEY_VECTORS[event.code]) {
         event.preventDefault(); // 방향키 스크롤 방지
         pressed.add(event.code);
@@ -2506,9 +2503,6 @@ export function Lobby({ games }: { games: DoorGame[] }) {
       frame = requestAnimationFrame(tick);
       connect();
       sendId = window.setInterval(send, LOBBY_TICK_MS);
-      // 조작법은 숨겨 두었으니 처음에 여는 법만 알려 준다 (터치는 \ 키가 없어 걷는 법을 바로 알려 준다)
-      const touch = window.matchMedia("(pointer: coarse)").matches;
-      showNotice(touch ? "화면을 누른 채 끌면 걸어요 · 오두막 문 앞에 가면 입장" : "\\ 키를 누르면 조작법이 보여요", 5000);
     };
     void Promise.all(
       preload.map((image) =>
