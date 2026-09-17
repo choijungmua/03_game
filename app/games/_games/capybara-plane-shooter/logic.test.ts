@@ -234,7 +234,7 @@ describe("무기 레벨", () => {
 
   it("시작 총(1레벨)은 살살 쏘고, 10레벨은 원래 연사 속도 그대로다", () => {
     expect(getWeaponSpec("basic", 1).intervalMs).toBeCloseTo(FIRE_INTERVAL_MS.basic * LOW_LEVEL_FIRE_SLOWDOWN);
-    expect(getWeaponSpec("basic", 1).intervalMs).toBeGreaterThanOrEqual(300);
+    expect(getWeaponSpec("basic", 1).intervalMs).toBeGreaterThanOrEqual(200);
     expect(getWeaponSpec("basic", MAX_WEAPON_LEVEL).intervalMs).toBeCloseTo(FIRE_INTERVAL_MS.basic * (1 - 0.03 * (MAX_WEAPON_LEVEL - 1)));
   });
 
@@ -471,18 +471,18 @@ describe("스테이지", () => {
     const late = getStageConfig(201);
     expect(late.spawnIntervalMs).toBe(MIN_SPAWN_INTERVAL_MS);
     expect(late.enemyFireIntervalMs).toBe(MIN_ENEMY_FIRE_INTERVAL_MS);
-    expect(late.enemyHp).toBeLessThanOrEqual(60);
-    expect(late.enemyShotCount).toBeLessThanOrEqual(15);
+    expect(late.enemyHp).toBeLessThanOrEqual(45);
+    expect(late.enemyShotCount).toBeLessThanOrEqual(10);
   });
 
   it("뒤 스테이지 적은 훨씬 단단하고, 쏘는 적은 부채꼴로 여러 발을 쏜다", () => {
     expect(getStageConfig(PEAK_STAGE).enemyHp).toBeGreaterThanOrEqual(getStageConfig(1).enemyHp * 20);
     expect(getStageConfig(1).enemyShotCount).toBe(3);
-    expect(getStageConfig(PEAK_STAGE).enemyShotCount).toBe(15);
+    expect(getStageConfig(PEAK_STAGE).enemyShotCount).toBe(10);
 
     const state = playing({ stage: PEAK_STAGE, enemies: [enemy({ kind: "shooter", r: 18, fireInMs: 0 })] });
     step(state, 16, IDLE);
-    expect(state.shots).toHaveLength(15);
+    expect(state.shots).toHaveLength(10);
   });
 
   it("화면에 적 탄이 너무 많으면 적이 더 쏘지 않는다", () => {
@@ -610,12 +610,12 @@ describe("보스 패턴", () => {
     for (const shot of state.shots) expect(Math.hypot(shot.x - boss.x, shot.y - boss.y)).toBeLessThan(1);
   });
 
-  it("격자 탄은 화면 위에서 세 줄씩 내려오고, 세 줄 모두 같은 자리에 지나갈 빈틈이 있다", () => {
+  it("격자 탄은 화면 위에서 두 줄씩 내려오고, 두 줄 모두 같은 자리에 지나갈 빈틈이 있다", () => {
     const { state } = bossFight({ bossPatternIndex: BOSS_PATTERNS.indexOf("grid") });
     step(state, 16, IDLE, () => 0.5);
-    expect(state.shots.length).toBeGreaterThan(6);
+    expect(state.shots.length).toBeGreaterThan(4);
     const rows = [...new Set(state.shots.map((shot) => shot.y))];
-    expect(rows).toHaveLength(3);
+    expect(rows).toHaveLength(2);
     expect(state.shots.every((shot) => shot.vx === 0 && shot.vy > 0)).toBe(true);
     const columnsOf = (y: number) => state.shots.filter((shot) => shot.y === y).map((shot) => shot.x).join(",");
     expect(new Set(rows.map(columnsOf)).size).toBe(1);
