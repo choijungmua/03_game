@@ -2249,7 +2249,23 @@ export function Lobby({ games, listGames }: { games: DoorGame[]; listGames: Door
             const kind = noise < 0.55 || inVillage ? "tree-tropical" : "palm";
             drawables.push({ y: bottom - TILE * 0.2, draw: () => sprite(kind, x, bottom, 0.9 + noise * 0.25) });
           } else if (tile === "fence") {
-            drawables.push({ y: bottom, draw: () => sprite("fence", x, bottom) });
+            // 둥근 울타리: 그림은 곡선 위 자리에 세운다. 위·아래 면(법선이 세로)은 가로 판, 옆면은 아래 칸으로 내려가는 세로 판,
+            // 비스듬한 모서리는 가로 판 + 기둥. 세로 판 끝(아래 칸이 울타리가 아님)은 기둥만
+            const spot = world.fenceSpot(tx, ty);
+            if (!spot) continue;
+            const fenceBottom = spot.y + TILE / 2;
+            const down = tileAt(tx, ty + 1) === "fence";
+            drawables.push({
+              y: fenceBottom,
+              draw: () => {
+                if (Math.abs(spot.ny) >= 0.8) sprite("fence", spot.x, fenceBottom);
+                else if (Math.abs(spot.nx) >= 0.8) sprite(down ? "fence-vertical" : "fence-post", spot.x, fenceBottom);
+                else {
+                  sprite("fence", spot.x, fenceBottom);
+                  sprite("fence-post", spot.x, fenceBottom);
+                }
+              },
+            });
           } else if (tile === "rock") {
             drawables.push({ y: bottom, draw: () => sprite("rocks", x, bottom) });
           } else if (tile === "water" && noise < 0.1) {
