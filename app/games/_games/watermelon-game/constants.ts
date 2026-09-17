@@ -42,28 +42,38 @@ export const AIM_KEY_SPEED = 360;
 
 export interface FruitKind {
   name: string;
+  /** 그림 파일 이름 (FRUIT_IMAGE_BASE/<slug>.webp, 우는 얼굴은 <slug>-cry.webp) */
+  slug: string;
   radius: number;
   /** 합쳐서 이 과일이 생기면 얻는 점수 */
   score: number;
-  /** 캔버스 그림 색 (과일 그림 자체라 테마 토큰이 아니다) */
+  /** 그림을 아직 못 받았을 때 캔버스로 그리는 색 (과일 그림 자체라 테마 토큰이 아니다) */
   color: string;
   /** 줄무늬(수박·멜론) 색. 없으면 줄무늬 없음 */
   stripe?: string;
 }
 
 export const FRUITS: readonly FruitKind[] = [
-  { name: "체리", radius: 14, score: 1, color: "#e11d48" },
-  { name: "딸기", radius: 19, score: 3, color: "#f43f5e" },
-  { name: "포도", radius: 26, score: 6, color: "#8b5cf6" },
-  { name: "한라봉", radius: 32, score: 10, color: "#fb923c" },
-  { name: "감", radius: 39, score: 15, color: "#ea580c" },
-  { name: "사과", radius: 47, score: 21, color: "#dc2626" },
-  { name: "배", radius: 55, score: 28, color: "#facc15" },
-  { name: "복숭아", radius: 63, score: 36, color: "#fda4af" },
-  { name: "파인애플", radius: 73, score: 45, color: "#eab308" },
-  { name: "멜론", radius: 85, score: 55, color: "#a3e635", stripe: "#65a30d" },
-  { name: "수박", radius: 100, score: 66, color: "#16a34a", stripe: "#14532d" },
+  { name: "체리", slug: "cherry", radius: 14, score: 1, color: "#e11d48" },
+  { name: "딸기", slug: "strawberry", radius: 19, score: 3, color: "#f43f5e" },
+  { name: "포도", slug: "grape", radius: 26, score: 6, color: "#8b5cf6" },
+  { name: "한라봉", slug: "hallabong", radius: 32, score: 10, color: "#fb923c" },
+  { name: "감", slug: "persimmon", radius: 39, score: 15, color: "#ea580c" },
+  { name: "사과", slug: "apple", radius: 47, score: 21, color: "#dc2626" },
+  { name: "배", slug: "pear", radius: 55, score: 28, color: "#facc15" },
+  { name: "복숭아", slug: "peach", radius: 63, score: 36, color: "#fda4af" },
+  { name: "파인애플", slug: "pineapple", radius: 73, score: 45, color: "#eab308" },
+  { name: "멜론", slug: "melon", radius: 85, score: 55, color: "#a3e635", stripe: "#65a30d" },
+  { name: "수박", slug: "watermelon", radius: 100, score: 66, color: "#16a34a", stripe: "#14532d" },
 ];
+
+/** 펠트 과일 그림 폴더. 그림이 없으면 drawFruit이 원·줄무늬·얼굴로 대신 그린다 */
+export const FRUIT_IMAGE_BASE = "/assets/images/games/watermelon-game/fruits";
+/** 과일 그림은 꼭지·잎이 공 밖으로 조금 나와 있어, 반지름보다 이 배율만큼 크게 그린다 */
+export const FRUIT_IMAGE_SCALE = 1.16;
+/** 합쳐져 사라지는 두 과일이 눈물을 뿌리며 좌우로 튀어 오르다 사라지는 시간과 튀는 속도(px/s) */
+export const CRY_MS = 320;
+export const CRY_SPEED = 130;
 
 export const WATERMELON_LEVEL = FRUITS.length - 1;
 

@@ -15,10 +15,14 @@ import { playGameSound, type SoundLayer } from "@/lib/lobby/settings";
 
 import {
   AIM_KEY_SPEED,
+  CRY_MS,
+  CRY_SPEED,
   DEADLINE_Y,
   DROP_COOLDOWN_MS,
   DROP_SOUND,
   DROP_Y,
+  FRUIT_IMAGE_BASE,
+  FRUIT_IMAGE_SCALE,
   FRUITS,
   GAME_HEIGHT,
   GAME_WIDTH,
@@ -83,10 +87,21 @@ interface Ring {
   ageMs: number;
 }
 
+/** 합쳐져 사라지는 과일. 우는 얼굴로 눈물을 뿌리며 좌우로 튀어 오르다 작아진다 */
+interface Cry {
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  level: number;
+  ageMs: number;
+}
+
 interface Effects {
   particles: Particle[];
   popups: Popup[];
   rings: Ring[];
+  cries: Cry[];
   shakeMs: number;
   shakePower: number;
 }
@@ -111,9 +126,28 @@ function mergeSound(level: number): SoundLayer[] {
   return MERGE_SOUND.map((layer) => ({ ...layer, from: layer.from * ratio, to: layer.to * ratio }));
 }
 
-/** 과일 그림: 이미지 없이 원·줄무늬·광택·얼굴로 그린다 */
-function drawFruit(ctx: CanvasRenderingContext2D, level: number, x: number, y: number, r: number, blink: boolean) {
+/** 펠트 과일 그림. 처음 그릴 때 한 번만 불러오고, 아직 안 왔으면 undefined (그동안은 원·줄무늬로 그린다) */
+const fruitImages = new Map<string, HTMLImageElement>();
+function fruitImage(level: number, crying: boolean) {
+  const slug = crying ? `${FRUITS[level].slug}-cry` : FRUITS[level].slug;
+  let image = fruitImages.get(slug);
+  if (!image) {
+    image = new Image();
+    image.src = `${FRUIT_IMAGE_BASE}/${slug}.webp`;
+    fruitImages.set(slug, image);
+  }
+  return image.complete && image.naturalWidth > 0 ? image : undefined;
+}
+
+/** 과일 그림: 펠트 그림 한 장. 그림을 아직 못 받았으면 원·줄무늬·광택·얼굴로 대신 그린다 */
+function drawFruit(ctx: CanvasRenderingContext2D, level: number, x: number, y: number, r: number, blink: boolean, crying = false) {
   const fruit = FRUITS[level];
+  const image = fruitImage(level, crying) ?? (crying ? fruitImage(level, false) : undefined);
+  if (image) {
+    const side = r * 2 * FRUIT_IMAGE_SCALE;
+    ctx.drawImage(image, x - side / 2, y - side / 2, side, side);
+    return;
+  }
   const tau = Math.PI * 2;
   ctx.save();
   ctx.translate(x, y);
@@ -201,6 +235,11 @@ function addMergeEffects(effects: Effects, event: GameEvent, reducedMotion: bool
   const radius = FRUITS[level].radius;
   effects.popups.push({ x: event.x, y: event.y - radius * 0.3, text: `+${event.points}`, ageMs: 0 });
   if (reducedMotion) return;
+  // 합쳐져 사라지는 두 과일이 "우엥" 하고 눈물을 뿌리며 좌우로 튀어 오른다
+  const cryLevel = event.kind === "merge" ? event.level - 1 : WATERMELON_LEVEL;
+  for (const side of [-1, 1]) {
+    effects.cries.push({ x: event.x, y: event.y, vx: side * CRY_SPEED, vy: -CRY_SPEED * 0.8, level: cryLevel, ageMs: 0 });
+  }
   effects.rings.push({ x: event.x, y: event.y, r: radius, ageMs: 0 });
   const count = event.kind === "vanish" ? 40 : 8 + level * 2;
   const colors = event.kind === "vanish" ? [FRUITS[WATERMELON_LEVEL].color, "#ef4444", "#fef08a"] : [FRUITS[level].color, "#ffffff"];
@@ -233,6 +272,13 @@ function updateEffects(effects: Effects, ms: number) {
     particle.y += particle.vy * dt;
   }
   effects.particles = effects.particles.filter((particle) => particle.ageMs < particle.lifeMs);
+  for (const cry of effects.cries) {
+    cry.ageMs += ms;
+    cry.vy += 900 * dt;
+    cry.x += cry.vx * dt;
+    cry.y += cry.vy * dt;
+  }
+  effects.cries = effects.cries.filter((cry) => cry.ageMs < CRY_MS);
   for (const popup of effects.popups) popup.ageMs += ms;
   effects.popups = effects.popups.filter((popup) => popup.ageMs < POPUP_MS);
   for (const ring of effects.rings) ring.ageMs += ms;
@@ -305,6 +351,18 @@ function draw(
     drawFruit(ctx, fruit.level, 0, 0, fruit.r, blink);
     ctx.restore();
   }
+
+  // 합쳐져 사라진 과일: 우는 얼굴로 빙글 돌며 튀어 오르다 작아진다
+  for (const cry of effects.cries) {
+    const t = cry.ageMs / CRY_MS;
+    ctx.save();
+    ctx.globalAlpha = 1 - t * t;
+    ctx.translate(cry.x, cry.y);
+    ctx.rotate(Math.sign(cry.vx) * t * 0.7);
+    drawFruit(ctx, cry.level, 0, 0, FRUITS[cry.level].radius * (1 - t * 0.45), false, true);
+    ctx.restore();
+  }
+  ctx.globalAlpha = 1;
 
   for (const ring of effects.rings) {
     const t = ring.ageMs / RING_MS;
@@ -457,7 +515,7 @@ export function WatermelonGame() {
 
     const state = createState(Math.random);
     stateRef.current = state;
-    const effects: Effects = { particles: [], popups: [], rings: [], shakeMs: 0, shakePower: 0 };
+    const effects: Effects = { particles: [], popups: [], rings: [], cries: [], shakeMs: 0, shakePower: 0 };
     clearInput();
     resize();
     window.addEventListener("resize", resize);

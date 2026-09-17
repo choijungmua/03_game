@@ -171,6 +171,7 @@ type SpriteKey =
   | "stun"
   | `sleep-${1 | 2}`
   | `eat-${1 | 2}`
+  | `pick-${1 | 2 | 3}-${"up" | "down"}`
   | ScratchFrame
   | `${Exclude<IdleFrame, ScratchFrame>}-${Direction}`;
 /** 가만히 서 있을 때 돌아가며 하는 동작의 프레임. 긁기는 뒷모습 한 벌, 하품·졸기는 바라보는 방향(상하좌우)마다 따로 있다 */
@@ -192,6 +193,8 @@ interface CapybaraLook {
   idle: IdleFrame | null;
   /** 먹기 시작하고 지난 시간(ms). 안 먹는 중이면 -1 */
   eating: number;
+  /** 사과를 따려고 뛰어오른 진행도 0→1 (폴짝 한 번). 안 따는 중이면 -1 */
+  picking: number;
 }
 
 interface Remote {
@@ -762,6 +765,16 @@ function drawCapybara(
 
   // 앉기·때리기 스프라이트는 상하좌우 4장뿐이라 대각선은 가까운 옆모습을 쓴다
   const direction = toDirection(facing);
+
+  // 사과 따기: 잔뜩 웅크렸다가(1) 앞발을 번쩍 뻗어 뛰어오르고(2) 아깝게 헛손질한다(3). 뜨는 높이는 폴짝(hop) 쪽에서 준다
+  if (look.picking >= 0) {
+    const frame = look.picking < 0.18 || look.picking >= 1 ? 1 : look.picking < 0.72 ? 2 : 3;
+    const pickImage = sprites.get(`pick-${frame}-${direction === "down" ? "down" : "up"}`);
+    if (ready(pickImage)) {
+      drawDressed(pickImage, x - STAND_SIZE / 2, y - STAND_SIZE * STAND_FOOT, STAND_SIZE);
+      return;
+    }
+  }
   const [fx, fy] = FACING_VECTORS[facing];
   // 주먹: 앞으로 빠르게 뻗었다가(0~35%) 천천히 거둬들인다
   const lunge = look.attack < 0 ? 0 : (look.attack < 0.35 ? look.attack / 0.35 : 1 - (look.attack - 0.35) / 0.65) * 8;
@@ -1003,6 +1016,20 @@ function drawCatch(ctx: CanvasRenderingContext2D, name: FishCatch, x: number, y:
     ctx.arc(half * 0.5, -half * 0.1, Math.max(1, size * 0.04), 0, Math.PI * 2);
     ctx.fill();
   }
+  ctx.restore();
+}
+
+/** 방금 딴 사과가 머리 위로 떠올랐다 사라지는 시간 */
+const PICKED_MS = 900;
+
+/** 딴 사과를 머리 위로 번쩍 들어 보인다. 신나서 좌우로 살랑살랑 */
+function drawPicked(ctx: CanvasRenderingContext2D, picked: Meal, x: number, y: number, now: number) {
+  const t = (now - picked.at) / PICKED_MS;
+  if (t < 0 || t >= 1) return;
+  const rise = 1 - (1 - t) * (1 - t);
+  ctx.save();
+  ctx.globalAlpha = t < 0.7 ? 1 : 1 - (t - 0.7) / 0.3;
+  drawCatch(ctx, picked.name, x, y - STAND_SIZE * 0.95 - rise * 18, Math.sin(t * Math.PI * 3) * 0.22);
   ctx.restore();
 }
 
@@ -1290,6 +1317,9 @@ export function Lobby({ games, listGames }: { games: DoorGame[]; listGames: Door
     sprites.set("stun", loadImage(`${CHARACTER_BASE}/capybara-stun.webp`));
     for (const n of [1, 2] as const) sprites.set(`sleep-${n}`, loadImage(`${CHARACTER_BASE}/capybara-sleep-${n}.webp`));
     for (const n of [1, 2] as const) sprites.set(`eat-${n}`, loadImage(`${CHARACTER_BASE}/capybara-eating-${n}.webp`));
+    for (const direction of ["up", "down"] as const) {
+      for (const n of [1, 2, 3] as const) sprites.set(`pick-${n}-${direction}`, loadImage(`${CHARACTER_BASE}/capybara-pick-${n}-${direction}.webp`));
+    }
     for (const n of [1, 2, 3] as const) {
       sprites.set(`scratch-${n}`, loadImage(`${CHARACTER_BASE}/capybara-scratch-${n}.webp`));
     }
@@ -1423,6 +1453,8 @@ export function Lobby({ games, listGames }: { games: DoorGame[]; listGames: Door
       meal: null as Meal | null,
       /** 사과를 따는 중인 나무 번호와 따기 시작한 시각. 움직이거나 맞으면 비운다 */
       picking: null as { tree: number; at: number } | null,
+      /** 방금 딴 사과와 딴 시각. 가지에서 머리 위로 들려 올라왔다 사라진다 */
+      picked: null as Meal | null,
       /** 서버가 정해 준 이름표. 첫 동기화 전엔 비어 있다 */
       name: "",
     };
@@ -1464,6 +1496,7 @@ export function Lobby({ games, listGames }: { games: DoorGame[]; listGames: Door
       if (!pickApple(applePicks[picking.tree], now)) return;
       const kind = rollApple(Math.random());
       startHop();
+      me.picked = { name: kind, at: now };
       setFishInventory(recordCatch(kind));
       playSound("applePick", settingsRef.current);
       const left = `남은 사과 ${applesLeft(applePicks[picking.tree], now)}개`;
@@ -2362,6 +2395,7 @@ export function Lobby({ games, listGames }: { games: DoorGame[]; listGames: Door
           stride: remote.walkDist,
           idle: idleSprite(remote.idleMs),
           eating: eatingMs(remote.meal, now),
+          picking: -1,
         };
         const { meal } = remote;
         const remoteBathing = inBath(remote.x, remote.y);
@@ -2387,6 +2421,7 @@ export function Lobby({ games, listGames }: { games: DoorGame[]; listGames: Door
         stride: me.walkDist,
         idle: idleSprite(me.idleMs),
         eating: eatingMs(me.meal, now),
+        picking: me.picking ? Math.min(1, (now - me.hop.start) / HOP_MS) : -1,
       };
       const myMeal = me.meal;
       // 통나무에 앉고 일어날 때 그림만 이전 자리에서 폴짝 뛰어 옮겨 간다
@@ -2402,6 +2437,7 @@ export function Lobby({ games, listGames }: { games: DoorGame[]; listGames: Door
           const body = (x: number, y: number) => {
             drawCapybara(ctx, sprites, x, y, me.facing, myLook, outfitRef.current, wardrobe, now, !reducedMotion);
             if (myMeal && myLook.eating >= 0 && !myLook.sitting) drawFood(ctx, myMeal.name, x, y, myLook.eating);
+            if (me.picked) drawPicked(ctx, me.picked, x, y, now);
           };
           if (myBathing) drawBathing(ctx, drawnX, drawnY, me.facing, myLook.stride, now, !reducedMotion, images.get("yuzu")?.image, body);
           else body(drawnX, drawnY);
