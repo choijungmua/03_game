@@ -120,6 +120,8 @@ export interface World {
   buildings: Building[];
   seats: Seat[];
   props: Prop[];
+  /** 마을 안 사과나무 밑동 가운데(px). 나무 타일 한 칸은 막히고, 가까이서 Space로 사과를 딴다 */
+  appleTrees: { x: number; y: number }[];
   spring: { x: number; y: number };
   /** 방명록 게시판 바로 앞 월드 좌표(px). 여기 가까이서 Space를 누르면 방명록이 열린다 */
   guestbook: { x: number; y: number };
@@ -273,6 +275,21 @@ export function createWorld(seed: string, games: readonly DoorGame[]): World {
   place(guestbookTx, guestbookTy, "guestbook");
   props.push({ kind: "guestbook-board", tx: guestbookTx, ty: guestbookTy });
   const guestbook = { x: (guestbookTx + 0.5) * TILE, y: (guestbookTy + 1.5) * TILE };
+  // 사과나무: 온천 뒤 양옆, 첫 날개 오두막 사이, 남쪽 울타리 앞. 오두막·데크·다른 장식과 겹치는 자리는 건너뛴다
+  const appleTrees: World["appleTrees"] = [];
+  const appleSpots: [number, number][] = [
+    [-7, -8],
+    [6, -8],
+    [-15, -1],
+    [14, -1],
+    [-9, 8],
+    [8, 8],
+  ];
+  for (const [tx, ty] of appleSpots) {
+    if (tx < -W + 1 || tx > W - 2 || buildingAt(tx, ty) || deckSpur(tx, ty) || special.has(`${tx},${ty}`)) continue;
+    place(tx, ty, "tree");
+    appleTrees.push({ x: (tx + 0.5) * TILE, y: (ty + 1) * TILE });
+  }
 
   function tileAt(tx: number, ty: number): Tile {
     const cx = tx + 0.5;
@@ -319,6 +336,7 @@ export function createWorld(seed: string, games: readonly DoorGame[]): World {
     buildings,
     seats,
     props,
+    appleTrees,
     spring: { x: 0, y: SPRING_TY * TILE },
     guestbook,
     village: { halfWidth: W, top: TOP + 1, bottom: BOTTOM - 1 },

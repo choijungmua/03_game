@@ -178,7 +178,7 @@ export const CHARGE_WINDUP_MS = 1000;
 /** 예고 뒤 비행기 높이까지 내리꽂는 시간 */
 export const CHARGE_DASH_MS = 800;
 /** 첫 보스(5스테이지) 체력. 뒤 보스일수록 (보스 순번^1.3)배로 늘어 무기 레벨이 쌓인 만큼 버틴다 */
-export const BOSS_BASE_HP = 600;
+export const BOSS_BASE_HP = 450;
 /** 보스 페이즈(1·2·3)별 발사·패턴 간격 배수. 체력이 줄수록 빨라진다 (돌격 예고 시간은 공정하게 그대로 둔다) */
 export const BOSS_PHASE_TEMPO = [1, 0.8, 0.6] as const;
 /** 보스를 격파하면 무기 레벨을 이만큼 올려 준다 (드롭만으로 40스테이지 무렵 최대가 되게 작게) */
@@ -272,7 +272,7 @@ export const BULLET_RADIUS: Record<WeaponKind, number> = {
 
 export const MAX_WEAPON_LEVEL = 10;
 /** 1레벨 발사 간격 배수. 레벨이 오를수록 1로 줄어 10레벨은 원래 연사 — 시작 총은 살살 쏘고 간식을 먹어 가며 강해진다 */
-export const LOW_LEVEL_FIRE_SLOWDOWN = 2.5;
+export const LOW_LEVEL_FIRE_SLOWDOWN = 1.8;
 /** 화면에 내 총알이 이보다 많으면 이번 발사는 건너뛴다 — 고레벨 연사로 프레임이 무너지지 않게 */
 export const MAX_BULLETS = 240;
 /** 화면에 적 탄이 이보다 많으면 적·보스가 이번 발사를 건너뛴다 — 후반 탄막으로 프레임이 무너지지 않게 */
@@ -282,7 +282,7 @@ export const ENEMY_SHOT_SPREAD = 0.1;
 /** 화면에 적이 이만큼 있으면 보스가 부하를 더 부르지 않는다 */
 export const MAX_ENEMIES = 30;
 /** 아이템 없이 이만큼 격추하면 다음 격추에서 무기 간식을 반드시 떨어뜨린다 (운이 나빠도 레벨을 쌓을 수 있게) */
-export const PITY_KILLS = 80;
+export const PITY_KILLS = 60;
 /** 반드시 떨어뜨릴 때 고르는 무기 간식 */
 export const WEAPON_DROPS: readonly Exclude<DropKind, "heal">[] = ["double", "spread", "rapid", "pierce"];
 
@@ -341,15 +341,15 @@ export function getWeaponSpec(weapon: WeaponKind, level: number): WeaponSpec {
 }
 
 /**
- * 적 한 마리를 격추할 때 아이템 종류별로 떨어질 확률 (무기 1.8% + 회복 1%).
+ * 적 한 마리를 격추할 때 아이템 종류별로 떨어질 확률 (무기 2.2% + 회복 1.2%).
  * 무기 간식은 먹을 때마다 레벨이 쌓이므로 아주 드물게 떨어뜨려 40스테이지 무렵에야 최대 레벨이 되게 하고,
  * 쌍발 < 산탄 < 연사 < 관통 순으로 강한 무기일수록 더 드물다 (logic.test.ts 성장 기대치 테스트가 지킨다)
  */
 export const DROP_CHANCES: Record<DropKind, number> = {
-  double: 0.006,
-  heal: 0.01,
-  spread: 0.005,
-  rapid: 0.004,
+  double: 0.008,
+  heal: 0.012,
+  spread: 0.006,
+  rapid: 0.005,
   pierce: 0.003,
 };
 
@@ -403,8 +403,8 @@ export function getStageConfig(stage: number) {
     killGoal: Math.round(lerp(10, 50, d)),
     bossHp: Math.round(BOSS_BASE_HP * (stage / BOSS_STAGE_EVERY) ** 1.3),
     spawnIntervalMs: Math.max(MIN_SPAWN_INTERVAL_MS, lerp(750, 200, d) / rush) * (boss ? 2.5 : 1),
-    // 무기 레벨·스킬로 내가 강해지는 만큼 적도 훨씬 단단해진다 (10스테이지 ≈5, 20 ≈16, 30 ≈35, 40 이후 60)
-    enemyHp: Math.round(lerp(2, 60, d)),
+    // 무기 레벨·스킬로 내가 강해지는 만큼 적도 훨씬 단단해진다 (10스테이지 ≈4, 20 ≈12, 30 ≈26, 40 이후 45)
+    enemyHp: Math.round(lerp(2, 45, d)),
     enemySpeed: lerp(100, 360, d) * rush,
     // 새 천적은 스테이지가 오를 때마다 하나씩 합류한다. 확률 합은 최고 난이도에서도 0.9를 넘지 않아 하피독수리가 늘 섞인다
     zigzagChance: stage >= 2 ? 0.2 : 0,
@@ -416,7 +416,7 @@ export function getStageConfig(stage: number) {
     enemyFireIntervalMs: Math.max(MIN_ENEMY_FIRE_INTERVAL_MS, lerp(2000, 380, d) / rush),
     // 최고 난이도까지는 탄 수를 늘려 탄막을 두껍게 하고, 그 뒤로는 러시 배율만큼 탄도 빨라진다
     shotSpeed: lerp(160, 420, d) * rush,
-    enemyShotCount: Math.round(lerp(3, 15, d)),
+    enemyShotCount: Math.round(lerp(3, 10, d)),
   };
 }
 
@@ -650,7 +650,7 @@ function fireBoss(
   switch (pattern) {
     case "ring": {
       // 보스 한가운데서 원형으로 퍼진다. 링마다 반 칸씩 돌려 틈 위치가 바뀐다
-      const count = Math.round(lerp(36, 132, d));
+      const count = Math.round(lerp(24, 88, d));
       state.bossAngle += Math.PI / count;
       for (let i = 0; i < count; i += 1) {
         state.shots.push(radialShot(boss.x, boss.y, (i / count) * Math.PI * 2 + state.bossAngle, speed * 0.85));
@@ -665,8 +665,8 @@ function fireBoss(
       const gap = Math.floor(random() * Math.max(1, columns - 1));
       for (let column = 0; column < columns; column += 1) {
         if (column === gap || column === gap + 1) continue;
-        // 한 번에 세 줄을 내려보내고, 세 줄 모두 같은 자리가 비어 있어 그 틈으로 빠져나갈 수 있다
-        for (let row = 0; row < 3; row += 1) {
+        // 한 번에 두 줄을 내려보내고, 두 줄 모두 같은 자리가 비어 있어 그 틈으로 빠져나갈 수 있다
+        for (let row = 0; row < 2; row += 1) {
           state.shots.push({ x: offset + column * spacing, y: row * GRID_ROW_GAP, r: 5, vx: 0, vy: speed * 0.75, fromBoss: true });
         }
       }
@@ -675,14 +675,14 @@ function fireBoss(
     }
     case "fan": {
       // 부채꼴 전체 폭(±0.8라디안)은 그대로 두고 탄 수만 늘려 촘촘하게 쏜다
-      const half = Math.round(lerp(4, 16, d));
+      const half = Math.round(lerp(3, 11, d));
       for (let i = -half; i <= half; i += 1) {
         state.shots.push(aimedShot(state, boss.x, boss.y + boss.r * 0.6, speed * 1.1, (i * 0.8) / half));
       }
       return lerp(1100, 450, d);
     }
     case "spiral": {
-      const arms = Math.round(lerp(9, 18, d));
+      const arms = Math.round(lerp(6, 12, d));
       for (let arm = 0; arm < arms; arm += 1) {
         state.shots.push(radialShot(boss.x, boss.y, state.bossAngle + (arm * Math.PI * 2) / arms, speed));
       }
@@ -715,7 +715,7 @@ function fireBoss(
     }
     case "guard":
       // 앞 방패를 든 채 비행기를 겨눈 세 발을 느리게 쏜다
-      for (const offset of fan(9, 0.09)) {
+      for (const offset of fan(7, 0.11)) {
         state.shots.push(aimedShot(state, boss.x, boss.y + boss.r * 0.6, speed * 0.9, offset));
       }
       return lerp(1500, 800, d);

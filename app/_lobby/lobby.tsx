@@ -8,7 +8,7 @@ import { type FormEvent, useEffect, useEffectEvent, useRef, useState } from "rea
 
 import { pretendard } from "@/config";
 import { cn } from "@/lib";
-import { Armchair, Bath, Fish, HandFist, NotebookPen } from "lucide-react";
+import { Apple, Armchair, Bath, Fish, HandFist, NotebookPen } from "lucide-react";
 import { API_URL } from "@/lib/api-url";
 
 import { Loading } from "@/components/feedback/loading";
@@ -42,7 +42,8 @@ import {
   FISH_AUTO_REEL_MS,
   FISH_BITE_WINDOW_MS,
   FISH_CAST_MS,
-  FISH_CATCHES,
+  APPLE_REACH,
+  FISHABLE,
   FISH_LOOKS,
   FISH_REACH,
   FISH_REEL_MS,
@@ -76,6 +77,7 @@ import {
   parseFeedChat,
   type Satiety,
 } from "@/lib/lobby/feeding";
+import { applesLeft, nearestTree, pickApple } from "@/lib/lobby/apples";
 import { pushSnapshot, sampleSnapshots, type Snapshot } from "@/lib/lobby/interpolation";
 import { loadLobbyProfile, type LobbyProfile, saveLobbyProfile } from "@/lib/lobby/profile";
 import { type LobbySettings, playSound, saveLobbySettings, useLobbySettings } from "@/lib/lobby/settings";
@@ -262,6 +264,12 @@ const ENTER_CHARGE_MS = 900;
 const SEAT_REACH = TILE * 1.4;
 /** 방명록 게시판 앞 이 거리 안에서 Space로 방명록을 연다 */
 const GUESTBOOK_REACH = TILE * 1.5;
+/** 사과나무 밑동 가운데에서 사과가 달린 자리(타일). 달린 사과 수만큼 앞에서부터 그린다 */
+const APPLE_SPOTS: readonly [number, number][] = [
+  [-0.45, -1.9],
+  [0.4, -2.2],
+  [0.05, -1.55],
+];
 /** 로비 WebSocket 주소 (http→ws, https→wss) */
 const LOBBY_WS_URL = `${API_URL.replace(/^http/, "ws")}/api/lobby/ws`;
 /**
@@ -972,7 +980,16 @@ function drawCatch(ctx: CanvasRenderingContext2D, name: FishCatch, x: number, y:
   ctx.strokeStyle = "rgba(40,28,16,0.9)";
   ctx.fillStyle = color;
   ctx.beginPath();
-  if (name === "낡은 장화") {
+  if (name === "사과") {
+    // ponytail: 사과 펠트 그림(fish-catches/apple.webp)이 들어오면 위 그림으로 그려져 이 도형은 안 쓰인다
+    ctx.arc(0, half * 0.1, half * 0.8, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(0, -half * 0.6);
+    ctx.lineTo(half * 0.15, -half);
+    ctx.stroke();
+  } else if (name === "낡은 장화") {
     ctx.moveTo(-half * 0.7, -half * 0.9);
     ctx.lineTo(half * 0.8, -half * 0.9);
     ctx.lineTo(half * 0.8, half * 0.1);
@@ -1189,7 +1206,8 @@ function facingOf(dx: number, dy: number): Facing {
   return OCTANTS[Math.round(Math.atan2(dy, dx) / (Math.PI / 4)) + 4];
 }
 
-export function Lobby({ games }: { games: DoorGame[] }) {
+/** games: 맵에 오두막으로 세울 게임, listGames: 오두막 없이 왼쪽 위 게임 목록에서만 고르는 게임 */
+export function Lobby({ games, listGames }: { games: DoorGame[]; listGames: DoorGame[] }) {
   const router = useRouter();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   /** Space(앉기·목욕·낚시 버튼): 통나무 앞이면 앉기·일어나기, 온천 둘레면 목욕·나오기, 물가면 계속 낚기 시작·그만하기 */
@@ -1213,6 +1231,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
   const fishButtonRef = useRef<HTMLButtonElement>(null);
   const bathButtonRef = useRef<HTMLButtonElement>(null);
   const guestbookButtonRef = useRef<HTMLButtonElement>(null);
+  const appleButtonRef = useRef<HTMLButtonElement>(null);
   const lastChatAt = useRef(-Infinity);
   /** 화면(소리 버튼)은 저장값을 구독하고(다른 탭·게임 화면에서 바꿔도 따라간다), 게임 루프는 ref로 같은 설정을 읽는다 */
   const settings = useLobbySettings();
@@ -1230,6 +1249,8 @@ export function Lobby({ games }: { games: DoorGame[] }) {
   /** 방명록 게시판 앞에 서 있음 / 방명록 창이 열려 있음 (게시판 앞에서 Space로 연다) */
   const [guestbookNearby, setGuestbookNearby] = useState(false);
   const [guestbookOpen, setGuestbookOpen] = useState(false);
+  /** 사과나무 밑에 서 있음 (Space·버튼으로 사과를 딴다) */
+  const [appleNearby, setAppleNearby] = useState(false);
   const [fishing, setFishing] = useState(false);
   /** 온천: 둘레에 서 있으면 near(목욕 버튼), 물 안이면 in(나오기 버튼) */
   const [bath, setBath] = useState<"near" | "in" | null>(null);
@@ -1430,6 +1451,19 @@ export function Lobby({ games }: { games: DoorGame[] }) {
     const nearestDoor = () => world.doors.find((door) => Math.hypot(door.x - me.x, door.y - me.y) < DOOR_RADIUS) ?? null;
     const nearestSeat = () => world.seats.findIndex((seat) => Math.hypot(seat.seatX - me.x, seat.standY - me.y) < SEAT_REACH);
     const nearGuestbook = () => Math.hypot(world.guestbook.x - me.x, world.guestbook.y - me.y) < GUESTBOOK_REACH;
+    /** 나무마다 사과를 딴 시각들 (lib/lobby/apples.ts) */
+    const applePicks = world.appleTrees.map((): number[] => []);
+    const nearestAppleTree = () => nearestTree(world.appleTrees, me.x, me.y, APPLE_REACH);
+    /** 나무를 올려다보며 폴짝 뛰어 사과를 하나 따서 가방에 넣는다 */
+    const pickFromTree = (index: number, now: number) => {
+      const tree = world.appleTrees[index];
+      me.facing = facingOf(tree.x - me.x, tree.y - TILE - me.y);
+      if (!pickApple(applePicks[index], now)) return showNotice("사과가 다 떨어졌어요. 조금 있으면 다시 열려요");
+      startHop();
+      setFishInventory(recordCatch("사과"));
+      playSound("applePick", settingsRef.current);
+      showNotice(`사과 땄어요! 남은 사과 ${applesLeft(applePicks[index], now)}개`);
+    };
     /** 통나무 두 자리 중 비어 있는 나와 가까운 자리의 x. 둘 다 찼으면 null */
     const freeSpot = (index: number) => {
       const seat = world.seats[index];
@@ -1491,6 +1525,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
     let shownBath: typeof bath = null;
     let shownWater = false;
     let shownGuestbook = false;
+    let shownApple = false;
     let shownFishing = false;
     let shownStunned = false;
     // 내 캐릭터 동작 프레임이 바뀌는 순간에만 효과음을 내려고 지난 프레임을 기억한다
@@ -1526,7 +1561,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
     const reelLine = (now: number, caught: boolean) => {
       const line = me.fishing;
       if (!line || line.reelAt !== Infinity) return;
-      const name = caught ? FISH_CATCHES[Math.floor(Math.random() * FISH_CATCHES.length)] : null;
+      const name = caught ? FISHABLE[Math.floor(Math.random() * FISHABLE.length)] : null;
       line.reelAt = now;
       line.catch = name;
       queueFish({ kind: "reel", catch: name });
@@ -1623,12 +1658,14 @@ export function Lobby({ games }: { games: DoorGame[] }) {
         return;
       }
       // 버튼·링크에 포커스가 있으면 Space/Enter는 그 요소의 기본 동작(누르기)에 맡긴다
-      if (event.target instanceof HTMLElement && event.target.closest("a, button")) return;
+      if (event.target instanceof HTMLElement && event.target.closest("a, button, summary")) return;
       if (event.code === "Space") {
         event.preventDefault();
         if (!event.repeat) {
           spaceRequest.current = true;
-          flashButton(sitButtonRef.current ?? bathButtonRef.current ?? fishButtonRef.current ?? guestbookButtonRef.current);
+          flashButton(
+            sitButtonRef.current ?? bathButtonRef.current ?? fishButtonRef.current ?? guestbookButtonRef.current ?? appleButtonRef.current,
+          );
         }
       } else if (event.code === "Enter") {
         const door = nearestDoor();
@@ -1940,6 +1977,8 @@ export function Lobby({ games }: { games: DoorGame[] }) {
           enterBath();
         } else if (nearGuestbook()) {
           setGuestbookOpen(true);
+        } else if (nearestSeat() < 0 && nearestAppleTree() >= 0) {
+          pickFromTree(nearestAppleTree(), now);
         } else if (nearestSeat() < 0 && water) {
           // 한 번 던지면 멈출 때까지 입질마다 알아서 당기고 다시 던진다 (아래 게임 루프)
           castLine(water, now);
@@ -1961,7 +2000,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
             showNotice(
               index >= 0
                 ? "통나무 두 자리가 다 찼어요"
-                : "통나무 의자 앞에서 앉고, 온천 앞에서 목욕하고, 물가에서 낚시하고, 게시판 앞에서 방명록을 쓸 수 있어요",
+                : "통나무 의자 앞에서 앉고, 온천 앞에서 목욕하고, 물가에서 낚시하고, 사과나무 밑에서 사과를 따고, 게시판 앞에서 방명록을 쓸 수 있어요",
             );
           }
         }
@@ -2120,6 +2159,8 @@ export function Lobby({ games }: { games: DoorGame[] }) {
       if (waterHere !== shownWater) setWaterNearby((shownWater = waterHere));
       const guestbookHere = !me.sitting && !fishingActive && nearGuestbook();
       if (guestbookHere !== shownGuestbook) setGuestbookNearby((shownGuestbook = guestbookHere));
+      const appleHere = !me.sitting && !fishingActive && !seatHere && bathHere === null && nearestAppleTree() >= 0;
+      if (appleHere !== shownApple) setAppleNearby((shownApple = appleHere));
       if (fishingActive !== shownFishing) setFishing((shownFishing = fishingActive));
       if (isStunned !== shownStunned) setStunned((shownStunned = isStunned));
 
@@ -2203,7 +2244,9 @@ export function Lobby({ games }: { games: DoorGame[] }) {
           const bottom = (ty + 1) * TILE;
           const noise = hash2(9, tx, ty);
           if (tile === "tree") {
-            const kind = noise < 0.55 ? "tree-tropical" : "palm";
+            // 마을 안 나무는 사과나무라 야자수로 그리지 않는다
+            const inVillage = ty >= world.village.top && ty <= world.village.bottom && Math.abs(tx + 0.5) <= world.village.halfWidth;
+            const kind = noise < 0.55 || inVillage ? "tree-tropical" : "palm";
             drawables.push({ y: bottom - TILE * 0.2, draw: () => sprite(kind, x, bottom, 0.9 + noise * 0.25) });
           } else if (tile === "fence") {
             drawables.push({ y: bottom, draw: () => sprite("fence", x, bottom) });
@@ -2254,6 +2297,18 @@ export function Lobby({ games }: { games: DoorGame[] }) {
         const bottom = seat.seatY + TILE * 0.38;
         drawables.push({ y: bottom, draw: () => sprite("log-seat", seat.seatX, bottom) });
       }
+      // 사과나무 가지에 달린 사과. 나무 그림(아래 타일 루프) 바로 뒤에 그려 잎 위에 얹힌다
+      // ponytail: 사과나무 그림이 없어 열대 나무 그림을 쓰고, 사과 자리(APPLE_SPOTS)도 그 그림 잎에 맞췄다. 사과나무 에셋이 들어오면 둘 다 바꿀 것
+      world.appleTrees.forEach((tree, index) => {
+        if (!inView(tree.x, tree.y, TILE * 4)) return;
+        const hanging = applesLeft(applePicks[index], now);
+        drawables.push({
+          y: tree.y - TILE * 0.2 + 0.01,
+          draw: () => {
+            for (const [dx, dy] of APPLE_SPOTS.slice(0, hanging)) drawCatch(ctx, "사과", tree.x + dx * TILE, tree.y + dy * TILE, 0);
+          },
+        });
+      });
       for (const prop of world.props) {
         const x = (prop.tx + 0.5) * TILE;
         if (!inView(x, prop.ty * TILE, TILE * 4)) continue;
@@ -2549,6 +2604,28 @@ export function Lobby({ games }: { games: DoorGame[] }) {
         </p>
       </form>
 
+      {/* 채팅창 아래: 오두막 없이 목록에서만 들어가는 게임 */}
+      {listGames.length > 0 && (
+        <details className="group/list absolute left-[max(0.75rem,env(safe-area-inset-left))] top-[calc(max(0.75rem,env(safe-area-inset-top))+2.5rem)] text-caption-1">
+          <summary className="flex h-8 w-fit cursor-pointer list-none items-center rounded-full bg-black/25 px-3 font-semibold text-white focus-visible:outline-2 focus-visible:outline-primary [&::-webkit-details-marker]:hidden">
+            게임 목록
+          </summary>
+          <ul className="mt-1 flex flex-col rounded-xl bg-card/90 p-1 shadow-md">
+            {listGames.map((game) => (
+              <li key={game.slug}>
+                <Link
+                  href={`/games/${game.slug}`}
+                  onClick={() => markLobbyExit(`/games/${game.slug}`)}
+                  className="flex min-h-11 items-center rounded-lg px-3 text-body-2 text-text-strong hover:bg-black/10 focus-visible:outline-2 focus-visible:outline-primary"
+                >
+                  {game.title}
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
+
       {/* 오른쪽 위 세로 줄: 카피바라 옷장 → 낚시 가방 → 효과음 → 이름 바꾸기. 설정 버튼은 나중에 이 줄에 다시 넣는다 */}
       {/* 효과음 버튼의 헤드폰이 원 밖으로 삐져나오는 만큼 위(옷장)·오른쪽(화면 끝)을 띄운다. 두 버튼은 앉기·때리기와 같은 크기(모바일 size-14, md 이상 size-18) */}
       <div className="absolute right-[max(1.25rem,env(safe-area-inset-right))] top-[max(0.75rem,env(safe-area-inset-top))] flex flex-col items-center gap-6">
@@ -2683,6 +2760,27 @@ export function Lobby({ games }: { games: DoorGame[] }) {
                 <NextImage src={FRAME_SRC} alt="" fill unoptimized sizes="72px" draggable={false} className="drop-shadow-md" />
               </span>
               <span className="rounded-full bg-card/85 px-2 py-0.5 text-caption-3 font-semibold text-text-strong">방명록</span>
+            </button>
+          )}
+          {appleNearby && (
+            <button
+              ref={appleButtonRef}
+              type="button"
+              onClick={() => {
+                spaceRequest.current = true;
+              }}
+              aria-label="사과 따기"
+              aria-keyshortcuts="Space"
+              className="group flex flex-col items-center gap-0.5 rounded-full focus-visible:outline-2 focus-visible:outline-primary"
+            >
+              {/* 나무 테(목욕·방명록과 같은 그림) 안 펠트 판 위에 사과 아이콘 */}
+              <span className="relative block size-14 transition-transform md:size-18 duration-100 motion-safe:group-active:scale-90">
+                <span aria-hidden className="absolute inset-[16%] flex items-center justify-center rounded-full bg-capybara-light text-capybara-dark">
+                  <Apple className="size-6 md:size-7" />
+                </span>
+                <NextImage src={FRAME_SRC} alt="" fill unoptimized sizes="72px" draggable={false} className="drop-shadow-md" />
+              </span>
+              <span className="rounded-full bg-card/85 px-2 py-0.5 text-caption-3 font-semibold text-text-strong">사과 따기</span>
             </button>
           )}
           {(waterNearby || fishing || autoFishing) && (
