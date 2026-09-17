@@ -1401,11 +1401,22 @@ export function Lobby({ games, listGames }: { games: DoorGame[]; listGames: Door
       return false;
     };
 
-    const { spring } = world;
+    /** 온천이 여러 개라 목욕·둘레 판정은 (x, y)에서 가장 가까운 온천 기준 */
+    const springNear = (x: number, y: number) =>
+      world.springs.reduce((best, spring) =>
+        ellipseDistance(x - spring.x, y - spring.y, SPRING_RX, SPRING_RY) < ellipseDistance(x - best.x, y - best.y, SPRING_RX, SPRING_RY)
+          ? spring
+          : best,
+      );
     /** 발 위치가 온천 물 안(목욕 중)인지. 목욕 상태를 따로 보내지 않고 위치로 판단해서 남의 카피바라도 똑같이 그린다 */
-    const inBath = (x: number, y: number) => ellipseDistance(x - spring.x, y - spring.y, BATH_RX + 0.3, BATH_RY + 0.3) <= 1;
-    const nearSpring = () =>
-      ellipseDistance(me.x - spring.x, me.y - spring.y, SPRING_RX + BATH_REACH, SPRING_RY + BATH_REACH) <= 1;
+    const inBath = (x: number, y: number) => {
+      const spring = springNear(x, y);
+      return ellipseDistance(x - spring.x, y - spring.y, BATH_RX + 0.3, BATH_RY + 0.3) <= 1;
+    };
+    const nearSpring = () => {
+      const spring = springNear(me.x, me.y);
+      return ellipseDistance(me.x - spring.x, me.y - spring.y, SPRING_RX + BATH_REACH, SPRING_RY + BATH_REACH) <= 1;
+    };
 
     // 게임에서 돌아오면 들어갔던 오두막 문 앞에서 다시 시작한다
     const positionKey = "lobby-position-v3";
@@ -1505,6 +1516,7 @@ export function Lobby({ games, listGames }: { games: DoorGame[]; listGames: Door
     };
     /** 선 자리에서 온천 가운데 쪽으로 폴짝 뛰어들어 물 안쪽 가장자리에 담근다 */
     const enterBath = () => {
+      const spring = springNear(me.x, me.y);
       const angle = Math.atan2((me.y - spring.y) / BATH_RY, (me.x - spring.x) / BATH_RX);
       startHop();
       me.x = spring.x + Math.cos(angle) * BATH_RX * TILE * 0.8;
@@ -1515,6 +1527,7 @@ export function Lobby({ games, listGames }: { games: DoorGame[]; listGames: Door
     };
     /** 가까운 둘레부터 좌우로 번갈아 돌아보며 발 디딜 풀밭으로 폴짝 나온다 (등불·데크 갈래길에 막히면 옆자리) */
     const leaveBath = () => {
+      const spring = springNear(me.x, me.y);
       const angle = Math.atan2((me.y - spring.y) / SPRING_RY, (me.x - spring.x) / SPRING_RX);
       for (let i = 0; i < 16; i++) {
         const turn = angle + (i % 2 === 0 ? 1 : -1) * Math.ceil(i / 2) * (Math.PI / 8);
@@ -2111,8 +2124,9 @@ export function Lobby({ games, listGames }: { games: DoorGame[]; listGames: Door
         const step = Math.min(WALK_SPEED * speed * (dt / 1000), distance);
         // 목욕 중엔 물 안쪽 타원 밖으로 못 걸어 나가고(나오기는 Space), 뭍에선 막히는 타일에 막힌다
         const bathing = inBath(me.x, me.y);
+        const bathSpring = springNear(me.x, me.y);
         const stuck = (x: number, y: number) =>
-          bathing ? ellipseDistance(x - spring.x, y - spring.y, BATH_RX, BATH_RY) > 1 : blocked(x, y);
+          bathing ? ellipseDistance(x - bathSpring.x, y - bathSpring.y, BATH_RX, BATH_RY) > 1 : blocked(x, y);
         // x·y를 따로 검사해서 벽에 비스듬히 부딪히면 벽을 따라 미끄러진다
         const nextX = me.x + (dx / length) * step;
         if (!stuck(nextX, me.y)) {
@@ -2321,7 +2335,8 @@ export function Lobby({ games, listGames }: { games: DoorGame[]; listGames: Door
         if (!inView(item.x, item.y, TILE * 4)) continue;
         drawables.push({ y: item.y - TILE * 0.45, draw: () => drawDoorLight(ctx, item, now, !reducedMotion, item === door) });
       }
-      if (inView(spring.x, spring.y, TILE * 8)) {
+      for (const spring of world.springs) {
+        if (!inView(spring.x, spring.y, TILE * 8)) continue;
         // 온천은 납작해서 뒤(북쪽) 둘레에 선 캐릭터 말고는 먼저 그린다. 목욕 중인 캐릭터는 물 위에 그려지고,
         // 가운데보다 아래를 기준으로 두면 옆에 선 캐릭터가 둘레 돌 그림에 가려진다
         drawables.push({

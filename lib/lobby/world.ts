@@ -83,9 +83,10 @@ export function roundedRectDistance(x: number, y: number, hx: number, hy: number
 
 /** 온천 가운데에서 (dx, dy)px 떨어진 점이 반지름 rx·ry(타일) 타원의 몇 배 거리인지. 1보다 작으면 안쪽 */
 export const ellipseDistance = (dx: number, dy: number, rx: number, ry: number) => Math.hypot(dx / (rx * TILE), dy / (ry * TILE));
-/** 가운데 큰 온천을 두르는 데크 둘레길 가운데 줄의 가로·세로 반지름(타일). 폭은 두 칸 */
+/** 가운데 큰 온천을 두르는 데크 둘레길: 가운데 줄의 반폭·반높이·모서리 반지름(타일). 폭은 두 칸, 곧은 변이라 타일 계단이 안 생긴다 */
 const LOOP_RX = 8.5;
 const LOOP_RY = 6.5;
+const LOOP_CORNER = 3;
 /** 둘레길에서 동·서문으로 뻗는 가로 데크 두 줄(타일 y) */
 const DECK_ROWS = [0, 1];
 /**
@@ -260,8 +261,8 @@ export function createWorld(seed: string, games: readonly DoorGame[]): World {
     );
 
   const springs = SPRING_SPOTS.map(([x, y]) => ({ x: x * TILE, y: y * TILE }));
-  /** 둘레길(가운데 줄 타원에서 한 칸 안)·가로 데크(둘레길 옆부터 동·서문까지)·남문 데크 */
-  const onLoop = (cx: number, cy: number) => Math.abs(Math.hypot(cx / LOOP_RX, cy / LOOP_RY) - 1) * ((LOOP_RX + LOOP_RY) / 2) < 1;
+  /** 둘레길(가운데 줄에서 한 칸 안)·가로 데크(둘레길 옆부터 동·서문까지)·남문 데크 */
+  const onLoop = (cx: number, cy: number) => Math.abs(roundedRectDistance(cx, cy, LOOP_RX, LOOP_RY, LOOP_CORNER)) < 1;
   const onMainDeck = (tx: number, ty: number) => {
     const cx = tx + 0.5;
     const cy = ty + 0.5;
@@ -309,8 +310,8 @@ export function createWorld(seed: string, games: readonly DoorGame[]): World {
     // 둘레길 네 귀퉁이 바깥
     [-10, -5],
     [9, -5],
-    [-8, 5],
-    [7, 5],
+    [-11, 5],
+    [10, 5],
     // 동·서문 안쪽, 노천탕 둘레
     [-W + 2, -1],
     [W - 3, -1],
