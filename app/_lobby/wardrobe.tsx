@@ -23,7 +23,7 @@ export function Wardrobe({ outfit, onChange }: { outfit: Outfit; onChange: (outf
       {/* 위: 작은 미리보기 + 지금 입은 옷 + 부위 칩. 목록을 내려도 붙어 있어 부위를 바로 바꾼다 */}
       <div className="sticky top-0 z-[1] flex items-center gap-3 rounded-2xl bg-muted p-2 pr-3">
         {/* 키 큰 모자가 머리 위로 조금 나와도 잘리지 않게 overflow는 그대로 둔다 */}
-        <div className="relative size-20 shrink-0 md:size-24">
+        <div className="relative size-28 shrink-0 md:size-24">
           <OutfitPreview outfit={outfit} />
         </div>
         <div className="flex min-w-0 flex-1 flex-col gap-2">
@@ -39,8 +39,8 @@ export function Wardrobe({ outfit, onChange }: { outfit: Outfit; onChange: (outf
                 onClick={() => setSlot(s)}
                 aria-pressed={slot === s}
                 className={cn(
-                  "min-h-10 shrink-0 rounded-full px-3 text-caption-1 font-semibold focus-visible:outline-2 focus-visible:outline-primary",
-                  slot === s ? "bg-primary text-primary-foreground" : "bg-card text-text-caption",
+                  "min-h-10 shrink-0 touch-manipulation rounded-full px-3.5 text-caption-1 font-semibold transition-[background-color,color,scale] duration-150 focus-visible:outline-2 focus-visible:outline-primary motion-safe:active:scale-95 motion-reduce:transition-none",
+                  slot === s ? "bg-primary text-primary-foreground shadow-sm" : "bg-card text-text-caption hover:text-text-strong",
                   outfit[s] && slot !== s && "text-text-strong",
                 )}
               >
@@ -57,8 +57,8 @@ export function Wardrobe({ outfit, onChange }: { outfit: Outfit; onChange: (outf
           onClick={() => choose(null)}
           aria-pressed={!outfit[slot]}
           className={cn(
-            "flex aspect-square flex-col items-center justify-center rounded-xl border text-caption-2 text-text-caption focus-visible:outline-2 focus-visible:outline-primary",
-            !outfit[slot] ? "border-primary" : "border-border-default",
+            "flex aspect-square touch-manipulation flex-col items-center justify-center rounded-2xl bg-muted/50 text-caption-2 font-semibold text-text-caption ring-1 transition-[background-color,color,scale] duration-150 focus-visible:outline-2 focus-visible:outline-primary motion-safe:active:scale-95 motion-reduce:transition-none",
+            !outfit[slot] ? "text-text-strong ring-2 ring-primary" : "ring-border-default hover:bg-muted",
           )}
         >
           없음
@@ -70,8 +70,8 @@ export function Wardrobe({ outfit, onChange }: { outfit: Outfit; onChange: (outf
             onClick={() => choose(item.id)}
             aria-pressed={outfit[slot] === item.id}
             className={cn(
-              "relative flex aspect-square flex-col items-center justify-center gap-0.5 rounded-xl border p-1 text-caption-3 text-text-caption focus-visible:outline-2 focus-visible:outline-primary",
-              outfit[slot] === item.id ? "border-primary text-text-strong" : "border-border-default",
+              "relative flex aspect-square touch-manipulation flex-col items-center justify-center gap-0.5 rounded-2xl bg-muted/50 p-1 text-caption-3 text-text-caption ring-1 transition-[background-color,color,scale] duration-150 focus-visible:outline-2 focus-visible:outline-primary motion-safe:active:scale-95 motion-reduce:transition-none",
+              outfit[slot] === item.id ? "text-text-strong ring-2 ring-primary" : "ring-border-default hover:bg-muted",
             )}
           >
             <NextImage src={wardrobeSrc(slot, item.id)} alt="" width={96} height={96} unoptimized className="min-h-0 flex-1 object-contain" />
