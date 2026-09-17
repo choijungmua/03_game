@@ -7,7 +7,7 @@ test("우클릭은 메뉴나 버튼 포커스 대신 로비 이동으로 처리�
   await attack.click();
   await expect(attack).not.toBeFocused();
 
-  const wardrobe = page.getByRole("button", { name: "카피바라 옷 입히기" });
+  const wardrobe = page.getByRole("button", { name: "내 카피바라 메뉴", exact: true });
   await wardrobe.click({ button: "right" });
 
   await expect(wardrobe).not.toBeFocused();

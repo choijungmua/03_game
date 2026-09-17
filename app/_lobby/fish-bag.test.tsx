@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import { FishBag } from "./fish-bag";
@@ -7,8 +7,6 @@ describe("낚시 가방", () => {
   it("포만감과 애정도를 표시하고 배가 가득 차면 먹이 버튼을 막는다", () => {
     const onFeed = vi.fn();
     render(<FishBag inventory={{ 메기: 1 }} satiety={{ value: 100, at: Date.now() }} affection={37} onFeed={onFeed} />);
-
-    fireEvent.click(screen.getByRole("button", { name: "낚시 가방 (1번 낚음)" }));
 
     expect(screen.getByLabelText("카피바라 포만감")).toHaveAttribute("aria-valuenow", "100");
     expect(screen.getByLabelText("카피바라 애정도")).toHaveAttribute("aria-valuenow", "37");

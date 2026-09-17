@@ -99,7 +99,7 @@ import { FishBag } from "./fish-bag";
 import { GuestbookPanel } from "./guestbook-panel";
 import { KeyboardGuide } from "./keyboard-guide";
 import { LobbyMenu } from "./lobby-menu";
-import { SoundToggle } from "./lobby-settings";
+import { SoundSettings } from "./lobby-settings";
 import { drawOutfit, type OutfitDrawer } from "./outfit-canvas";
 import { ProfileName } from "./profile-name";
 import {
@@ -2586,44 +2586,38 @@ export function Lobby({ games }: { games: DoorGame[] }) {
         </p>
       </form>
 
-      {/* 오른쪽 위 세로 줄: 카피바라 옷장 → 낚시 가방 → 효과음 → 이름 바꾸기. 설정 버튼은 나중에 이 줄에 다시 넣는다 */}
-      {/* 효과음 버튼의 헤드폰이 원 밖으로 삐져나오는 만큼 위(옷장)·오른쪽(화면 끝)을 띄운다. 두 버튼은 앉기·때리기와 같은 크기(모바일 size-14, md 이상 size-18) */}
-      <LobbyMenu name={myName}>
-        <div className="flex min-w-0 flex-col items-center gap-1">
-          <Wardrobe
-            outfit={outfit}
-            onChange={(nextOutfit) => {
-              setOutfit(nextOutfit);
-              outfitRef.current = nextOutfit;
-              void syncFishing(profileRef.current.id, profileRef.current.token, "outfit", undefined, nextOutfit)
-                .then(applyFishingState)
-                .catch((caught: unknown) => {
-                  setNotice(caught instanceof Error ? caught.message : "옷을 바꿀 수 없어요");
-                });
-            }}
-          />
-          <span className="text-caption-3 font-semibold text-text-caption">옷장</span>
-        </div>
-        <div className="flex min-w-0 flex-col items-center gap-1">
-          <FishBag
-            inventory={fishInventory}
-            satiety={satiety}
-            affection={affection}
-            onFeed={(name) => {
-              feedRequest.current = name;
-            }}
-          />
-          <span className="text-caption-3 font-semibold text-text-caption">가방</span>
-        </div>
-        <div className="flex min-w-0 flex-col items-center gap-1">
-          <SoundToggle settings={settings} onChange={updateSettings} />
-          <span className="text-caption-3 font-semibold text-text-caption">소리</span>
-        </div>
-        <div className="flex min-w-0 flex-col items-center gap-1">
-          <ProfileName name={myName} onRename={rename} />
-          <span className="text-caption-3 font-semibold text-text-caption">이름</span>
-        </div>
-      </LobbyMenu>
+      {/* 오른쪽 위 "내 카피바라" 메뉴: 버튼 하나로 열고 옷장·가방·소리·이름 탭을 오간다 */}
+      <LobbyMenu
+        name={myName}
+        panels={{
+          wardrobe: (
+            <Wardrobe
+              outfit={outfit}
+              onChange={(nextOutfit) => {
+                setOutfit(nextOutfit);
+                outfitRef.current = nextOutfit;
+                void syncFishing(profileRef.current.id, profileRef.current.token, "outfit", undefined, nextOutfit)
+                  .then(applyFishingState)
+                  .catch((caught) => {
+                    setNotice(caught instanceof Error ? caught.message : "옷을 바꿀 수 없어요");
+                  });
+              }}
+            />
+          ),
+          fish: (
+            <FishBag
+              inventory={fishInventory}
+              satiety={satiety}
+              affection={affection}
+              onFeed={(name) => {
+                feedRequest.current = name;
+              }}
+            />
+          ),
+          sound: <SoundSettings settings={settings} onChange={updateSettings} />,
+          profile: <ProfileName name={myName} onRename={rename} />,
+        }}
+      />
 
       {/* 왼쪽 아래 미니맵: 보기 전용이라 터치는 아래 로비 캔버스(조이스틱)로 지나간다 */}
       <canvas

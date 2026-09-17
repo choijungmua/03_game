@@ -15,11 +15,10 @@ const fishingState = {
   outfit: {},
 };
 
-test("제거한 모자는 숨기고 남은 옷은 오류 없이 전환한다", async ({ page, isMobile }) => {
+test("제거한 모자는 숨기고 남은 옷은 오류 없이 전환한다", async ({ page }) => {
   await page.route(`${API_ORIGIN}/api/lobby/fishing`, (route) => route.fulfill({ json: fishingState }));
   await page.goto("/");
   await page.getByRole("button", { name: "내 카피바라 메뉴", exact: true }).click();
-  await page.getByRole("button", { name: "카피바라 옷 입히기" }).click();
 
   for (const removed of ["수박 헬멧", "잎사귀 모자", "털실 비니"]) {
     await expect(page.getByRole("button", { name: new RegExp(removed) })).toHaveCount(0);
@@ -40,69 +39,48 @@ test("제거한 모자는 숨기고 남은 옷은 오류 없이 전환한다", a
   await expect(page.getByRole("region", { name: "카피바라 옷 입히기" })).toBeVisible();
 });
 
-test("저장 서버가 실패해도 고른 옷은 즉시 입힌다", async ({ page, isMobile }) => {
+test("저장 서버가 실패해도 고른 옷은 즉시 입힌다", async ({ page }) => {
   await page.route(`${API_ORIGIN}/api/lobby/fishing`, (route) =>
     route.fulfill({ contentType: "text/html", body: "<!DOCTYPE html><title>Not Found</title>" }),
   );
   await page.goto("/");
   await page.getByRole("button", { name: "내 카피바라 메뉴", exact: true }).click();
-  await page.getByRole("button", { name: "카피바라 옷 입히기" }).click();
   await page.getByRole("button", { name: "밀짚모자", exact: true }).click();
 
   await expect(page.getByRole("button", { name: "밀짚모자", exact: true })).toHaveAttribute("aria-pressed", "true");
 });
 
-test("우측 기능은 상단 탭을 유지하고 그 아래 한 영역에서 열린다", async ({ page, isMobile }) => {
+test("탭을 바꿔도 탭 줄은 그대로고 패널은 그 아래 메뉴 폭 안에서만 보인다", async ({ page }) => {
   await page.route(`${API_ORIGIN}/api/lobby/fishing`, (route) => route.fulfill({ json: fishingState }));
   await page.goto("/");
   await page.getByRole("button", { name: "내 카피바라 메뉴", exact: true }).click();
 
   const menu = page.getByRole("dialog", { name: "내 카피바라" });
-  const tabs = menu.getByRole("button", { name: /카피바라 옷 입히기|낚시 가방|효과음|이름 바꾸기/ });
-  const tabBoxes = await tabs.evaluateAll((buttons) => buttons.map((button) => button.getBoundingClientRect().bottom));
-  const tabsBottom = Math.max(...tabBoxes);
-
-  for (const { button, region } of [
-    { button: "카피바라 옷 입히기", region: "카피바라 옷 입히기" },
-    { button: /낚시 가방/, region: "낚시 가방" },
-    { button: /효과음/, region: "효과음 설정" },
-    { button: /이름 바꾸기/, region: "이름 바꾸기" },
-  ]) {
-    await page.getByRole("button", { name: button }).click();
-    const panel = page.getByRole("region", { name: region });
-    await expect(panel).toBeVisible();
-    await expect(tabs).toHaveCount(4);
-    await expect(page.getByRole("dialog")).toHaveCount(1);
-      const box = await panel.boundingBox();
-      expect(box?.y).toBeGreaterThanOrEqual(tabsBottom);
-      await expect(page.getByRole("heading", { name: "내 카피바라" })).toBeVisible();
-      const geometry = await menu.evaluate((element) => ({
-        clientWidth: element.clientWidth,
-        scrollWidth: element.scrollWidth,
-        clientHeight: element.clientHeight,
-        scrollHeight: element.scrollHeight,
-      }));
-      expect(geometry.scrollWidth).toBe(geometry.clientWidth);
-      expect(geometry.scrollHeight).toBe(geometry.clientHeight);
-  }
-});
-
-test("PC 우측 메뉴는 일정한 폭을 유지한다", async ({ page, isMobile }) => {
-  test.skip(isMobile);
-  await page.route(`${API_ORIGIN}/api/lobby/fishing`, (route) => route.fulfill({ json: fishingState }));
-  await page.goto("/");
-  await page.getByRole("button", { name: "내 카피바라 메뉴", exact: true }).click();
-  const menu = page.getByRole("dialog", { name: "내 카피바라" });
+  const tablist = menu.getByRole("tablist");
+  // 열리는 애니메이션(투명도·위치)이 끝난 뒤에 잰다
+  await expect(menu).toHaveCSS("opacity", "1");
+  await expect(menu).toHaveCSS("translate", "none");
   const menuBox = await menu.boundingBox();
+  const tabBox = await tablist.boundingBox();
+  const tabsBottom = (tabBox?.y ?? 0) + (tabBox?.height ?? 0);
 
-  for (const { button, region } of [
-    { button: "카피바라 옷 입히기", region: "카피바라 옷 입히기" },
-    { button: /낚시 가방/, region: "낚시 가방" },
-    { button: /이름 바꾸기/, region: "이름 바꾸기" },
-  ]) {
-    await page.getByRole("button", { name: button }).click();
-    const panel = page.getByRole("region", { name: region });
-    const panelBox = await panel.boundingBox();
-    expect(panelBox?.width).toBeLessThanOrEqual(menuBox?.width ?? 0);
+  for (const name of ["카피바라 옷 입히기", "낚시 가방", "효과음 설정", "이름 바꾸기"]) {
+    await menu.getByRole("tab", { name }).click();
+    const panel = menu.getByRole("tabpanel", { name });
+    await expect(panel).toBeVisible();
+    await expect(menu.getByRole("tabpanel")).toHaveCount(1);
+    const box = await panel.boundingBox();
+    expect(box?.y).toBeGreaterThanOrEqual(tabsBottom);
+    expect((box?.x ?? 0) + (box?.width ?? 0)).toBeLessThanOrEqual((menuBox?.x ?? 0) + (menuBox?.width ?? 0) + 1);
+    expect(await tablist.boundingBox()).toEqual(tabBox);
+    // 넘치는 내용은 패널 안에서만 스크롤되고 메뉴 자체는 넘치지 않는다
+    const geometry = await menu.evaluate((element) => ({
+      clientWidth: element.clientWidth,
+      scrollWidth: element.scrollWidth,
+      clientHeight: element.clientHeight,
+      scrollHeight: element.scrollHeight,
+    }));
+    expect(geometry.scrollWidth).toBe(geometry.clientWidth);
+    expect(geometry.scrollHeight).toBe(geometry.clientHeight);
   }
 });

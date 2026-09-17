@@ -4,7 +4,10 @@ type DialogKeyEvent = Pick<KeyboardEvent, "key" | "shiftKey" | "preventDefault">
 
 export function trapDialogFocus(event: DialogKeyEvent, dialog: HTMLElement) {
   if (event.key !== "Tab") return;
-  const controls = dialog.querySelectorAll<HTMLElement>("button:not([disabled]), input:not([disabled]), [href]");
+  // 숨은 탭 패널·닫힌 하위 창(hidden·inert)과 방향키로만 옮기는 탭(tabIndex -1)은 Tab 순서에 없다
+  const controls = Array.from(dialog.querySelectorAll<HTMLElement>("button:not([disabled]), input:not([disabled]), [href]")).filter(
+    (control) => control.tabIndex >= 0 && !control.closest("[hidden], [inert]"),
+  );
   if (!controls.length) return;
   const first = controls[0];
   const last = controls[controls.length - 1];
