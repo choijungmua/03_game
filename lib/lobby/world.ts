@@ -112,6 +112,21 @@ const VILLAGE_CORNER = 12;
 /** 동·서 입구에서 습지로 뻗는 진흙길 길이, 남문에서 강가 쉼터 북문까지 길이(타일) */
 const SIDE_TRAIL = 30;
 const SOUTH_TRAIL = 18;
+/**
+ * 마을 밖 둘레 산책로: 마을 울타리에서 SIDE_TRAIL만큼 떨어져 마을을 크게 돌고, 동·서·남·북문 길이 모두 여기로 이어진다.
+ * 길 폭은 반 폭 기준(3칸), 습지 물 위를 지나는 칸은 진흙 대신 나무 다리가 된다
+ */
+const RING_HALF_WIDTH = 1.5;
+const RING_CORNER = 18;
+/** 산책로 북쪽 줄은 마을 위에서 이만큼 더 위, 남쪽 줄은 강가 쉼터 아래로 이만큼 더 아래(타일) */
+const RING_NORTH_GAP = 18;
+const RING_SOUTH_GAP = 4;
+/** 바깥 명소: 서쪽 호수(가로·세로 반지름), 산책로 바깥으로 나간 거리, 동쪽 바위 노천탕·북쪽 등불 공터까지 거리(타일) */
+const LAKE_RX = 12;
+const LAKE_RY = 8;
+const LAKE_GAP = 14;
+const WILD_SPRING_GAP = 12;
+const GLADE_GAP = 11;
 /** 강가 쉼터: 반폭·반높이·모서리 반지름, 가운데 y(타일) */
 const REST_HX = 13;
 const REST_HY = 8;
@@ -166,6 +181,8 @@ export interface World {
   springs: { x: number; y: number; layerY: number }[];
   /** 방명록 게시판 바로 앞 월드 좌표(px). 여기 가까이서 Space를 누르면 방명록이 열린다 */
   guestbook: { x: number; y: number };
+  /** 마을 밖 명소 가운데(px): 서쪽 호수 선착장 끝·동쪽 바위 노천탕·북쪽 등불 공터 */
+  landmarks: { pier: { x: number; y: number }; wildSpring: { x: number; y: number }; glade: { x: number; y: number } };
   /** 마을 안쪽 경계(타일): x ∈ [-halfWidth, halfWidth-1], y ∈ [top, bottom] */
   village: { halfWidth: number; top: number; bottom: number };
   spawn: { x: number; y: number };
@@ -265,7 +282,28 @@ export function createWorld(seed: string, games: readonly DoorGame[]): World {
         ty < building.frontY / TILE,
     );
 
-  const springs = SPRING_SPOTS.map(([x, y]) => ({ x: x * TILE, y: y * TILE, layerY: y * TILE }));
+  // 마을 밖: 마을을 크게 도는 둘레 산책로와 그 바깥 명소 세 곳(서쪽 호수 선착장·동쪽 바위 노천탕·북쪽 등불 공터)
+  const ringHx = W + SIDE_TRAIL;
+  const ringNorth = TOP - RING_NORTH_GAP;
+  const ringSouth = REST_CY + REST_HY + RING_SOUTH_GAP;
+  const ringCy = (ringNorth + ringSouth) / 2;
+  const ringHy = (ringSouth - ringNorth) / 2;
+  const onRingTrail = (cx: number, cy: number) => Math.abs(roundedRectDistance(cx, cy - ringCy, ringHx, ringHy, RING_CORNER)) < RING_HALF_WIDTH;
+  const lake = { x: -(ringHx + LAKE_GAP + LAKE_RX), y: ringCy };
+  const wildSpring: readonly [number, number] = [ringHx + WILD_SPRING_GAP, ringCy];
+  const glade = { x: 0, y: ringNorth - GLADE_GAP };
+
+  const springs = [...SPRING_SPOTS, wildSpring].map(([x, y]) => ({ x: x * TILE, y: y * TILE, layerY: y * TILE }));
+  /** 온천 안이면 "spring", 둘레 한 칸이면 "around" (그 칸은 길·데크를 깔지 않고 비워 둔다) */
+  const springHit = (cx: number, cy: number) => {
+    for (const spring of springs) {
+      const dx = cx * TILE - spring.x;
+      const dy = cy * TILE - spring.y;
+      if (ellipseDistance(dx, dy, SPRING_RX, SPRING_RY) < 1) return "spring" as const;
+      if (ellipseDistance(dx, dy, SPRING_RX + 1, SPRING_RY + 1) < 1) return "around" as const;
+    }
+    return null;
+  };
   /** 둘레길(가운데 줄에서 한 칸 안)·가로 데크(둘레길 옆부터 동·서문까지)·남문 데크 */
   const onLoop = (cx: number, cy: number) => Math.abs(roundedRectDistance(cx, cy, LOOP_RX, LOOP_RY, LOOP_CORNER)) < 1;
   const onMainDeck = (tx: number, ty: number) => {
@@ -288,7 +326,7 @@ export function createWorld(seed: string, games: readonly DoorGame[]): World {
   const seats: Seat[] = [];
   const props: Prop[] = [];
   const place = (tx: number, ty: number, tile: Tile) => special.set(`${tx},${ty}`, tile);
-  // 통나무 의자: 노천탕 앞, 남문 데크 양옆, 쉼터 연못 앞
+  // 통나무 의자: 노천탕 앞, 남문 데크 양옆, 쉼터 연못 앞, 호수 선착장 들머리, 북쪽 등불 공터
   const seatSpots: [number, number][] = [
     [-14, 6],
     [12, 6],
@@ -296,6 +334,8 @@ export function createWorld(seed: string, games: readonly DoorGame[]): World {
     [4, 11],
     [-6, REST_CY - 4],
     [4, REST_CY - 4],
+    [-ringHx - 4, Math.round(ringCy) - 4],
+    [Math.round(glade.x) - 5, Math.round(glade.y) + 3],
   ];
   for (const [leftTx, ty] of seatSpots) {
     place(leftTx, ty, "log");
@@ -311,6 +351,8 @@ export function createWorld(seed: string, games: readonly DoorGame[]): World {
   // 동·서 길 가운데 줄(타일 y), 남쪽 길 가운데 줄(타일 x). 양 끝에서 0이 되는 사인 곡선이라 입구와 쉼터 북문에 똑바로 닿는다
   const sideTrailY = (cx: number) => DECK_ROWS[0] + 1 + 2.5 * Math.sin((2 * Math.PI * Math.max(0, Math.abs(cx) - W)) / SIDE_TRAIL);
   const southTrailX = (cy: number) => 3.5 * Math.sin((2 * Math.PI * (cy - BOTTOM - 1)) / SOUTH_TRAIL);
+  /** 북문에서 둘레 산책로까지 올라가는 길 가운데 줄(타일 x) */
+  const northTrailX = (cy: number) => 3.5 * Math.sin((2 * Math.PI * (cy - TOP)) / (TOP - ringNorth));
   const lanterns: [number, number][] = [
     // 둘레길 네 귀퉁이 바깥
     [-10, -5],
@@ -330,6 +372,23 @@ export function createWorld(seed: string, games: readonly DoorGame[]): World {
     [-11, REST_CY + 2],
     [10, REST_CY + 2],
   ];
+  // 바깥 명소 등불: 호수 선착장 들머리, 바위 노천탕 둘레, 북쪽 공터 둘레(둥글게)
+  lanterns.push([-ringHx - 3, Math.round(ringCy) + 3], [Math.round(wildSpring[0]) - 7, Math.round(wildSpring[1]) + 5], [Math.round(wildSpring[0]) + 6, Math.round(wildSpring[1]) + 5]);
+  for (let i = 0; i < 6; i++) {
+    const angle = (Math.PI * 2 * i) / 6 + Math.PI / 6;
+    lanterns.push([Math.round(glade.x + Math.cos(angle) * 7), Math.round(glade.y + Math.sin(angle) * 5)]);
+  }
+  // 산책로 따라 등불: 네 변 가운데마다 길가 한 칸 바깥
+  lanterns.push(
+    [-ringHx - 3, Math.round(ringCy) - 14],
+    [ringHx + 2, Math.round(ringCy) - 14],
+    [-ringHx - 3, Math.round(ringCy) + 14],
+    [ringHx + 2, Math.round(ringCy) + 14],
+    [-16, Math.round(ringNorth) - 3],
+    [15, Math.round(ringNorth) - 3],
+    [-16, Math.round(ringSouth) + 2],
+    [15, Math.round(ringSouth) + 2],
+  );
   // 길 따라 등불: 동·서 길은 북쪽 길가에 좌우 대칭, 남쪽 길은 좌우 번갈아
   for (const step of [6, 14, 22]) {
     const ty = Math.floor(sideTrailY(W + step + 0.5) - 3);
@@ -343,6 +402,11 @@ export function createWorld(seed: string, games: readonly DoorGame[]): World {
     place(tx, ty, "lantern");
     props.push({ kind: "lantern", tx, ty });
   }
+  // 바위 노천탕을 둘러싼 이끼 바위 (온천 둘레 한 칸 바깥)
+  for (let i = 0; i < 10; i++) {
+    const angle = (Math.PI * 2 * i) / 10;
+    place(Math.round(wildSpring[0] + Math.cos(angle) * 7), Math.round(wildSpring[1] + Math.sin(angle) * 5.5), "rock");
+  }
   const reeds: [number, number][] = [
     [-18, 16],
     [17, 16],
@@ -352,6 +416,9 @@ export function createWorld(seed: string, games: readonly DoorGame[]): World {
     [6, REST_CY + 3],
     [-3, REST_CY + 5],
     [2, REST_CY + 5],
+    // 호수 물가 갈대
+    [Math.round(lake.x + LAKE_RX) + 1, Math.round(lake.y) - 3],
+    [Math.round(lake.x + LAKE_RX) + 1, Math.round(lake.y) + 3],
   ];
   for (const [tx, ty] of reeds) {
     place(tx, ty, "reeds");
@@ -371,9 +438,13 @@ export function createWorld(seed: string, games: readonly DoorGame[]): World {
     [23, 6],
     [-9, 17],
     [8, 17],
+    // 북쪽 등불 공터
+    [Math.round(glade.x) + 4, Math.round(glade.y) + 3],
+    [Math.round(glade.x) - 4, Math.round(glade.y) - 4],
   ];
   for (const [tx, ty] of appleSpots) {
     if (buildingAt(tx, ty) || spurs.has(`${tx},${ty}`) || onMainDeck(tx, ty) || special.has(`${tx},${ty}`)) continue;
+    if (springHit(tx + 0.5, ty + 0.5)) continue;
     place(tx, ty, "tree");
     appleTrees.push({ x: (tx + 0.5) * TILE, y: (ty + 1) * TILE });
   }
@@ -419,16 +490,13 @@ export function createWorld(seed: string, games: readonly DoorGame[]): World {
     const cy = ty + 0.5;
     const decoration = special.get(`${tx},${ty}`);
 
+    const spring = springHit(cx, cy);
+    if (spring === "spring") return "spring";
+    const aroundSpring = spring === "around";
+
     // 마을 안쪽
     if (inVillage(tx, ty)) {
       if (buildingAt(tx, ty)) return "building";
-      let aroundSpring = false;
-      for (const spring of springs) {
-        const dx = cx * TILE - spring.x;
-        const dy = cy * TILE - spring.y;
-        if (ellipseDistance(dx, dy, SPRING_RX, SPRING_RY) < 1) return "spring";
-        if (ellipseDistance(dx, dy, SPRING_RX + 1, SPRING_RY + 1) < 1) aroundSpring = true;
-      }
       if (decoration) return decoration;
       // 온천 둘레 한 칸은 풀밭으로 비워 둔다
       if (!aroundSpring && (onMainDeck(tx, ty) || spurs.has(`${tx},${ty}`))) return "deck";
@@ -437,7 +505,7 @@ export function createWorld(seed: string, games: readonly DoorGame[]): World {
     // 둥근 갈대 울타리와 동·서·남 입구(데크)
     if (onRing(inVillage, tx, ty)) {
       const sideGate = Math.abs(cx) > W / 2 && DECK_ROWS.includes(ty);
-      return sideGate || (cy > villageCy && Math.abs(cx) < 2.5) ? "deck" : "fence";
+      return sideGate || Math.abs(cx) < 2.5 ? "deck" : "fence"; // 남문·북문은 가운데 데크
     }
     // 강가 쉼터: 둥근 울타리 안 연못과 북문에서 연못 가운데까지 뻗은 데크 잔교
     if (inRest(tx, ty)) {
@@ -446,21 +514,44 @@ export function createWorld(seed: string, games: readonly DoorGame[]): World {
       if (Math.hypot(cx / POND_RX, (cy - REST_CY - POND_DY) / POND_RY) < 1) return "water";
       return "meadow";
     }
-    if (onRing(inRest, tx, ty)) return cy < REST_CY && Math.abs(cx) < 2.5 ? "deck" : "fence";
+    if (onRing(inRest, tx, ty)) return Math.abs(cx) < 2.5 ? "deck" : "fence"; // 쉼터 북문·남문
     if (decoration) return decoration; // 길가 등불
-    // 등불 켜진 구불구불한 진흙길
+    // 서쪽 호수: 물 위로 뻗은 나무 선착장, 물가는 진흙
+    const lakeDistance = Math.hypot((cx - lake.x) / LAKE_RX, (cy - lake.y) / LAKE_RY);
+    if (lakeDistance < 1.2) {
+      if (Math.abs(cy - ringCy) < 1 && cx > lake.x - 1 && cx < -ringHx) return "deck"; // 선착장
+      return lakeDistance < 1 ? "water" : "mud";
+    }
+
+    // 등불 켜진 구불구불한 진흙길과 마을을 크게 도는 둘레 산책로
     const sideOffset = Math.abs(cy - sideTrailY(cx));
     const southOffset = Math.abs(cx - southTrailX(cy));
-    const alongSide = Math.abs(cx) >= W - VILLAGE_CORNER && Math.abs(cx) <= W + SIDE_TRAIL;
+    const northOffset = Math.abs(cx - northTrailX(cy));
+    const alongSide = Math.abs(cx) >= W - VILLAGE_CORNER && Math.abs(cx) <= ringHx;
     const alongSouth = cy > BOTTOM && cy < REST_CY - REST_HY;
-    if ((alongSide && sideOffset < 2) || (alongSouth && southOffset < 2)) return "mud";
-    // 마을·길·쉼터 둘레 풀밭은 물·나무 없이 넉넉하게 비워 둔다
+    const alongRestSouth = cy > REST_CY && cy < ringSouth;
+    const alongNorth = cy < TOP && cy > ringNorth;
+    const alongGlade = Math.abs(cx - glade.x) < 1.5 && cy < ringNorth && cy > glade.y;
+    const height = valueNoise(s, tx, ty, 24) * 0.65 + valueNoise(s + 1, tx, ty, 7) * 0.35;
+    if (!aroundSpring) {
+      // 산책로가 물 위를 지나는 칸은 진흙 대신 나무 다리
+      if (onRingTrail(cx, cy)) return height < 0.35 ? "deck" : "mud";
+      if (alongSide && sideOffset < 2) return "mud";
+      if (alongSouth && southOffset < 2) return "mud";
+      if (alongNorth && northOffset < 2) return "mud";
+      if (alongRestSouth && Math.abs(cx) < 2) return "mud"; // 쉼터 남문에서 산책로로
+      if (alongGlade) return "mud"; // 산책로에서 북쪽 등불 공터로
+    }
+    // 마을·길·명소 둘레 풀밭은 물·나무 없이 넉넉하게 비워 둔다
     if (tx >= -W - 7 && tx <= W + 6 && ty >= TOP - 6 && ty <= BOTTOM + 6) return "grass";
-    if ((alongSide && sideOffset < 8) || (alongSouth && southOffset < 11)) return "grass";
+    if ((alongSide && sideOffset < 8) || (alongSouth && southOffset < 11) || (alongNorth && northOffset < 8)) return "grass";
     if (roundedRectDistance(cx, cy - REST_CY, REST_HX + 5, REST_HY + 5, REST_CORNER + 5) < 0) return "grass";
+    if (Math.abs(roundedRectDistance(cx, cy - ringCy, ringHx, ringHy, RING_CORNER)) < 5) return "grass";
+    if (Math.hypot((cx - glade.x) / 13, (cy - glade.y) / 10) < 1) return "grass";
+    if (Math.hypot((cx - wildSpring[0]) / 11, (cy - wildSpring[1]) / 9) < 1) return "grass";
+    if (alongRestSouth && Math.abs(cx) < 8) return "grass";
 
     // 바깥 습지: 물웅덩이, 진흙 물가, 이끼 바위 줄, 열대 나무
-    const height = valueNoise(s, tx, ty, 24) * 0.65 + valueNoise(s + 1, tx, ty, 7) * 0.35;
     if (height < 0.3) return "water";
     if (height < 0.35) return "mud";
     const ridge = valueNoise(s + 2, tx, ty, 18);
@@ -495,6 +586,11 @@ export function createWorld(seed: string, games: readonly DoorGame[]): World {
     appleTrees,
     springs,
     guestbook,
+    landmarks: {
+      pier: { x: (lake.x + 2) * TILE, y: ringCy * TILE },
+      wildSpring: { x: wildSpring[0] * TILE, y: wildSpring[1] * TILE },
+      glade: { x: glade.x * TILE, y: glade.y * TILE },
+    },
     village: { halfWidth: W, top: TOP + 1, bottom: BOTTOM - 1 },
     spawn: { x: 0, y: LOOP_RY * TILE },
     tileAt,
