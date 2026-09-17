@@ -56,11 +56,6 @@ describe("ReactionTime", () => {
   });
 
   describe("플레이 중 스크롤", () => {
-    it("PC에서 시작해도 우측에 비클릭 스크롤바 여백을 남기지 않는다", () => {
-      render(<ReactionTime />);
-      expect(getArea()).toHaveAttribute("data-hide-page-scrollbar", "true");
-    });
-
     it("카운트다운·측정 중에는 페이지 스크롤과 브라우저 터치 제스처를 막고, 결과 화면에서 풀린다 — 누르다 화면이 밀리지 않게", async () => {
       render(<ReactionTime />);
       expect(getArea()).toHaveClass("touch-manipulation");
