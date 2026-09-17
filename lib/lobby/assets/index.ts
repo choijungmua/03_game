@@ -15,6 +15,8 @@ import reeds from "./nature/reeds";
 import rocks from "./nature/rocks";
 import treeTropical from "./nature/tree-tropical";
 import fence from "./props/fence";
+import fencePost from "./props/fence-post";
+import fenceVertical from "./props/fence-vertical";
 import guestbookBoard from "./props/guestbook-board";
 import lantern from "./props/lantern";
 import logSeat from "./props/log-seat";
@@ -25,7 +27,7 @@ import type { LobbyAsset } from "./types";
 export type { BuildingAsset, GroundAsset, LobbyAsset, LobbyAssetCategory, SpriteAsset } from "./types";
 
 export const GROUND_ASSETS = [meadow, mud, water, deck] as const;
-export const SPRITE_ASSETS = [treeTropical, palm, lotus, bananaBush, grassBush, rocks, reeds, fence, logSeat, lantern, guestbookBoard, onsen, yuzu] as const;
+export const SPRITE_ASSETS = [treeTropical, palm, lotus, bananaBush, grassBush, rocks, reeds, fence, fenceVertical, fencePost, logSeat, lantern, guestbookBoard, onsen, yuzu] as const;
 /** 오두막 모양. 게임 순서대로 돌려 쓴다 — 여기에 추가하면 오두막 종류가 늘어난다 */
 export const BUILDING_ASSETS = [hut1, hut2, hut3] as const;
 

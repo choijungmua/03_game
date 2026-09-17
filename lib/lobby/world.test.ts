@@ -9,6 +9,7 @@ import {
   isBlockingTile,
   LOBBY_SEED,
   nearestWater,
+  REST_CY,
   SPRING_RX,
   SPRING_RY,
   TILE,
@@ -52,7 +53,7 @@ describe("카피바라 습지 마을", () => {
     const world = createWorld(LOBBY_SEED, GAMES);
     expect(tileUnder(world, world.spawn.x, world.spawn.y)).toBe("deck");
     expect(tileUnder(world, world.spring.x, world.spring.y)).toBe("spring");
-    expect(world.seats).toHaveLength(4);
+    expect(world.seats).toHaveLength(6); // 마을 4 + 강가 쉼터 2
     for (const seat of world.seats) {
       // 두 자리 모두 통나무 위이고, 일어나면 그 자리 바로 앞에 선다
       for (const spotX of seat.spots) {
@@ -102,6 +103,27 @@ describe("카피바라 습지 마을", () => {
     expect(world.tileAt(-W - 1, -5)).toBe("fence");
     expect(world.tileAt(0, top - 1)).toBe("fence");
     expect(world.tileAt(8, bottom + 1)).toBe("fence");
+  });
+
+  it("스폰에서 진흙길을 따라 걸어서 강가 쉼터 잔교와 동·서 길 끝까지 갈 수 있다", () => {
+    const world = createWorld(LOBBY_SEED, GAMES);
+    const start = `${Math.floor(world.spawn.x / TILE)},${Math.floor(world.spawn.y / TILE)}`;
+    const seen = new Set([start]);
+    const queue = [start];
+    while (queue.length > 0) {
+      const [tx, ty] = (queue.pop() ?? "").split(",").map(Number);
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const key = `${tx + dx},${ty + dy}`;
+        if (seen.has(key) || Math.abs(tx + dx) > 90 || Math.abs(ty + dy) > 60 || isBlockingTile(world.tileAt(tx + dx, ty + dy))) continue;
+        seen.add(key);
+        queue.push(key);
+      }
+    }
+    expect(world.tileAt(0, REST_CY)).toBe("deck");
+    expect(seen.has(`0,${REST_CY}`)).toBe(true);
+    const W = world.village.halfWidth;
+    const trailEnd = [...seen].filter((key) => Math.abs(Number(key.split(",")[0]) + 0.5) >= W + 29);
+    expect(trailEnd.length).toBeGreaterThan(0);
   });
 
   it("바깥 습지에는 막히는 지형(물·나무·바위)이 섞여 있다", () => {
