@@ -6,7 +6,7 @@ import { useEffect, useEffectEvent, useRef, useState } from "react";
 
 import { Progress } from "@/components/feedback/progress";
 import { cn } from "@/lib";
-import { FISH_CATCHES } from "@/lib/lobby/constants";
+import { FISH_CATCHES, FOOD_SATIETY } from "@/lib/lobby/constants";
 import { currentSatiety, type Satiety } from "@/lib/lobby/feeding";
 import { type FishCatch, fishCatchSrc, type FishInventory } from "@/lib/lobby/fishing";
 
@@ -130,7 +130,7 @@ export function FishBag({
         </div>
         <p className="text-caption-1 text-text-caption" aria-live="polite">
           {total > 0
-            ? `${FISH_CATCHES.length}종 중 ${kinds}종 · 눌러서 카피바라에게 먹여 보세요`
+            ? `${FISH_CATCHES.length}종 중 ${kinds}종 · 사과를 눌러 카피바라에게 먹여 보세요`
             : "아직 가방이 비었어요. 물가에서 낚시하거나 사과나무 밑에서 사과를 따 보세요"}
         </p>
         <ul className="grid grid-cols-3 gap-2">
@@ -163,7 +163,8 @@ export function FishBag({
             const cell = "flex w-full min-w-0 flex-col items-center gap-0.5 rounded-xl bg-muted p-2";
             return (
               <li key={name} className="min-w-0">
-                {count > 0 ? (
+                {/* 먹을 수 있는 것(사과)만 누를 수 있다. 물고기·장화는 모아 보기만 한다 */}
+                {count > 0 && FOOD_SATIETY[name] > 0 ? (
                   <button
                     type="button"
                     onClick={() => onFeed(name)}
