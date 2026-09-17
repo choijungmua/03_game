@@ -70,7 +70,7 @@ export const COMBO_WINDOW_MS = 2_500;
 export const COMBO_SHIELD_AT = 3;
 
 export type LogKind = "roll" | "hurdle" | "wall" | "beam" | "bounce" | "split" | "chase";
-/** low는 점프로 넘고, high는 숙여서 지나가고, full은 좌우로만 피한다 */
+/** low는 점프로 넘고, high는 숙여서 지나가고, full은 좌우로만 피한다. 생김새가 같은 바닥 통나무 한 개는 모두 low — 점프했는데 부딪히면 억울하다. full은 높이 쌓아 그리는 벽뿐 */
 export type LogHeight = "low" | "high" | "full";
 
 export const LOG_HEIGHTS: Record<LogKind, LogHeight> = {
@@ -78,9 +78,9 @@ export const LOG_HEIGHTS: Record<LogKind, LogHeight> = {
   hurdle: "low",
   wall: "full",
   beam: "high",
-  bounce: "full",
-  split: "full",
-  chase: "full",
+  bounce: "low",
+  split: "low",
+  chase: "low",
 };
 
 /** 난이도 곡선에서 이 시간이 지나야 등장한다 */
@@ -512,11 +512,11 @@ export function getCue(state: GameState): "jump" | "duck" | null {
 const DEATH_LINES: Record<LogKind, string> = {
   roll: "굴러온 통나무에 정면으로 박았어요",
   hurdle: "바닥 통나무에 걸려 넘어졌어요 — 점프로 넘어 보세요",
-  wall: "통나무 벽의 틈을 못 찾았어요",
+  wall: "높이 쌓인 통나무 벽은 점프로 못 넘어요 — 틈으로 빠져나가 보세요",
   beam: "머리 높이 통나무에 이마를 박았어요 — 숙여서 지나가 보세요",
-  bounce: "튕겨 온 통나무에 옆구리를 맞았어요",
-  split: "쪼개진 통나무 조각에 맞았어요",
-  chase: "끝까지 쫓아온 통나무에 잡혔어요 — 휘어 오다 곧게 떨어질 때 옆으로 비켜 보세요",
+  bounce: "튕겨 온 통나무에 옆구리를 맞았어요 — 옆으로 비키거나 점프로 넘어 보세요",
+  split: "쪼개진 통나무 조각에 맞았어요 — 조각은 점프로도 넘을 수 있어요",
+  chase: "끝까지 쫓아온 통나무에 잡혔어요 — 코앞에서 점프로 넘어 보세요",
 };
 
 export function getDeathLine(kind: LogKind, elapsedMs: number) {
