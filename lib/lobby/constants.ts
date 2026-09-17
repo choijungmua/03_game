@@ -105,14 +105,14 @@ export const SATIETY_STORAGE_KEY = "ggpli:lobby-satiety";
 export const SATIETY_MAX = 100;
 /** 포만감 1이 떨어지는 시간(ms). 가득 찬 배가 1시간이면 다 꺼진다 */
 export const SATIETY_DECAY_MS = 36_000;
-/** 먹이면 오르는 포만감. 0이면 못 먹는 것(가방에서 안 줄어든다) */
+/** 먹이면 오르는 포만감. 0이면 못 먹는 것(가방에서 안 줄어든다). 카피바라는 초식동물이라 낚은 물고기는 모으기만 한다 */
 export const FOOD_SATIETY: Record<(typeof FISH_CATCHES)[number], number> = {
-  송사리: 8,
-  붕어: 15,
-  메기: 20,
-  피라냐: 15,
-  아로와나: 25,
-  "황금 잉어": 35,
+  송사리: 0,
+  붕어: 0,
+  메기: 0,
+  피라냐: 0,
+  아로와나: 0,
+  "황금 잉어": 0,
   "낡은 장화": 0,
   사과: 10,
 };

@@ -1587,7 +1587,7 @@ export function Lobby({ games, listGames }: { games: DoorGame[]; listGames: Door
       if (eatingMs(me.meal, now) >= 0) return showNotice("아직 먹는 중이에요");
       const result = feedCapybara(name, Date.now());
       if (!result.ok) {
-        const reason = { full: "배불러서 더 못 먹어요", inedible: "그건 못 먹어요, 퉤!", none: "가방에 없어요" };
+        const reason = { full: "배불러서 더 못 먹어요", inedible: "카피바라는 풀과 과일만 먹어요", none: "가방에 없어요" };
         return showNotice(reason[result.reason]);
       }
       if (me.sitting) standUp();
