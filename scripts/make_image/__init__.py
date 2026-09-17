@@ -4,6 +4,7 @@ import re
 import shutil
 import subprocess
 import tempfile
+import time
 from pathlib import Path
 
 from PIL import Image, ImageChops, ImageDraw
@@ -11,7 +12,7 @@ from PIL import Image, ImageChops, ImageDraw
 ASSETS_DIR = Path(__file__).parent / "assets"
 
 
-def make_image(prompt: str, name: str, refs: list[str] | None = None, transparent: bool = True) -> Path:
+def make_image(prompt: str, name: str, refs: list[str] | None = None, transparent: bool = True, model: str | None = None) -> Path:
     codex = shutil.which("codex")
     if not codex:
         raise RuntimeError("codex CLI를 찾을 수 없습니다 (npm i -g @openai/codex)")
@@ -25,19 +26,25 @@ def make_image(prompt: str, name: str, refs: list[str] | None = None, transparen
         f"{prompt}"
     )
 
+    started = time.time()
     with tempfile.TemporaryDirectory() as tmp:
         last_message = Path(tmp) / "last.txt"
         cmd = [codex, "exec", "--skip-git-repo-check", "-s", "workspace-write", "-C", str(ASSETS_DIR), "-o", str(last_message)]
+        if model:
+            cmd += ["-m", model]
         for ref in refs or []:
             cmd += ["-i", str(Path(ref).resolve())]
         # 프롬프트는 stdin("-")으로 넘긴다: -i 뒤 인자 흡수, Windows .cmd 인자 깨짐(한글/줄바꿈) 회피
         cmd.append("-")
         subprocess.run(cmd, input=instruction, text=True, encoding="utf-8", check=True)
 
-        # Codex 샌드박스 셸이 복사에 실패할 때가 있어, 답변에 적힌 생성 원본 경로에서 직접 가져온다
+        # Codex 샌드박스 셸이 복사에 실패할 때가 있어, 답변에 적힌 생성 원본 경로에서 직접 가져온다.
+        # 답변이 (만들지도 못한) 목적지 경로만 적고 끝낼 때도 있어, 마지막엔 Codex가 이번 실행 중에 만든 그림을 찾는다
         if not out.exists():
             text = last_message.read_text(encoding="utf-8") if last_message.exists() else ""
             found = [Path(p) for p in re.findall(r"[A-Za-z]:\\[^`\s*]+?\.png", text) if Path(p).exists()]
+            fresh = [p for p in Path.home().glob(".codex/generated_images/*/*.png") if p.stat().st_mtime >= started]
+            found += sorted(fresh, key=lambda p: p.stat().st_mtime)
             if not found:
                 raise RuntimeError(f"Codex가 {out} 을 만들지 않았습니다. 위 Codex 출력을 확인하세요")
             shutil.copy(found[-1], out)

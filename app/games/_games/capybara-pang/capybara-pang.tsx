@@ -1,6 +1,7 @@
 "use client";
 
 import { Bomb, ChevronDown, Sparkles } from "lucide-react";
+import Image from "next/image";
 import { useEffect, useEffectEvent, useRef, useState } from "react";
 
 import { GameControls } from "@/components/games/game-controls";
@@ -15,6 +16,7 @@ import { useLockPageScroll } from "@/lib/games/use-lock-page-scroll";
 import { playGameSound, type SoundLayer } from "@/lib/lobby/settings";
 
 import {
+  ANIMAL_IMAGE_BASE,
   ANIMALS,
   BOARD_SIZE,
   COMBO_WINDOW_MS,
@@ -112,7 +114,7 @@ function PlayTimer({ startAt }: { startAt: number }) {
   );
 }
 
-/** 판의 블록 하나. 이미지가 생기면 글자 자리를 <img>로 바꾼다 (constants.ts ANIMALS 참고) */
+/** 판의 블록 하나. 색 원 위에 동물 펠트 얼굴을 얹고, 터질 때만 우는 얼굴로 바꾼다 (constants.ts ANIMALS 참고) */
 function PangTile({
   tile,
   index,
@@ -145,9 +147,10 @@ function PangTile({
       data-kind={tile.kind}
       data-special={tile.special}
       className={cn(
-        "absolute top-0 left-0 flex items-center justify-center transition-[translate,scale,opacity] ease-out motion-reduce:transition-none",
+        "absolute top-0 left-0 flex items-center justify-center transition-[translate,scale,opacity,rotate] ease-out motion-reduce:transition-none",
         dropRows !== undefined && "animate-pang-drop motion-reduce:animate-none",
-        popping && "scale-0 opacity-0",
+        // 터질 땐 우는 얼굴로 바뀌면서 펑 부풀어 올랐다 사라진다 (쪼그라들면 눈물이 안 보인다)
+        popping && "scale-125 rotate-12 opacity-0 motion-reduce:scale-0 motion-reduce:rotate-0",
       )}
       style={style}
     >
@@ -168,7 +171,16 @@ function PangTile({
         ) : tile.special === "rainbow" ? (
           <Sparkles aria-hidden="true" className="size-1/2" />
         ) : (
-          animal.name[0]
+          <Image
+            // 터지는 순간만 우는 얼굴 — 눈물이 튀면서 블록이 쪼그라든다
+            src={`${ANIMAL_IMAGE_BASE}/${animal.key}${popping ? "-cry" : ""}.webp`}
+            alt={animal.name}
+            width={128}
+            height={128}
+            unoptimized
+            draggable={false}
+            className="size-[86%] select-none"
+          />
         )}
       </div>
     </div>

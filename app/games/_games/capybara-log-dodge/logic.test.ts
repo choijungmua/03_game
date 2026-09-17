@@ -134,6 +134,18 @@ describe("점프·숙이기", () => {
     expect(jumped.hitBy).toBe("beam");
   });
 
+  it("벽 말고 바닥을 구르는 통나무 한 개(굴러오는·튕기는·쪼개진·따라오는)는 모두 점프로 넘는다", () => {
+    for (const kind of ["roll", "bounce", "split", "chase"] as const) {
+      const jumped = playing({ logs: [log({ kind, y: CAPYBARA_Y - 60, vy: 400 })] });
+      runPast(jumped, { jump: true });
+      expect(jumped.hitBy, kind).toBeNull();
+
+      const stayed = playing({ logs: [log({ kind, y: CAPYBARA_Y - 60, vy: 400 })] });
+      runPast(stayed, {});
+      expect(stayed.hitBy, kind).toBe(kind);
+    }
+  });
+
   it("숙여서는 허들을, 점프로는 벽을 못 넘는다", () => {
     const ducked = playing({ logs: [incoming("hurdle")] });
     runPast(ducked, { duck: true });
@@ -311,7 +323,7 @@ describe("표시 문구", () => {
 
   it("5초 안에 죽으면 납작 문구가 붙고, 허들·가로대는 피하는 법을 알려준다", () => {
     expect(getDeathLine("roll", 3_200)).toBe("3.2초 만에 납작! 굴러온 통나무에 정면으로 박았어요");
-    expect(getDeathLine("wall", 12_000)).toBe("통나무 벽의 틈을 못 찾았어요");
+    expect(getDeathLine("wall", 12_000)).toBe("높이 쌓인 통나무 벽은 점프로 못 넘어요 — 틈으로 빠져나가 보세요");
     expect(getDeathLine("hurdle", 9_000)).toContain("점프");
     expect(getDeathLine("beam", 15_000)).toContain("숙여서");
   });

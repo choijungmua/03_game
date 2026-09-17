@@ -2,10 +2,10 @@ import type { SoundLayer } from "@/lib/lobby/settings";
 
 export const BOARD_SIZE = 7;
 
-/**
- * 판에 나오는 동물. 이미지는 아직 없어 색 원 + 첫 글자로 보여준다.
- * 이미지를 넣을 땐 public/assets/images/games/capybara-pang/<key>.webp 를 만들고 capybara-pang.tsx PangTile의 글자 자리만 <img>로 바꾼다
- */
+/** 동물 펠트 얼굴 그림 폴더. 평소 얼굴은 <key>.webp, 터질 때 우는 얼굴은 <key>-cry.webp */
+export const ANIMAL_IMAGE_BASE = "/assets/images/games/capybara-pang/animals";
+
+/** 판에 나오는 동물. 색 원 위에 펠트 얼굴 그림을 얹는다 (색만으로 구분하지 않게 얼굴 모양도 다르다) */
 export const ANIMALS = [
   { key: "capybara", name: "카피바라", colorClass: "bg-amber-600 text-white" },
   { key: "rabbit", name: "토끼", colorClass: "bg-pink-400 text-neutral-950" },

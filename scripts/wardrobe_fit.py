@@ -55,7 +55,7 @@ def sprite_group(name: str) -> tuple[str, str, bool]:
     elif name.startswith("scratch"):
         direction = "up"
     else:
-        direction = re.sub(r"^(stand|walk1|walk2|punch|yawn-\d|doze-\d|idle)-", "", name)
+        direction = re.sub(r"^(stand|walk1|walk2|punch|pick-\d|yawn-\d|doze-\d|idle)-", "", name)
     view = DIRECTION_VIEW[direction]
     if sit:
         return view, "sit-" + {"front": "front", "side": "side", "back": "back"}[view], direction.endswith("left")
