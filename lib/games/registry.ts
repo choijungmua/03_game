@@ -88,6 +88,16 @@ export const GAMES: GameEntry[] = [
     seo: () => import("@/app/games/_games/capybara-log-dodge/seo"),
   },
   {
+    slug: "capybara-pang",
+    title: GAME_TITLES["capybara-pang"],
+    description: "60초 동안 옆 블록과 바꿔 같은 동물 3개를 이어 터뜨리는 매치3 퍼즐. 4개는 폭탄, 5개는 무지개, 콤보를 이으면 점수 두 배 피버",
+    tier: "A",
+    playDifficulty: "쉬움",
+    pageName: "pang",
+    component: dynamic(() => import("@/app/games/_games/capybara-pang")),
+    seo: () => import("@/app/games/_games/capybara-pang/seo"),
+  },
+  {
     slug: "watermelon-game",
     title: GAME_TITLES["watermelon-game"],
     description: "같은 과일끼리 닿게 떨어뜨려 체리부터 수박까지 합쳐 키우는 물리 퍼즐. 과일이 선을 넘으면 끝, 점수로 등급과 순위를 확인하는 게임",
