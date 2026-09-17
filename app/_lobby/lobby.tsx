@@ -42,6 +42,8 @@ import {
   FISH_AUTO_REEL_MS,
   FISH_BITE_WINDOW_MS,
   FISH_CAST_MS,
+  APPLE_KINDS,
+  APPLE_PICK_MS,
   APPLE_REACH,
   FISHABLE,
   FISH_LOOKS,
@@ -77,7 +79,7 @@ import {
   parseFeedChat,
   type Satiety,
 } from "@/lib/lobby/feeding";
-import { applesLeft, nearestTree, pickApple } from "@/lib/lobby/apples";
+import { applesLeft, nearestTree, pickApple, rollApple } from "@/lib/lobby/apples";
 import { pushSnapshot, sampleSnapshots, type Snapshot } from "@/lib/lobby/interpolation";
 import { loadLobbyProfile, type LobbyProfile, saveLobbyProfile } from "@/lib/lobby/profile";
 import { type LobbySettings, playSound, saveLobbySettings, useLobbySettings } from "@/lib/lobby/settings";
@@ -980,8 +982,8 @@ function drawCatch(ctx: CanvasRenderingContext2D, name: FishCatch, x: number, y:
   ctx.strokeStyle = "rgba(40,28,16,0.9)";
   ctx.fillStyle = color;
   ctx.beginPath();
-  if (name === "사과") {
-    // ponytail: 사과 펠트 그림(fish-catches/apple.webp)이 들어오면 위 그림으로 그려져 이 도형은 안 쓰인다
+  if (APPLE_KINDS.some((kind) => kind === name)) {
+    // ponytail: 사과 펠트 그림(fish-catches/{apple,green-apple,rotten-apple}.webp)이 들어오면 위 그림으로 그려져 이 도형은 안 쓰인다
     ctx.arc(0, half * 0.1, half * 0.8, 0, Math.PI * 2);
     ctx.fill();
     ctx.stroke();
@@ -1431,6 +1433,8 @@ export function Lobby({ games, listGames }: { games: DoorGame[]; listGames: Door
       fishing: null as FishingLine | null,
       /** 가방에서 먹인 것과 먹기 시작한 시각. 하트까지 다 떠오르면 비운다 */
       meal: null as Meal | null,
+      /** 사과를 따는 중인 나무 번호와 따기 시작한 시각. 움직이거나 맞으면 비운다 */
+      picking: null as { tree: number; at: number } | null,
       /** 서버가 정해 준 이름표. 첫 동기화 전엔 비어 있다 */
       name: "",
     };
@@ -1454,15 +1458,29 @@ export function Lobby({ games, listGames }: { games: DoorGame[]; listGames: Door
     /** 나무마다 사과를 딴 시각들 (lib/lobby/apples.ts) */
     const applePicks = world.appleTrees.map((): number[] => []);
     const nearestAppleTree = () => nearestTree(world.appleTrees, me.x, me.y, APPLE_REACH);
-    /** 나무를 올려다보며 폴짝 뛰어 사과를 하나 따서 가방에 넣는다 */
-    const pickFromTree = (index: number, now: number) => {
+    /** 나무를 올려다보며 따기 시작한다. APPLE_PICK_MS 동안 폴짝폴짝 뛰다가 finishPick에서 하나를 딴다 */
+    const startPick = (index: number, now: number) => {
+      if (me.picking) return; // 따는 중에 Space를 또 눌러도 한 번만 딴다
       const tree = world.appleTrees[index];
       me.facing = facingOf(tree.x - me.x, tree.y - TILE - me.y);
-      if (!pickApple(applePicks[index], now)) return showNotice("사과가 다 떨어졌어요. 조금 있으면 다시 열려요");
+      if (applesLeft(applePicks[index], now) === 0) return showNotice("사과가 다 떨어졌어요. 조금 있으면 다시 열려요");
+      me.picking = { tree: index, at: now };
       startHop();
-      setFishInventory(recordCatch("사과"));
+      showNotice("영차영차, 사과 따는 중…", APPLE_PICK_MS);
+    };
+    /** 다 땄으면 확률대로 사과 종류를 정해 가방에 넣는다 */
+    const finishPick = (now: number) => {
+      const picking = me.picking;
+      if (!picking || now < picking.at + APPLE_PICK_MS) return;
+      me.picking = null;
+      if (!pickApple(applePicks[picking.tree], now)) return;
+      const kind = rollApple(Math.random());
+      startHop();
+      setFishInventory(recordCatch(kind));
       playSound("applePick", settingsRef.current);
-      showNotice(`사과 땄어요! 남은 사과 ${applesLeft(applePicks[index], now)}개`);
+      const left = `남은 사과 ${applesLeft(applePicks[picking.tree], now)}개`;
+      const found = { 사과: "사과 땄어요!", "초록 사과": "와, 귀한 초록 사과예요!", "썩은 사과": "으악, 썩은 사과예요…" };
+      showNotice(`${found[kind]} ${left}`, 2000);
     };
     /** 통나무 두 자리 중 비어 있는 나와 가까운 자리의 x. 둘 다 찼으면 null */
     const freeSpot = (index: number) => {
@@ -1593,6 +1611,7 @@ export function Lobby({ games, listGames }: { games: DoorGame[]; listGames: Door
       if (me.sitting) standUp();
       reelLine(now, false);
       stopAuto();
+      me.picking = null;
       me.meal = { name, at: now };
       me.facing = "down";
       soundBite = -1;
@@ -1978,7 +1997,7 @@ export function Lobby({ games, listGames }: { games: DoorGame[]; listGames: Door
         } else if (nearGuestbook()) {
           setGuestbookOpen(true);
         } else if (nearestSeat() < 0 && nearestAppleTree() >= 0) {
-          pickFromTree(nearestAppleTree(), now);
+          startPick(nearestAppleTree(), now);
         } else if (nearestSeat() < 0 && water) {
           // 한 번 던지면 멈출 때까지 입질마다 알아서 당기고 다시 던진다 (아래 게임 루프)
           castLine(water, now);
@@ -2042,11 +2061,16 @@ export function Lobby({ games, listGames }: { games: DoorGame[]; listGames: Door
       }
       if (wantsMove && me.sitting) standUp(); // 움직이면 일어난다
       if (wantsMove) {
-        // 움직이면 낚싯대를 거두고 먹던 걸 멈춘다 (빈 찌를 감아 오는 모습은 남긴다)
+        // 움직이면 낚싯대를 거두고 먹던 걸·사과 따던 걸 멈춘다 (빈 찌를 감아 오는 모습은 남긴다)
         reelLine(now, false);
         stopAuto();
         me.meal = null;
+        me.picking = null;
       }
+      if (me.picking && (isStunned || now < me.attackUntil)) me.picking = null;
+      // 사과 따는 동안은 손이 닿을 때까지 폴짝폴짝 뛴다
+      if (me.picking && now - me.hop.start >= HOP_MS + 140) startHop();
+      finishPick(now);
       // 한 입 베어 물 때마다 아삭 쩝
       if (me.meal) {
         const bite = Math.floor((now - me.meal.at) / EAT_BITE_MS);
@@ -2119,7 +2143,7 @@ export function Lobby({ games, listGames }: { games: DoorGame[]; listGames: Door
       const bathingNow = inBath(me.x, me.y);
       // 목욕 중엔 긁기·하품 동작을 쉰다 (물에 잘린 몸으로는 어색하다)
       me.idleMs =
-        moved || wantsMove || me.sitting || me.fishing || me.meal || isStunned || attacking || bathingNow ? 0 : nextIdle(me.idleMs, dt);
+        moved || wantsMove || me.sitting || me.fishing || me.meal || me.picking || isStunned || attacking || bathingNow ? 0 : nextIdle(me.idleMs, dt);
       // 발을 내딛는 프레임마다 톡, 긁는 박자마다 슥슥, 하품을 시작할 때 하아암
       if (me.pose !== soundPose && me.pose !== "stand") {
         // 발 밑 타일에 따라 풀밭 사각, 나무 데크 통, 진흙 철퍽, 온천 물속 찰박
