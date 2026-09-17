@@ -109,6 +109,7 @@ import { GuestbookPanel } from "./guestbook-panel";
 import { KeyboardGuide } from "./keyboard-guide";
 import { SoundToggle } from "./lobby-settings";
 import { LobbyMenu } from "./lobby-menu";
+import { drawOutfit } from "./outfit-canvas";
 import { ProfileName } from "./profile-name";
 import {
   ATTACK_COOLDOWN_MS,
@@ -127,7 +128,6 @@ import {
   dressSprite,
   loadOutfit,
   type Outfit,
-  type OutfitPiece,
   outfitImageSrcs,
   spriteName,
   WARDROBE_SLOTS,
@@ -715,56 +715,6 @@ interface OutfitDrawer {
    * (서 있으면 76 → 152px, 앉으면 64 → 128px). 입은 옷이 없거나 옷 이미지를 아직 불러오는 중이면 null
    */
   dressed: (base: HTMLImageElement, outfit: Outfit, size: number) => HTMLCanvasElement | null;
-}
-
-/**
- * 스프라이트만 그린 캔버스(left, top, 정사각형 size) 위에 옷을 전부 입힌다.
- * 자리는 그 스프라이트(이미지 이름)에서 잰 머리·몸통·눈 기준점에 옷마다 맞춘 상자 (lib/lobby/wardrobe.ts dressSprite).
- * 한벌옷의 채운 그림(clip)은 source-atop으로 스프라이트 윤곽 안에만 그리므로, 다른 그림이 깔린 캔버스에서는 쓰면 안 된다
- */
-function drawOutfit(
-  ctx: CanvasRenderingContext2D,
-  base: HTMLImageElement,
-  outfit: Outfit,
-  left: number,
-  top: number,
-  size: number,
-  outfitImage: (src: string) => HTMLImageElement,
-) {
-  const { under, redraw, over } = dressSprite(spriteName(base.src), outfit);
-  const put = (piece: OutfitPiece) => {
-    const item = outfitImage(piece.src);
-    if (!ready(item)) return;
-    const x = left + (size * piece.left) / 100;
-    const y = top + (size * piece.top) / 100;
-    const width = (size * piece.width) / 100;
-    const height = (size * piece.height) / 100;
-    if (!piece.mirror) {
-      ctx.drawImage(item, x, y, width, height);
-      return;
-    }
-    ctx.save();
-    ctx.translate(x + width, 0);
-    ctx.scale(-1, 1);
-    ctx.drawImage(item, 0, y, width, height);
-    ctx.restore();
-  };
-  ctx.save();
-  ctx.globalCompositeOperation = "source-atop";
-  under.filter((piece) => piece.clip).forEach(put);
-  ctx.restore();
-  // 원래 옷 그림은 자르지 않아 후드·꼬리·소매가 몸 밖으로 나온다
-  under.filter((piece) => !piece.clip).forEach(put);
-  // 발·머리를 한 번 더 그려 한벌옷이 턱 밑으로 들어가고 발은 옷 밖으로 나와 보이게 한다 (옷장 미리보기와 같은 방식)
-  for (const [cx, cy, rx, ry] of redraw) {
-    ctx.save();
-    ctx.beginPath();
-    ctx.ellipse(left + (size * cx) / 100, top + (size * cy) / 100, (size * rx) / 100, (size * ry) / 100, 0, 0, Math.PI * 2);
-    ctx.clip();
-    ctx.drawImage(base, left, top, size, size);
-    ctx.restore();
-  }
-  over.forEach(put);
 }
 
 function drawCapybara(
@@ -1378,15 +1328,15 @@ export function Lobby({ games, listGames }: { games: DoorGame[]; listGames: Door
         const cached = dressedCache.get(key);
         if (cached) return cached;
         // 옷 이미지를 다 불러온 뒤에만 굽는다 (덜 불러온 채 구우면 빠진 옷이 그대로 굳는다)
-        const { under, over } = dressSprite(spriteName(base.src), outfit);
-        if (![...under, ...over].every((piece) => ready(outfitImage(piece.src)))) return null;
+        const { silhouette, under, over } = dressSprite(spriteName(base.src), outfit);
+        if (![...silhouette, ...under, ...over].every((piece) => ready(outfitImage(piece.src)))) return null;
         const canvas = document.createElement("canvas");
         canvas.width = px;
         canvas.height = px;
         const bake = canvas.getContext("2d");
         if (!bake) return null;
         bake.drawImage(base, 0, 0, px, px);
-        drawOutfit(bake, base, outfit, 0, 0, px, outfitImage);
+        drawOutfit({ ctx: bake, base, outfit, left: 0, top: 0, size: px, imageFor: outfitImage });
         // ponytail: 넘치면 통째로 비운다 (청크 캐시와 같은 방식). 사람이 많아 자주 비워지면 LRU로
         if (dressedCache.size > 300) dressedCache.clear();
         dressedCache.set(key, canvas);
