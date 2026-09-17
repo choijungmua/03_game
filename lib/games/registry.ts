@@ -87,6 +87,16 @@ export const GAMES: GameEntry[] = [
     component: dynamic(() => import("@/app/games/_games/capybara-log-dodge")),
     seo: () => import("@/app/games/_games/capybara-log-dodge/seo"),
   },
+  {
+    slug: "capybara-pang",
+    title: GAME_TITLES["capybara-pang"],
+    description: "60초 동안 옆 블록과 바꿔 같은 동물 3개를 이어 터뜨리는 매치3 퍼즐. 4개는 폭탄, 5개는 무지개, 콤보를 이으면 점수 두 배 피버",
+    tier: "A",
+    playDifficulty: "쉬움",
+    pageName: "pang",
+    component: dynamic(() => import("@/app/games/_games/capybara-pang")),
+    seo: () => import("@/app/games/_games/capybara-pang/seo"),
+  },
   // 새 게임은 여기에 한 줄씩 추가 (제목은 constants.ts GAME_TITLES에, CLAUDE.md "새 게임 추가 절차" 참고)
 ];
 
