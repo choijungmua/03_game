@@ -114,7 +114,10 @@ export const FISH_MOTIONS = {
   "초록 사과": { period: 300, sway: 3, lift: 3, rotate: 0.2 },
   "썩은 사과": { period: 300, sway: 3, lift: 3, rotate: 0.2 },
 } as const satisfies Record<(typeof FISH_CATCHES)[number], { period: number; sway: number; lift: number; rotate: number }>;
-/** 낚은 것 그림 파일 이름 (public/assets/images/ui/lobby/fish-catches/<이름>.webp) */
+/**
+ * 낚은 것 그림 파일 이름 (public/assets/images/ui/lobby/fish-catches/<이름>.webp). null은 아직 그림이 없는 것 —
+ * 없는 파일을 요청하면 404가 나서 부르지 않고 도형·아이콘으로 대신 그린다. 그림을 넣으면 null을 파일 이름으로 바꿀 것
+ */
 export const FISH_CATCH_SLUGS = {
   송사리: "minnow",
   붕어: "crucian-carp",
@@ -123,10 +126,11 @@ export const FISH_CATCH_SLUGS = {
   아로와나: "arowana",
   "황금 잉어": "golden-carp",
   "낡은 장화": "old-boot",
-  사과: "apple",
-  "초록 사과": "green-apple",
-  "썩은 사과": "rotten-apple",
-} as const satisfies Record<(typeof FISH_CATCHES)[number], string>;
+  // TODO(docs/LOBBY-MAP.md): apple, green-apple, rotten-apple
+  사과: null,
+  "초록 사과": null,
+  "썩은 사과": null,
+} as const satisfies Record<(typeof FISH_CATCHES)[number], string | null>;
 
 /** 카피바라 포만감(0~100, 이 기기에만 저장). 먹이면 오르고 시간이 지나면 떨어진다 */
 export const SATIETY_STORAGE_KEY = "ggpli:lobby-satiety";

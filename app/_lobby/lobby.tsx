@@ -931,10 +931,12 @@ function drawBobber(ctx: CanvasRenderingContext2D, x: number, y: number) {
 
 /** 낚은 것 펠트 그림 (가방 창과 같은 그림). 처음 그릴 때 한 번만 불러온다 */
 const catchImages = new Map<FishCatch, HTMLImageElement>();
+/** 그림이 아직 없는 것(사과 3종)은 요청하지 않고 undefined — drawCatch가 도형으로 그린다 */
 const catchImage = (name: FishCatch) => {
   let image = catchImages.get(name);
-  if (!image) {
-    image = loadImage(fishCatchSrc(name));
+  const src = fishCatchSrc(name);
+  if (!image && src) {
+    image = loadImage(src);
     catchImages.set(name, image);
   }
   return image;

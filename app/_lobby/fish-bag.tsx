@@ -1,11 +1,12 @@
 "use client";
 
+import { Apple } from "lucide-react";
 import NextImage from "next/image";
 import { useEffect, useState } from "react";
 
 import { Progress } from "@/components/feedback/progress";
 import { cn } from "@/lib";
-import { FISH_CATCHES, FOOD_SATIETY, SATIETY_MAX } from "@/lib/lobby/constants";
+import { FISH_CATCHES, FISH_LOOKS, FOOD_SATIETY, SATIETY_MAX } from "@/lib/lobby/constants";
 import { currentSatiety, type Satiety } from "@/lib/lobby/feeding";
 import { type FishCatch, fishCatchSrc, type FishInventory } from "@/lib/lobby/fishing";
 
@@ -56,17 +57,26 @@ export function FishBag({
       <ul className="grid grid-cols-3 gap-2">
         {FISH_CATCHES.map((name) => {
           const count = inventory[name] ?? 0;
+          const src = fishCatchSrc(name);
           const content = (
             <>
-              {/* 아직 못 낚은 건 까만 그림자로만 보여 준다 */}
-              <NextImage
-                src={fishCatchSrc(name)}
-                alt=""
-                width={128}
-                height={128}
-                unoptimized
-                className={cn("size-11 object-contain drop-shadow-sm", count === 0 && "opacity-35 brightness-0")}
-              />
+              {/* 아직 못 낚은 건 까만 그림자로만 보여 준다. 그림이 아직 없는 것(사과 3종)은 그 색 사과 아이콘으로 */}
+              {src ? (
+                <NextImage
+                  src={src}
+                  alt=""
+                  width={128}
+                  height={128}
+                  unoptimized
+                  className={cn("size-11 object-contain drop-shadow-sm", count === 0 && "opacity-35 brightness-0")}
+                />
+              ) : (
+                <Apple
+                  aria-hidden
+                  style={{ color: FISH_LOOKS[name].color }}
+                  className={cn("size-11 p-1.5 drop-shadow-sm", count === 0 && "opacity-35 brightness-0")}
+                />
+              )}
               <span className="w-full truncate text-center text-caption-2 font-semibold text-text-strong">
                 {count > 0 ? (
                   <>
