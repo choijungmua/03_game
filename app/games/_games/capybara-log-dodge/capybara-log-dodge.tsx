@@ -92,6 +92,8 @@ const TAP_PX = 10;
 const SHAKE_MAX_PX = 10;
 /** 착지할 때 납작하게 찌그러지는 시간 */
 const LAND_SQUASH_MS = 140;
+/** 벽 윗단을 아랫단보다 얼마나(통나무 두께 비율) 위에 그리는지 */
+const WALL_STACK = 0.62;
 /** 좌우로 달릴 때 몸이 기우는 각도(rad) */
 const LEAN_TILT = 0.16;
 /** 파티클이 떨어지는 가속도(px/s²) */
@@ -316,6 +318,16 @@ function drawLog(ctx: CanvasRenderingContext2D, image: HTMLImageElement, log: Lo
   const segment = log.h * (LOG_SOURCE.width / LOG_SOURCE.height);
   const count = Math.max(1, Math.round(log.w / segment));
   const width = log.w / count;
+  if (log.kind === "wall") {
+    // 벽은 점프로 못 넘는다 — 뒤(위)에 한 단 더 쌓고 발밑에 진한 그림자를 깔아 높은 더미로 보이게
+    ctx.globalAlpha = 0.45;
+    ctx.fillStyle = palette.shadow;
+    ctx.fillRect(left, log.y + log.h / 2 - 2, log.w, 10);
+    ctx.globalAlpha = 1;
+    for (let i = 0; i < count; i += 1) {
+      ctx.drawImage(image, 0, 0, LOG_SOURCE.width, LOG_SOURCE.height, left + i * width, top - log.h * WALL_STACK, width, log.h);
+    }
+  }
   ctx.save();
   if (!reducedMotion && log.w < GAME_WIDTH) {
     // 굴러 내려오며 들썩이고, 옆으로 가는 통나무는 가는 쪽으로 기운다 (그림만 — 판정 박스는 그대로)
@@ -1006,7 +1018,7 @@ export function CapybaraLogDodge() {
             />
             <h1 className="px-12 text-title-1 font-bold text-text-strong">{TITLE}</h1>
             <p className="text-caption-1 text-balance text-text-caption">
-              비탈 위에서 통나무가 굴러 내려와요. 좌우로 드래그해 피하고, 노란 ▲ 바닥 통나무는 탭하거나 위로 쓸어 점프, 파란 밧줄에 매달린 ▼ 통나무는 아래로 쓸어 숙이세요. 한 손가락으로 옮기면서 다른 손가락으로 점프·숙이기를 해도 돼요. 빨갛게 빛나는 통나무는 빠르고, 휘어 오는 통나무는 끝까지 따라와요. 유자 수건을 먹거나 아슬아슬하게 {COMBO_SHIELD_AT}번 연달아 스치면 한 번 막아 줘요. 키보드는 방향키(←→ 이동, ↑·Space 점프, ↓ 숙이기)예요.
+              비탈 위에서 통나무가 굴러 내려와요. 바닥을 구르는 통나무는 탭하거나 위로 쓸어 점프로 넘고(노란 ▲ 허들은 꼭 점프), 파란 밧줄에 매달린 ▼ 통나무는 아래로 쓸어 숙이세요. 두 단으로 높이 쌓인 통나무 벽만은 점프로 못 넘으니 좌우로 드래그해 틈으로 빠져나가세요. 한 손가락으로 옮기면서 다른 손가락으로 점프·숙이기를 해도 돼요. 빨갛게 빛나는 통나무는 빠르고, 휘어 오는 통나무는 끝까지 따라와요. 유자 수건을 먹거나 아슬아슬하게 {COMBO_SHIELD_AT}번 연달아 스치면 한 번 막아 줘요. 키보드는 방향키(←→ 이동, ↑·Space 점프, ↓ 숙이기)예요.
             </p>
           </header>
 
@@ -1060,7 +1072,7 @@ export function CapybaraLogDodge() {
           >
             {COUNTDOWN_VALUES[countdownIndex]}
           </span>
-          <p className="text-title-3 font-semibold text-balance opacity-80">좌우로 피하고 · 노란 ▲는 점프 · 파란 ▼는 숙이기</p>
+          <p className="text-title-3 font-semibold text-balance opacity-80">바닥 통나무는 점프 · 파란 ▼는 숙이기 · 쌓인 벽은 틈으로</p>
         </div>
       )}
 
