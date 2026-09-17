@@ -8,7 +8,7 @@
 | 테마: 카피바라 온천 습지 마을 | 같은 파일 + `public/assets/images/lobby/` | 카피바라가 사는 남미 강가 습지 + 일본 동물원의 카피바라 유자 온천. 모든 에셋을 카피바라 인형과 같은 털·펠트 질감으로 통일하고, 2D Canvas 안에서는 하나의 2.5D 카메라 규칙으로 배치 |
 | 에셋 폴더 구조 | `lib/lobby/assets/<분류>/<id>/` + `public/assets/images/lobby/<분류>/<id>/image.webp` + `assets-src/lobby/<분류>/<id>/source.png` | 에셋 하나 = 폴더 하나, `lib/lobby/assets/index.ts` 레지스트리에 한 줄 추가하면 로비가 읽는다 (크기·바닥 보정은 정의에). 나중에 유저가 만든 에셋도 같은 정의 한 건으로 넣을 수 있게 한 구조 |
 | 온천 광장 마을 | 같은 파일 (`HUT_SLOTS`·`SPRING_SPOTS`·`LOOP_*`) | 한가운데 큰 유자 온천을 둥근 사각 데크 둘레길이 감싸고, 둘레길 좌우에서 가로 데크가 동·서문으로, 아래에서 세로 데크가 남문으로 뻗는다. 스폰은 둘레길 남쪽, 바로 아래 방명록 게시판. 남서·남동에 노천탕 하나씩(통나무 의자·등불·갈대·사과나무). 마을 전체는 모서리가 크게 둥근 갈대 울타리 |
-| 둥근 울타리·세로 울타리 | `lib/lobby/world.ts` `fenceSpot` + `props/{fence,fence-vertical,fence-post}` | 막히는 칸은 둥근 사각형 바깥 한 줄 타일이고, 그림은 `fenceSpot`이 곡선 위로 옮긴 자리에 세운다(계단처럼 안 보이게). 법선이 세로면 가로 판, 가로면 아래 칸으로 이어지는 세로 판, 비스듬하면 가로 판 + 기둥. 세로 판·기둥은 `props/fence` 원본을 잘라 붙인 것 — Codex로 제대로 그린 그림이 생기면 교체 |
+| 둥근 울타리·세로 울타리 | `lib/lobby/world.ts` `fenceSpot` + `props/{fence,fence-vertical,fence-post}` | 막히는 칸은 둥근 사각형 바깥 한 줄 타일이고, 그림은 `fenceSpot`이 곡선 위로 옮긴 자리에 세운다(계단처럼 안 보이게). 법선이 세로면 가로 판, 가로면 아래 칸으로 이어지는 세로 판, 비스듬하면 가로 판 + 기둥. 세로 판·기둥은 `props/fence`를 참고로 새로 그린 펠트 그림이다 |
 | 진흙길·강가 쉼터 | `lib/lobby/world.ts` `sideTrailY`·`southTrailX`·`REST_CY` | 동·서문에서 등불 켜진 구불구불한 진흙길이 습지로 30칸 뻗고, 남문 길은 18칸 내려가 둥근 울타리를 두른 강가 쉼터(연못·가운데 데크 잔교·통나무 의자 2·등불 4·갈대)로 이어진다. 연못가에서 낚시가 되고, 게임이 늘면 쉼터에 오두막을 세울 자리 |
 | 게임 오두막 | 같은 파일 + `buildings/hut-{1,2,3}` | 초가 원두막(나무 아케이드 간판), 카피바라 귀 풀 굴집(나무 휴대용 게임기 간판), 바나나잎 대나무 원두막(나무 TV 간판). 첫 게임은 둘레길 북쪽 가운데, 나머지는 `HUT_SLOTS` 순서로 좌우 대칭 한 쌍씩 북쪽 부채꼴에 선다(13채까지). 문 앞 데크는 곧장 아래로 내려가 둘레길이나 가로 데크에 닿는다. 넘치는 오두막은 가로 데크 위 동·서 끝에 이어 붙인다 |
 | 간판 화면 아이콘 + 문 입장 | `public/assets/images/games/<slug>/icon.webp` + `app/_lobby/lobby.tsx` `drawBuilding`·`drawDoorLight` | 포털 없음. 게임 표시는 오두막 간판 화면(아케이드·게임기·TV, 위치는 오두막 정의의 `screen`)에 켜진 테마 아이콘 하나뿐(나무·잎·조약돌 소재 펠트 소품: 스톱워치·마우스·수박·비행기 등). 문 앞에 가면 따뜻한 빛이 켜지며 0.9초 뒤 또는 Enter로 입장 |
@@ -17,7 +17,7 @@
 | 8방향 걷기 | `capybara-*-{up-left,…}.webp` + `app/_lobby/lobby.tsx` | 대각선 전용 걷기 스프라이트(없으면 옆모습). 걸음 프레임을 시간이 아니라 걸은 거리로 넘기고, 걸음마다 몸이 살짝 뜨고 기울어 뒤뚱뒤뚱 |
 | 모바일 조이스틱 | `ui/lobby/joystick-{base,knob}.webp` | 터치한 자리가 조이스틱 중심, 끈 방향으로 걷고 끈 거리만큼 빨라짐(40~100%). 마우스는 누른 곳으로 걷기 그대로 |
 | 온천 목욕 | `props/onsen` + `app/_lobby/lobby.tsx` | 온천이 여러 개(`world.springs`)라 판정은 가장 가까운 온천 기준. 온천 둘레에서 Space 또는 목욕 버튼 → 폴짝 뛰어들어 머리·어깨만 내놓고 물속을 걸어 다닌다(물 밖으로는 못 나감). 머리에 유자를 얹고, 다시 Space면 가까운 풀밭으로 나온다. 첨벙·찰박·촤르르 효과음. 목욕 여부는 위치로 판단해 다른 유저에게도 보인다 |
-| 사과나무 | `lib/lobby/world.ts` `appleTrees` + `lib/lobby/apples.ts` + `app/_lobby/lobby.tsx` | 마을 안 풀밭에 사과나무(막히는 `tree` 타일). 밑에서 Space 또는 "사과 따기" 버튼 → 1.2초 동안 폴짝폴짝 뛰며 따고(움직이거나 때리거나 맞으면 멈춤, 연타해도 한 번), 확률대로 사과 65%(포만감 10)·썩은 사과 25%(못 먹음)·초록 사과 10%(포만감 25) 중 하나가 가방에 들어간다(`APPLE_ODDS`). 카피바라는 초식동물이라 먹을 수 있는 건 사과·초록 사과뿐이고, 낚은 물고기는 모아 보기만 한다. 한 그루 3개, 딴 사과는 1분 뒤 다시 열린다. 딴 기록은 탭 메모리에만(다른 유저와 공유 안 함). 사과나무·사과 그림이 아직 없어 열대 나무 그림 + 빨간 원으로 대신 그린다 — `nature/apple-tree` 에셋과 `ui/lobby/fish-catches/apple.webp`가 들어오면 교체 |
+| 사과나무 | `lib/lobby/world.ts` `appleTrees` + `lib/lobby/apples.ts` + `app/_lobby/lobby.tsx` | 마을 안 풀밭에 사과나무(막히는 `tree` 타일). 밑에서 Space 또는 "사과 따기" 버튼 → 1.2초 동안 폴짝폴짝 뛰며 따고(움직이거나 때리거나 맞으면 멈춤, 연타해도 한 번), 확률대로 사과 65%(포만감 10)·썩은 사과 25%(못 먹음)·초록 사과 10%(포만감 25) 중 하나가 가방에 들어간다(`APPLE_ODDS`). 카피바라는 초식동물이라 먹을 수 있는 건 사과·초록 사과뿐이고, 낚은 물고기는 모아 보기만 한다. 한 그루 3개, 딴 사과는 1분 뒤 다시 열린다. 딴 기록은 탭 메모리에만(다른 유저와 공유 안 함). 따는 동안엔 `capybara-pick-*` 스프라이트로 웅크렸다 뛰어올라 헛손질하고, 다 따면 딴 사과를 머리 위로 들어 보인다. 사과나무 그림이 아직 없어 열대 나무 그림에 사과 그림을 얹어 그린다 — `nature/apple-tree` 에셋이 들어오면 교체 |
 | 낚시 버튼 | `ui/lobby/fish.webp` | 물가에서 뜨는 버튼. 낚싯대 든 카피바라 그림, 누르면 계속 낚기·한 번 더 누르면 그만 |
 | 때리기 버튼 | `ui/lobby/punch.webp` | 누르면 눌림 애니메이션, 주먹은 빠르게 뻗고 천천히 거둬들임 |
 | 대기 동작 | `capybara-{scratch,yawn,doze}-*.webp` | 가만히 서 있으면 3.5초씩 쉬면서 엉덩이 긁기(씰룩) → 하품·기지개 → 꾸벅꾸벅 졸기(천천히 흔들림)를 돌아가며 한다. 이미지가 없는 동작은 서 있는 모습으로 대신. 다른 플레이어도 똑같이 보인다 |
@@ -30,8 +30,9 @@
 
 ### 남은 할 일 (TODO)
 
-- [ ] **사과 따는 애니메이션**: 지금은 따는 1.2초 동안 제자리에서 폴짝폴짝 뛰기만 한다(`app/_lobby/lobby.tsx` `startPick`·`finishPick`). 나무를 올려다보며 앞발을 뻗어 사과를 따는 카피바라 스프라이트(`capybara-pick-*`)와, 딴 사과가 가지에서 떨어져 머리 위로 들려 오는 동작을 만든다
-- [ ] **가방 사과 아이콘**: `public/assets/images/ui/lobby/fish-catches/{apple,green-apple,rotten-apple}.webp` 세 장 (원본 `assets-src/ui/lobby/fish-catches/<이름>.png`, 다른 낚은 것 그림과 같은 펠트 질감). 넣으면 가방 칸·나무에 달린 사과·먹는 사과가 자동으로 이 그림을 쓴다 (지금은 가방 칸이 깨진 그림, 나무·먹이는 빨간 원)
+- [x] **사과 따는 애니메이션**: `capybara-pick-{1,2,3}-{up,down}.webp` — 잔뜩 웅크렸다가(1) 앞발을 번쩍 뻗어 뛰어오르고(2) 아깝게 헛손질한다(3). 뜨는 높이는 기존 폴짝(hop) 코드가 주고, 다 따면 딴 사과가 머리 위로 떠올랐다 사라진다(`drawPicked`)
+- [x] **가방 사과 아이콘**: `ui/lobby/fish-catches/{apple,green-apple,rotten-apple}.webp` — 웃는 빨간 사과 / 별눈 초록 사과 / 눈물 한 방울에 벌레가 앉은 썩은 사과. 가방 칸·나무에 달린 사과·먹는 사과가 이 그림을 쓴다
+- [ ] **사과나무 그림**: `nature/apple-tree` 에셋. 지금은 열대 나무 그림에 사과를 얹어 쓴다
 
 레퍼런스: [Trafalgar Square — Parks & Gardens](https://www.parksandgardens.org/places/trafalgar-square-westminster), [Fountains and terrace walls — British Listed Buildings](https://britishlistedbuildings.co.uk/101066235-fountains-and-terrace-walls-with-lampstandards-steps-and-stone-bollards-enclosing-the-square-st-jamess-ward), [Den Den Town — Japan Nakama](https://www.japannakama.co.uk/travel/osaka-guides/nipponbashi-den-den-town/), [Osaka Arcade Guide — Playable Japan](https://www.playablejapan.com/en/articles/osaka-arcades-2026-guide), [MapleStory Worlds 포털 만들기 가이드](https://maplestoryworlds-creators.nexon.com/en/docs?postId=90)
 

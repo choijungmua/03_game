@@ -126,10 +126,9 @@ export const FISH_CATCH_SLUGS = {
   아로와나: "arowana",
   "황금 잉어": "golden-carp",
   "낡은 장화": "old-boot",
-  // TODO(docs/LOBBY-MAP.md): apple, green-apple, rotten-apple
-  사과: null,
-  "초록 사과": null,
-  "썩은 사과": null,
+  사과: "apple",
+  "초록 사과": "green-apple",
+  "썩은 사과": "rotten-apple",
 } as const satisfies Record<(typeof FISH_CATCHES)[number], string | null>;
 
 /** 카피바라 포만감(0~100, 이 기기에만 저장). 먹이면 오르고 시간이 지나면 떨어진다 */
