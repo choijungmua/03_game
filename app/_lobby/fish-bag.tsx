@@ -131,7 +131,7 @@ export function FishBag({
         <p className="text-caption-1 text-text-caption" aria-live="polite">
           {total > 0
             ? `${FISH_CATCHES.length}종 중 ${kinds}종 · 눌러서 카피바라에게 먹여 보세요`
-            : "아직 낚은 게 없어요. 물가에서 Space로 낚시해 보세요"}
+            : "아직 가방이 비었어요. 물가에서 낚시하거나 사과나무 밑에서 사과를 따 보세요"}
         </p>
         <ul className="grid grid-cols-3 gap-2">
           {FISH_CATCHES.map((name) => {
