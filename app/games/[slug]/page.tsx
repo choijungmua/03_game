@@ -41,7 +41,8 @@ export default async function GamePage({ params }: GamePageProps) {
   const { seo } = await game.seo();
   const Game = game.component;
   return (
-    <main>
+    // 게임은 화면 전체를 쓰고 플레이 중엔 스크롤을 잠근다 — 스크롤바 자리가 빈 띠로 남지 않게 페이지 스크롤바를 숨긴다 (app/globals.css)
+    <main data-hide-page-scrollbar="true">
       <GameVisitTracker slug={slug} />
       <ButtonFocusGuard />
       <JsonLd data={gameJsonLd(game, seo)} />

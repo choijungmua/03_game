@@ -4,11 +4,14 @@ import { describe, expect, it } from "vitest";
 import {
   BATH_RX,
   BATH_RY,
+  BATH_OFFSET_Y,
   createWorld,
   ellipseDistance,
   isBlockingTile,
   LOBBY_SEED,
   nearestWater,
+  SPRING_COLLIDER_OFFSET_Y,
+  SPRING_COLLIDER_RY,
   REST_CY,
   SPRING_RX,
   SPRING_RY,
@@ -18,6 +21,7 @@ import {
 const GAMES = Array.from({ length: 7 }, (_, i) => ({ slug: `game-${i}`, title: `게임 ${i}` }));
 const tileUnder = (world: ReturnType<typeof createWorld>, x: number, y: number) =>
   world.tileAt(Math.floor(x / TILE), Math.floor(y / TILE));
+const blockedAt = (world: ReturnType<typeof createWorld>, x: number, y: number) => world.blockedAt(x, y);
 
 describe("카피바라 습지 마을", () => {
   it("같은 seed는 항상 같은 맵이다", () => {
@@ -76,11 +80,36 @@ describe("카피바라 습지 마을", () => {
       }
     }
     expect(springTiles).toBeGreaterThan(35); // 예전 반지름 2.6 원은 약 21칸
+    const bathCenterY = spring.y + BATH_OFFSET_Y * TILE;
     for (let angle = 0; angle < Math.PI * 2; angle += Math.PI / 12) {
       const x = spring.x + Math.cos(angle) * BATH_RX * TILE;
-      const y = spring.y + Math.sin(angle) * BATH_RY * TILE;
+      const y = bathCenterY + Math.sin(angle) * BATH_RY * TILE;
       expect(tileUnder(world, x, y)).toBe("spring");
     }
+  });
+
+  it("온천 곡선과 건물 그림의 빈 여백은 막지 않고 실제 바닥 면만 막는다", () => {
+    const world = createWorld(LOBBY_SEED, GAMES);
+    const building = world.buildings[0];
+    expect(building).toBeDefined();
+    if (!building) return;
+
+    const colliderY = world.spring.y + SPRING_COLLIDER_OFFSET_Y * TILE;
+    for (let angle = 0; angle < Math.PI * 2; angle += Math.PI / 12) {
+      const dx = Math.cos(angle) * SPRING_RX * TILE;
+      const dy = Math.sin(angle) * SPRING_COLLIDER_RY * TILE;
+      expect(blockedAt(world, world.spring.x + dx * 1.05, colliderY + dy * 1.05)).toBe(false);
+      expect(blockedAt(world, world.spring.x + dx * 0.95, colliderY + dy * 0.95)).toBe(true);
+    }
+
+    expect(world.spring.layerY).toBe(world.spring.y);
+
+    expect(blockedAt(world, world.spring.x + TILE * 3.5, world.spring.y - TILE * 2)).toBe(false);
+    expect(blockedAt(world, world.spring.x, world.spring.y + TILE * 3.5)).toBe(true);
+
+    const centerX = (building.tx + 3) * TILE;
+    expect(blockedAt(world, centerX, building.frontY - TILE * 3)).toBe(false);
+    expect(blockedAt(world, centerX, building.frontY - TILE * 0.1)).toBe(true);
   });
 
   it("방명록 게시판은 막히고, 게시판 앞(Space로 여는 자리)은 스폰 데크라 걸을 수 있다", () => {

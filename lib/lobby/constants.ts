@@ -101,7 +101,23 @@ export const APPLE_ODDS: Record<(typeof APPLE_KINDS)[number], number> = {
   "초록 사과": 0.1,
   "썩은 사과": 0.25,
 };
-/** 낚은 것 그림 파일 이름 (public/assets/images/ui/lobby/fish-catches/<이름>.webp) */
+/** 낚아 올린 것이 줄 끝에서 흔들리는 모양(주기 ms, 좌우·위아래 px, 기울기 rad). 종류마다 달라 무엇을 낚았는지 한눈에 보인다 */
+export const FISH_MOTIONS = {
+  송사리: { period: 170, sway: 5, lift: 2, rotate: 0.18 },
+  붕어: { period: 240, sway: 3, lift: 5, rotate: 0.28 },
+  메기: { period: 330, sway: 7, lift: 2, rotate: 0.12 },
+  피라냐: { period: 95, sway: 4, lift: 7, rotate: 0.5 },
+  아로와나: { period: 420, sway: 8, lift: 4, rotate: 0.2 },
+  "황금 잉어": { period: 520, sway: 10, lift: 10, rotate: 0.16 },
+  "낡은 장화": { period: 280, sway: 2, lift: 8, rotate: 0.65 },
+  사과: { period: 300, sway: 3, lift: 3, rotate: 0.2 },
+  "초록 사과": { period: 300, sway: 3, lift: 3, rotate: 0.2 },
+  "썩은 사과": { period: 300, sway: 3, lift: 3, rotate: 0.2 },
+} as const satisfies Record<(typeof FISH_CATCHES)[number], { period: number; sway: number; lift: number; rotate: number }>;
+/**
+ * 낚은 것 그림 파일 이름 (public/assets/images/ui/lobby/fish-catches/<이름>.webp). null은 아직 그림이 없는 것 —
+ * 없는 파일을 요청하면 404가 나서 부르지 않고 도형·아이콘으로 대신 그린다. 그림을 넣으면 null을 파일 이름으로 바꿀 것
+ */
 export const FISH_CATCH_SLUGS = {
   송사리: "minnow",
   붕어: "crucian-carp",
@@ -110,10 +126,11 @@ export const FISH_CATCH_SLUGS = {
   아로와나: "arowana",
   "황금 잉어": "golden-carp",
   "낡은 장화": "old-boot",
-  사과: "apple",
-  "초록 사과": "green-apple",
-  "썩은 사과": "rotten-apple",
-} as const satisfies Record<(typeof FISH_CATCHES)[number], string>;
+  // TODO(docs/LOBBY-MAP.md): apple, green-apple, rotten-apple
+  사과: null,
+  "초록 사과": null,
+  "썩은 사과": null,
+} as const satisfies Record<(typeof FISH_CATCHES)[number], string | null>;
 
 /** 카피바라 포만감(0~100, 이 기기에만 저장). 먹이면 오르고 시간이 지나면 떨어진다 */
 export const SATIETY_STORAGE_KEY = "ggpli:lobby-satiety";
