@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 
+import { LIST_ONLY_GAMES } from "@/lib/games/constants";
 import { GAMES } from "@/lib/games/registry";
 import { pageMetadata, siteTitle } from "@/lib/seo/site";
 
@@ -22,7 +23,10 @@ export default function Home() {
   return (
     <main className="relative h-dvh w-dvw overflow-hidden bg-background">
       <h1 className="sr-only">ggpli 로비</h1>
-      <Lobby games={GAMES.map(({ slug, title }) => ({ slug, title }))} />
+      <Lobby
+        games={GAMES.filter((game) => !LIST_ONLY_GAMES.includes(game.slug)).map(({ slug, title }) => ({ slug, title }))}
+        listGames={GAMES.filter((game) => LIST_ONLY_GAMES.includes(game.slug)).map(({ slug, title }) => ({ slug, title }))}
+      />
       {/* 걷지 않고도(키보드·스크린리더·검색엔진) 모든 게임에 바로 갈 수 있는 링크. 포커스가 들어오면 보인다 */}
       <nav
         aria-label="게임 바로가기"
