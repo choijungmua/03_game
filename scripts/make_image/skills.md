@@ -58,10 +58,10 @@ assets-src/lobby/<분류>/<id>/source.png            # 생성 원본
 - `props/onsen`: 이끼 돌 테두리 유자 온천 (김은 코드로 그림)
 - `props/log-seat`, `props/lantern`, `nature/reeds`, `nature/grass-bush`, `nature/rocks`: 소품 시트 1장에서 자름
 - `props/guestbook-board`: 방명록 게시판 (나무 기둥 두 개·잎사귀 지붕, 잎 쪽지를 나무 핀으로 꽂은 판, 글자 없음). `capybara-idle-down.png`·`props/lantern/source.png`를 참고로 마젠타 배경 한 장 생성 → 배경 지우고 가장자리까지 잘라 긴 변 384 WebP. 로비 가운데 데크 갈래길 옆, 앞에서 Space로 방명록을 연다
-- `props/fence-vertical`(세로 울타리: 기둥 + 한 칸 아래로 이어지는 엮은 판), `props/fence-post`(모서리 기둥): Codex 사용 한도로 새로 못 그려서 `props/fence/source.png`의 왼쪽 기둥과 판 무늬를 잘라 붙여 만들었다. 제대로 생성하면 같은 캔버스 비율(기둥 가운데, 세로 판은 기둥 바닥 아래로 한 타일 ≈ 233px 더)로 교체
+- `props/fence-vertical`(세로 울타리: 기둥 + 한 칸 아래로 이어지는 엮은 판), `props/fence-post`(모서리 기둥): `props/fence/source.png`를 참고로 새로 그렸다(`emoji-fence-vertical` 시트 한 장에서 기둥 + 판, 기둥만 두 벌로 잘라 쓴다 — 기둥이 서로 다르게 보이지 않는다). 그림 비율이 바뀌면 정의의 `width`·`offsetY`를 다시 맞춰야 기둥이 제 칸 바닥에 선다
 - `nature/tree-tropical`, `nature/palm`, `props/fence`(갈대 울타리), `nature/lotus`, `nature/banana-bush`: 자연 시트 1장에서 자름. 붙어 있는 소품은 알파 연결 요소(flood fill)로 나눈다
 - `buildings/hut-{1,2,3}`: 게임 오두막 3종 (1 초가 원두막+나무 아케이드 간판, 2 카피바라 귀 풀 굴집+나무 휴대용 게임기 간판, 3 바나나잎 대나무 원두막+나무 TV 간판). 간판 화면은 이미지에서 비워 두고, 화면 위치(이미지 대비 비율)를 정의의 `screen`에 적는다 — 로비가 그 자리에 게임 아이콘을 그린다
-- 게임 아이콘: `public/assets/images/games/<slug>/icon.webp` (원본 `assets-src/games/<slug>/icon.png`) — 오두막 간판 화면에 켜지는, 그 게임을 알리는 소품 하나. 로비에서 게임을 알리는 표시는 이것 하나뿐이다. 작은 화면에 들어가므로 굵고 단순한 실루엣, 생성 배경은 마젠타(#FF00FF) 단색(검은 조약돌·어두운 나무가 배경 제거에 안 먹히게). 마을 테마에 맞게 나무·잎사귀·조약돌·코코넛 같은 자연 소재 + 펠트 질감 (반응속도=나무 스톱워치, 클릭=나무·이끼 마우스, 몰래 먹기=잎 접시 위 수박, 슈팅=나무·대나무 비행기, 바둑=코코넛 그릇 조약돌, 오목=통나무 판 조약돌, 알까기=통나무 판 위 튕기는 조약돌, 수박 게임=몰래 먹기 아이콘(잎 접시 위 수박)을 복사해 임시로 씀 — Codex 한도가 풀리면 전용 아이콘(예: 나무 상자에 쌓인 펠트 과일)으로 교체). 투명 배경, 가장자리까지 자른 뒤 384px 이하. 없으면 아이콘 없이 오두막만 보인다
+- 게임 아이콘: `public/assets/images/games/<slug>/icon.webp` (원본 `assets-src/games/<slug>/icon.png`) — 오두막 간판 화면에 켜지는, 그 게임을 알리는 소품 하나. 로비에서 게임을 알리는 표시는 이것 하나뿐이다. 작은 화면에 들어가므로 굵고 단순한 실루엣, 생성 배경은 마젠타(#FF00FF) 단색(검은 조약돌·어두운 나무가 배경 제거에 안 먹히게). 마을 테마에 맞게 나무·잎사귀·조약돌·코코넛 같은 자연 소재 + 펠트 질감 (반응속도=나무 스톱워치, 클릭=나무·이끼 마우스, 몰래 먹기=잎 접시 위 수박, 슈팅=나무·대나무 비행기, 바둑=코코넛 그릇 조약돌, 오목=통나무 판 조약돌, 알까기=통나무 판 위 튕기는 조약돌, 수박 게임=펠트 과일이 소복한 나무 상자, 카피바라 팡=잎 접시 위 동물 얼굴 구슬 세 개). 투명 배경, 가장자리까지 자른 뒤 384px 이하. 없으면 아이콘 없이 오두막만 보인다
 - 이전 포털 에셋은 `assets-src/lobby/_archive-portal/`에 보관 (사용 안 함)
 - `ground/{meadow,mud,water,deck}`: 192×192 바닥 텍스처 (2×2 시트 1장 → 칸마다 반 칸 밀어 가장자리 블렌딩, 데크는 판자 줄이라 그대로). 월드 192px(4타일)마다 반복. 지금 게임용 이미지는 사진 같던 원본(`source.png`)을 `python scripts/feltify_ground.py`로 펠트 톤으로 보정한 것이다 — 아래 재생성으로 펠트 바닥을 새로 만들면 스크립트는 지운다
 - `props/yuzu`: 목욕하는 카피바라 머리에 얹는 유자. `props/onsen/source.png` 속 유자 윗부분을 타원으로 잘랐다
@@ -211,3 +211,21 @@ canvas.resize((512, 512), Image.LANCZOS).save('public/assets/images/characters/c
 ```
 
 실제 이미지 생성은 연결된 OpenAI 계정 사용량을 쓴다. 한 장당 수 분 걸리고, 여러 장은 터미널을 나눠 동시에 돌려도 된다.
+
+## 카피바라 테마 시트 (사과·울타리·게임 블록·사과 따기)
+
+얼굴이 들어가는 소품·블록은 **평소 얼굴(윗줄) / 우는 얼굴(아랫줄)** 2줄 시트로 한 번에 만들고, 세로줄마다 같은 상자로 잘라 두 프레임이 겹치게 맞춘다. 자르기는 `python scripts/cut_emoji_sheets.py [시트이름 …]`.
+
+| 시트 | 칸 | 들어가는 곳 |
+|---|---|---|
+| `emoji-apples` | 가로 3 | `ui/lobby/fish-catches/{apple,green-apple,rotten-apple}.webp` (가방·나무에 달린 사과·먹는 사과) |
+| `emoji-fence-vertical` | 세로 1장 | `props/fence-vertical` + `props/fence-post` (판 길이는 기둥 높이로 재서 한 타일만 남긴다) |
+| `emoji-fruit-{1,2,3}` | 가로 4·4·3 × 세로 2 | `games/watermelon-game/fruits/<slug>{,-cry}.webp` 11종 |
+| `emoji-pang-{1,2}` | 가로 4·3 × 세로 2 | `games/capybara-pang/animals/<key>{,-cry}.webp` 7종 |
+| `emoji-pick` | 가로 3 × 세로 2 | `capybara-pick-{1,2,3}-{up,down}.webp` (사과 따기 폴짝) |
+| `emoji-game-icons` | 가로 2 | `games/{watermelon-game,capybara-pang}/icon.webp` |
+
+- 우는 얼굴은 **눈을 질끈 감은 꺾인 선 + 좌우로 튀는 굵은 파란 펠트 눈물 + 네모나게 벌린 입**으로 통일한다. 게임 코드가 터지는 순간에만 이 그림으로 바꿔 그린다
+- 과일·동물은 정사각형 canvas 가운데에 실루엣이 `PAD`(1.16) 여백으로 들어간다. 이 값은 `watermelon-game/constants.ts`의 `FRUIT_IMAGE_SCALE`과 짝이라 한쪽만 바꾸면 크기가 어긋난다
+- 사과 따기 3프레임은 한 배율로 줄여 발바닥 높이를 맞춘다 (뜨는 높이는 로비의 폴짝 코드가 준다). 새 캐릭터 그림이라 넣은 뒤 `python scripts/wardrobe_fit.py`를 다시 돌린다
+- 모델은 `-m gpt-5.6-luna` (빠르고 사용량이 적다). Codex가 파일 복사에 실패해도 `make_image`가 `~/.codex/generated_images`에서 방금 만든 그림을 찾아 가져온다
