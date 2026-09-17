@@ -90,7 +90,7 @@ describe("카피바라 습지 마을", () => {
     const world = createWorld(LOBBY_SEED, GAMES);
     expect(tileUnder(world, world.spawn.x, world.spawn.y)).toBe("deck");
     for (const spring of world.springs) expect(tileUnder(world, spring.x, spring.y)).toBe("spring");
-    expect(world.seats).toHaveLength(6); // 노천탕 앞 2 + 남문 데크 옆 2 + 강가 쉼터 2
+    expect(world.seats).toHaveLength(8); // 노천탕 앞 2 + 남문 데크 옆 2 + 강가 쉼터 2 + 호수 선착장 1 + 북쪽 공터 1
     for (const seat of world.seats) {
       // 두 자리 모두 통나무 위이고, 일어나면 그 자리 바로 앞에 선다
       for (const spotX of seat.spots) {
@@ -112,7 +112,7 @@ describe("카피바라 습지 마을", () => {
           const around = ellipseDistance((tx + 0.5) * TILE - spring.x, (ty + 0.5) * TILE - spring.y, SPRING_RX + 1, SPRING_RY + 1);
           if (around >= 1) continue;
           if (tile === "spring") springTiles++;
-          expect(["spring", "meadow"]).toContain(tile);
+          expect(["spring", "meadow", "grass"]).toContain(tile); // 마을 밖 온천 둘레는 풀밭
         }
       }
       expect(springTiles).toBeGreaterThan(35);
@@ -158,25 +158,30 @@ describe("카피바라 습지 마을", () => {
     expect(world.props).toContainEqual({ kind: "guestbook-board", tx: Math.floor(x / TILE), ty: Math.floor(y / TILE) - 1 });
   });
 
-  it("마을은 갈대 울타리로 막혀 있고 동·서·남 입구로만 나간다", () => {
+  it("마을은 갈대 울타리로 막혀 있고 동·서·남·북 입구로만 나간다", () => {
     const world = createWorld(LOBBY_SEED, GAMES);
     const { halfWidth: W, top, bottom } = world.village;
     expect(world.tileAt(0, bottom + 1)).toBe("deck"); // 남문
     expect(world.tileAt(-W - 1, 0)).toBe("deck"); // 서문
     expect(world.tileAt(W, 0)).toBe("deck"); // 동문
+    expect(world.tileAt(0, top - 1)).toBe("deck"); // 북문
     expect(world.tileAt(-W - 1, -5)).toBe("fence");
-    expect(world.tileAt(0, top - 1)).toBe("fence");
+    expect(world.tileAt(8, top - 1)).toBe("fence");
     expect(world.tileAt(8, bottom + 1)).toBe("fence");
   });
 
-  it("스폰에서 진흙길을 따라 걸어서 강가 쉼터 잔교와 동·서 길 끝까지 갈 수 있다", () => {
+  it("스폰에서 걸어서 강가 쉼터 잔교와 마을 밖 명소(호수 선착장·바위 노천탕·등불 공터)까지 갈 수 있다", () => {
     const world = createWorld(LOBBY_SEED, GAMES);
     const seen = walkableFromSpawn(world);
+    const reached = (x: number, y: number) => seen.has(`${Math.floor(x / TILE)},${Math.floor(y / TILE)}`);
     expect(world.tileAt(0, REST_CY)).toBe("deck");
     expect(seen.has(`0,${REST_CY}`)).toBe(true);
-    const W = world.village.halfWidth;
-    const trailEnd = [...seen].filter((key) => Math.abs(Number(key.split(",")[0]) + 0.5) >= W + 29);
-    expect(trailEnd.length).toBeGreaterThan(0);
+    const { pier, wildSpring, glade } = world.landmarks;
+    expect(tileUnder(world, pier.x, pier.y)).toBe("deck"); // 물 위로 뻗은 선착장
+    expect(reached(pier.x, pier.y)).toBe(true);
+    // 바위 노천탕은 물 안이라 그 바로 위 둘레(한 칸 바깥)까지 걸어갈 수 있으면 된다
+    expect(reached(wildSpring.x, wildSpring.y - (SPRING_RY + 1.5) * TILE)).toBe(true);
+    expect(reached(glade.x, glade.y)).toBe(true);
   });
 
   it("바깥 습지에는 막히는 지형(물·나무·바위)이 섞여 있다", () => {
