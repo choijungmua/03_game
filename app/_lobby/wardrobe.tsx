@@ -9,7 +9,6 @@ import {
   dressSprite,
   loadOutfit,
   type Outfit,
-  type OutfitPiece,
   saveOutfit,
   SLOT_INFO,
   spriteName,
@@ -20,6 +19,7 @@ import {
 } from "@/lib/lobby/wardrobe";
 
 import { WARDROBE_BUTTON_SRC } from "./constants";
+import { drawOutfit } from "./outfit-canvas";
 import { flashButton, isShortcutKey } from "./shortcut";
 
 export const CAPYBARA_SRC = "/assets/images/characters/capybara/capybara-idle-down.webp";
@@ -56,28 +56,6 @@ export function Wardrobe({ onChange }: { onChange: (outfit: Outfit) => void }) {
     saveOutfit(next);
     onChange(next);
   };
-
-  // 로비 맵의 앉은 정면과 같은 스프라이트·같은 자리
-  const { under, redraw, over } = dressSprite(spriteName(CAPYBARA_SRC), outfit);
-  const layers = (pieces: readonly OutfitPiece[]) =>
-    pieces.map((piece, index) => (
-      <NextImage
-        key={`${piece.src}-${index}`}
-        src={piece.src}
-        alt=""
-        width={256}
-        height={256}
-        unoptimized
-        className="absolute max-w-none"
-        style={{
-          left: `${piece.left}%`,
-          top: `${piece.top}%`,
-          width: `${piece.width}%`,
-          height: `${piece.height}%`,
-          transform: piece.mirror ? "scaleX(-1)" : undefined,
-        }}
-      />
-    ));
 
   const close = () => {
     setOpen(false);
@@ -145,28 +123,7 @@ export function Wardrobe({ onChange }: { onChange: (outfit: Outfit) => void }) {
 
         {/* 키 큰 모자가 머리 위로 삐져나오는 만큼 위를 비워 둔다 */}
         <div className="relative mx-auto mt-10 aspect-square w-full max-w-56">
-          <NextImage src={CAPYBARA_SRC} alt="" fill unoptimized sizes="224px" />
-          {/* 로비 맵과 같이: 한벌옷의 채운 그림은 카피바라 윤곽 안에만 깔아 몸을 가리고, 원래 그림은 자르지 않아 후드·꼬리·소매가 몸 밖으로 나온다 */}
-          <div
-            className="absolute inset-0"
-            style={{ maskImage: `url(${CAPYBARA_SRC})`, maskSize: "100% 100%", WebkitMaskImage: `url(${CAPYBARA_SRC})`, WebkitMaskSize: "100% 100%" }}
-          >
-            {layers(under.filter((piece) => piece.clip))}
-          </div>
-          {layers(under.filter((piece) => !piece.clip))}
-          {/* 발·머리를 다시 그려 옷 밖으로 */}
-          {redraw.map(([cx, cy, rx, ry], index) => (
-            <NextImage
-              key={`redraw-${index}`}
-              src={CAPYBARA_SRC}
-              alt=""
-              fill
-              unoptimized
-              sizes="224px"
-              style={{ clipPath: `ellipse(${rx}% ${ry}% at ${cx}% ${cy}%)` }}
-            />
-          ))}
-          {layers(over)}
+          <OutfitPreview outfit={outfit} />
         </div>
         <p className="sr-only" aria-live="polite">
           {WARDROBE_SLOTS.flatMap((s) => SLOT_INFO[s].items.filter((item) => item.id === outfit[s]).map((item) => item.label)).join(", ") ||
@@ -228,4 +185,39 @@ export function Wardrobe({ onChange }: { onChange: (outfit: Outfit) => void }) {
       </section>
     </div>
   );
+}
+
+const previewImages = new Map<string, HTMLImageElement>();
+const previewImage = (src: string) => {
+  const cached = previewImages.get(src);
+  if (cached) return cached;
+  const image = new Image();
+  image.src = src;
+  previewImages.set(src, image);
+  return image;
+};
+
+/** 로비 맵과 같은 스프라이트 자리·같은 합성(outfit-canvas.ts drawOutfit)으로 그린 옷장 미리보기 */
+function OutfitPreview({ outfit }: { outfit: Outfit }) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    const ctx = canvas?.getContext("2d");
+    if (!canvas || !ctx) return;
+    const { silhouette, under, over } = dressSprite(spriteName(CAPYBARA_SRC), outfit);
+    const images = [CAPYBARA_SRC, ...[...silhouette, ...under, ...over].map((piece) => piece.src)].map(previewImage);
+    let cancelled = false;
+    // 이미지를 다 불러온 뒤에 그린다 (덜 불러온 옷은 drawOutfit이 건너뛴다)
+    Promise.all(images.map((image) => image.decode().catch(() => undefined))).then(() => {
+      if (cancelled) return;
+      const [base] = images;
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(base, 0, 0, canvas.width, canvas.height);
+      drawOutfit({ ctx, base, outfit, left: 0, top: 0, size: canvas.width, imageFor: previewImage });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [outfit]);
+  return <canvas ref={canvasRef} width={448} height={448} aria-hidden className="size-full" />;
 }

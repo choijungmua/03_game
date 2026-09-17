@@ -129,7 +129,7 @@ python -m make_image "정사각형 한 장을 2×2 네 칸으로 똑같이 나�
 ## 옷장 방향별 옷 그림
 
 - 옷장 정면 그림: `public/assets/images/characters/capybara/wardrobe/<slot>/<id>.webp` (시트 3칸 → `scripts/split_wardrobe.py`)
-- 한벌옷은 두 겹으로 입힌다: `wardrobe_fit.py`가 그림 속 몸통 상자(후드·칼라 아래 `COLLAR`, 소매·꼬리를 깎은 몸통 폭, 품 여유 `LOOSE`)를 카피바라 턱~발바닥·몸통 폭에 맞춰 놓는다. ① 빈틈을 옷 색으로 채운 `<id>-<view>-fill.webp`를 스프라이트 윤곽 안에만 깔아(로비 `source-atop`, 옷장 미리보기 CSS mask) 몸이 비치지 않게 하고 ② 원래 그림을 자르지 않고 그 위에 그려 공룡 후드·꼬리, 유카타 소매처럼 몸 밖으로 나오는 부분을 살린다. 그 위에 머리(발 없는 옷은 발도)를 다시 그린다. 발까지 달린 옷은 `wardrobe.ts`에 `coversFeet`. 몸통 상자는 `python scripts/wardrobe_fit.py boxes`로 확인하고, 틀리면 `COLLAR`·`ART_BODY_X`·`LOOSE`를 고친다
+- 한벌옷은 채움층과 원본 실루엣을 함께 쓴다: `wardrobe_fit.py`가 그림의 빈틈을 옷 색으로 채운 `<id>-<view>-fill.webp`(정면 포함)를 만들고, 로비는 이를 스프라이트 윤곽 안에만 그린다(`source-atop`). 원본 그림을 다시 겹쳐 소매·후드·꼬리처럼 몸 밖으로 나온 부분을 살리고, 옷 윤곽 밖으로 삐져나온 몸은 지운다(`app/_lobby/outfit-canvas.ts`, 옷장 미리보기도 같은 캔버스). 공룡·상어·우비는 후드와 몸통을 분리 배치해 후드만 머리를 덮고(`lib/lobby/onepiece-rig.ts`), 앞·옆 얼굴은 후드 구멍 안에 다시 그린다 — 옆모습 구멍은 옆모습 옷 그림에서 잰 후드 안쪽 좌표(`sideOpening`)라 그림을 바꾸면 다시 잰다. 멜빵·유카타·딸기는 카피바라 머리를 다시 그린다
 - 로비 옷장 칸은 모자·안경·한벌옷 3개만 쓴다 (상의·하의·신발·장갑은 보류 — 그림은 남아 있고 `WARDROBE_SLOTS`·`wardrobe_views.py SLOTS`에 다시 넣으면 된다)
 - 칸마다 로비 맵 방향별 그림을 쓴다: `<id>-{back,side,front3q,back3q}.webp`. 옆·대각선은 오른쪽을 향한 그림(왼쪽은 코드가 반전). 안경은 뒤에서 안 보여 `side`·`front3q`만 있다
 - 안경 옆·앞대각선은 별 선글라스만 codex로 만들었고, 나머지는 codex 한도로 `python scripts/wardrobe_views.py synth glasses/<id>`(정면 그림에서 먼 렌즈 좁히기·옆 렌즈+안경다리 합성)로 만들었다. codex로 다시 만들면 `gen` → `split`이 덮어쓴다
