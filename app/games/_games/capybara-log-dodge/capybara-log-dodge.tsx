@@ -17,11 +17,22 @@ import { SOUNDS } from "@/lib/lobby/constants";
 import { playGameSound } from "@/lib/lobby/settings";
 
 import {
+  BEAT_BPM,
+  BEAT_HAT,
+  BEAT_KICK,
+  BEAT_SNARE,
   BOUNCE_SOUND,
+  COMBO_SOUNDS,
+  DUCK_CUE_SOUND,
   DUCK_SOUND,
+  JUMP_CUE_SOUND,
   JUMP_SOUND,
   LAND_SOUND,
   LEVEL_UP_SOUND,
+  PACE_SOUNDS,
+  PICKUP_SPAWN_SOUND,
+  SHIELD_BREAK_SOUND,
+  SHIELD_GET_SOUND,
   SPLIT_SOUND,
   STEP_SOUND_MS,
   TIER_UP_SOUND,
@@ -30,6 +41,7 @@ import {
 import { LogDodgeLeaderboard } from "./leaderboard";
 import {
   CAPYBARA_Y,
+  COMBO_SHIELD_AT,
   createRandom,
   createState,
   formatSeconds,
@@ -39,6 +51,7 @@ import {
   getCourseDate,
   getCue,
   getDeathLine,
+  getDifficulty,
   JUMP_MS,
   type Log,
   LOG_HEIGHTS,
@@ -46,6 +59,8 @@ import {
   LOG_UNLOCK_MS,
   type LogKind,
   parseChallenge,
+  PEAK_MS,
+  PICKUP_RADIUS,
   seedFromText,
   step,
 } from "./logic";
@@ -61,8 +76,10 @@ const RUN_FRAME_MS = 90;
 const CAPYBARA_SIZE = 84;
 /** 점프 꼭대기에서 그림이 떠오르는 높이(px) */
 const JUMP_HEIGHT = 36;
-/** 머리 높이 통나무를 땅(그림자)보다 위로 띄워 그리는 높이(px) */
-const BEAM_LIFT = 26;
+/** 머리 높이 통나무를 땅(그림자)보다 위로 띄워 그리는 높이(px) — 바닥 통나무와 한눈에 구분되게 크게 */
+const BEAM_LIFT = 42;
+/** 이 시간 동안 화면에 "유자 보호막!"/"막았어요!" 글자 */
+const SHIELD_FLASH_MS = 900;
 const TILE_SIZE = 96;
 /** 배경이 아래로 흘러가는 속도(px/s) — 카피바라가 위로 달리는 느낌 */
 const SCROLL_SPEED = 180;
@@ -71,6 +88,15 @@ const SWIPE_PX = 36;
 /** 이보다 짧고 적게 움직인 터치는 탭(점프)으로 본다 */
 const TAP_MS = 250;
 const TAP_PX = 10;
+/** 화면 흔들림 최대 폭(px). 배경을 이만큼 더 넓게 깔아 흔들려도 가장자리가 비지 않는다 */
+const SHAKE_MAX_PX = 10;
+/** 착지할 때 납작하게 찌그러지는 시간 */
+const LAND_SQUASH_MS = 140;
+/** 좌우로 달릴 때 몸이 기우는 각도(rad) */
+const LEAN_TILT = 0.16;
+/** 파티클이 떨어지는 가속도(px/s²) */
+const PARTICLE_GRAVITY = 900;
+const SPEED_LINE_COUNT = 14;
 
 const TITLE = GAME_TITLES["capybara-log-dodge"];
 const LEFT_KEYS = new Set(["ArrowLeft", "a", "A"]);
@@ -100,9 +126,93 @@ interface RoundResult {
 interface Hud {
   tenths: number;
   nearMisses: number;
+  combo: number;
   nearMissFlash: boolean;
   passedFlash: boolean;
   cue: ReturnType<typeof getCue>;
+  shield: boolean;
+  /** combo: 아슬아슬 콤보 보상으로 받은 보호막 */
+  shieldFlash: "get" | "combo" | "block" | null;
+}
+
+/** 캔버스 색은 하드코딩하지 않고 토큰 값을 읽는다 (플레이 영역은 .dark 범위) */
+interface Palette {
+  shadow: string;
+  text: string;
+  /** 점프(바닥 통나무)는 노랑, 숙이기(머리 위 통나무)는 파랑 — 안내 글자·버튼과 같은 색 */
+  jump: string;
+  duck: string;
+  fast: string;
+  /** 흙먼지·나무 조각 파티클 */
+  dust: string;
+  wood: string;
+  font: string;
+}
+
+interface Particle {
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  ageMs: number;
+  lifeMs: number;
+  size: number;
+  color: string;
+}
+
+/** 판정과 상관없는 화면 연출. 움직임 줄이기 설정이면 만들지 않는다 */
+interface Effects {
+  particles: Particle[];
+  shakeMs: number;
+  shakeTotalMs: number;
+  shakePx: number;
+  /** 남은 착지 찌그러짐 시간 */
+  landMs: number;
+  /** 지금 몸 기울기(rad). 좌우 입력 쪽으로 부드럽게 따라간다 */
+  tilt: number;
+}
+
+function createEffects(): Effects {
+  return { particles: [], shakeMs: 0, shakeTotalMs: 1, shakePx: 0, landMs: 0, tilt: 0 };
+}
+
+/** (x, y)에서 파티클을 흩뿌린다. up이면 위쪽 반원으로만 (흙먼지) */
+function burst(effects: Effects, x: number, y: number, color: string, count: number, speed: number, up = false) {
+  for (let i = 0; i < count; i += 1) {
+    const angle = up ? -Math.PI * Math.random() : Math.PI * 2 * Math.random();
+    const power = speed * (0.4 + 0.6 * Math.random());
+    effects.particles.push({
+      x,
+      y,
+      vx: Math.cos(angle) * power,
+      vy: Math.sin(angle) * power,
+      ageMs: 0,
+      lifeMs: 350 + 250 * Math.random(),
+      size: 3 + 4 * Math.random(),
+      color,
+    });
+  }
+}
+
+function shake(effects: Effects, px: number, ms: number) {
+  if (effects.shakeMs > 0 && effects.shakePx > px) return;
+  effects.shakePx = px;
+  effects.shakeMs = ms;
+  effects.shakeTotalMs = ms;
+}
+
+function stepEffects(effects: Effects, dtMs: number, lean: number) {
+  const seconds = dtMs / 1000;
+  effects.shakeMs = Math.max(0, effects.shakeMs - dtMs);
+  effects.landMs = Math.max(0, effects.landMs - dtMs);
+  effects.tilt += (lean * LEAN_TILT - effects.tilt) * Math.min(1, dtMs / 90);
+  for (const particle of effects.particles) {
+    particle.ageMs += dtMs;
+    particle.x += particle.vx * seconds;
+    particle.vy += PARTICLE_GRAVITY * seconds;
+    particle.y += particle.vy * seconds;
+  }
+  effects.particles = effects.particles.filter((particle) => particle.ageMs < particle.lifeMs);
 }
 
 type Sprites = Record<string, HTMLImageElement>;
@@ -123,6 +233,7 @@ function loadSprites(): Sprites {
   add("log", lobbyAssetSrc({ category: "props", id: "log-seat" }));
   add("meadow", MEADOW_SRC);
   add("mud", lobbyAssetSrc({ category: "ground", id: "mud" }));
+  add("yuzu", `${CHARACTER_BASE}/wardrobe/hat/yuzu-towel.webp`);
   return sprites;
 }
 
@@ -137,7 +248,7 @@ function stopPropagation(event: React.SyntheticEvent) {
 /** 텍스처를 [left, left+width] 가로 구간에 세로로 이어 붙이고 offsetY만큼 아래로 민다 */
 function drawTiled(ctx: CanvasRenderingContext2D, image: HTMLImageElement, left: number, width: number, offsetY: number) {
   if (!ready(image)) return;
-  for (let y = (offsetY % TILE_SIZE) - TILE_SIZE; y < GAME_HEIGHT; y += TILE_SIZE) {
+  for (let y = (offsetY % TILE_SIZE) - TILE_SIZE * 2; y < GAME_HEIGHT + SHAKE_MAX_PX; y += TILE_SIZE) {
     for (let x = left; x < left + width; x += TILE_SIZE) {
       const w = Math.min(TILE_SIZE, left + width - x);
       ctx.drawImage(image, 0, 0, (image.naturalWidth * w) / TILE_SIZE, image.naturalHeight, x, y, w, TILE_SIZE);
@@ -145,28 +256,122 @@ function drawTiled(ctx: CanvasRenderingContext2D, image: HTMLImageElement, left:
   }
 }
 
-function drawLog(ctx: CanvasRenderingContext2D, image: HTMLImageElement, log: Log, shadow: string) {
+/** (x, y) 중심의 ▲(up) 또는 ▼ 화살표 */
+function drawArrow(ctx: CanvasRenderingContext2D, x: number, y: number, size: number, up: boolean) {
+  const tip = up ? -size : size;
+  ctx.beginPath();
+  ctx.moveTo(x, y + tip);
+  ctx.lineTo(x - size, y - tip * 0.6);
+  ctx.lineTo(x + size, y - tip * 0.6);
+  ctx.closePath();
+  ctx.stroke();
+  ctx.fill();
+}
+
+function drawLog(ctx: CanvasRenderingContext2D, image: HTMLImageElement, log: Log, reducedMotion: boolean, palette: Palette) {
   if (!ready(image)) return;
   const raised = LOG_HEIGHTS[log.kind] === "high";
   const left = log.x - log.w / 2;
+  const top = log.y - log.h / 2 - (raised ? BEAM_LIFT : 0);
+
   if (raised) {
-    // 머리 높이 통나무: 판정 자리에 그림자를 깔고 통나무는 위로 띄워 그린다
-    ctx.globalAlpha = 0.35;
-    ctx.fillStyle = shadow;
+    // 머리 높이 통나무: 판정 자리에 진한 그림자를 깔고, 통나무는 높이 띄워 파란 밧줄에 매단다
+    ctx.globalAlpha = 0.5;
+    ctx.fillStyle = palette.shadow;
     ctx.fillRect(left, log.y - log.h / 4, log.w, log.h / 2);
+    ctx.globalAlpha = 0.9;
+    ctx.strokeStyle = palette.duck;
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    for (const ropeX of [left + log.w * 0.2, left + log.w * 0.8]) {
+      ctx.moveTo(ropeX, top - 90);
+      ctx.lineTo(ropeX, top + log.h / 2);
+    }
+    ctx.stroke();
     ctx.globalAlpha = 1;
+  } else if (log.kind === "hurdle") {
+    // 바닥 허들: 땅에 붙은 노란 띠
+    ctx.globalAlpha = 0.45;
+    ctx.fillStyle = palette.jump;
+    ctx.fillRect(left, log.y + log.h / 2 - 3, log.w, 8);
+    ctx.globalAlpha = 1;
+  }
+
+  if (log.pace === "fast") {
+    // 빠른 통나무: 뒤(위)로 붉은 속도선 + 붉은 빛
+    ctx.globalAlpha = 0.75;
+    ctx.strokeStyle = palette.fast;
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    for (let x = left + 10; x < left + log.w; x += 20) {
+      ctx.moveTo(x, top - 4);
+      ctx.lineTo(x, top - 22 - ((x - left) % 3) * 9);
+    }
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+    ctx.shadowColor = palette.fast;
+    ctx.shadowBlur = 16;
   }
   // 긴 통나무는 통나무 여러 개를 나란히 놓은 모양으로 그린다
   const segment = log.h * (LOG_SOURCE.width / LOG_SOURCE.height);
   const count = Math.max(1, Math.round(log.w / segment));
   const width = log.w / count;
-  const top = log.y - log.h / 2 - (raised ? BEAM_LIFT : 0);
+  ctx.save();
+  if (!reducedMotion && log.w < GAME_WIDTH) {
+    // 굴러 내려오며 들썩이고, 옆으로 가는 통나무는 가는 쪽으로 기운다 (그림만 — 판정 박스는 그대로)
+    const centerY = top + log.h / 2;
+    ctx.translate(log.x, centerY);
+    ctx.rotate(Math.max(-0.5, Math.min(0.5, log.vx / Math.max(1, log.vy))) * 0.5);
+    ctx.scale(1, 1 + Math.sin(log.y / 10) * 0.1);
+    ctx.translate(-log.x, -centerY);
+  }
   for (let i = 0; i < count; i += 1) {
     ctx.drawImage(image, 0, 0, LOG_SOURCE.width, LOG_SOURCE.height, left + i * width, top, width, log.h);
   }
+  ctx.restore();
+  ctx.shadowBlur = 0;
+
+  const middle = top + log.h / 2;
+  if (log.kind === "hurdle" || log.kind === "beam") {
+    ctx.fillStyle = log.kind === "hurdle" ? palette.jump : palette.duck;
+    ctx.strokeStyle = palette.shadow;
+    ctx.lineWidth = 3;
+    for (let x = left + 45; x < left + log.w; x += 90) drawArrow(ctx, x, middle, 10, log.kind === "hurdle");
+  }
+  if (log.pace !== "normal") {
+    ctx.font = `900 15px ${palette.font}`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.lineWidth = 4;
+    ctx.strokeStyle = palette.shadow;
+    ctx.fillStyle = log.pace === "fast" ? palette.fast : palette.text;
+    const label = log.pace === "fast" ? "빠름!" : "느릿";
+    ctx.strokeText(label, log.x, middle);
+    ctx.fillText(label, log.x, middle);
+  }
 }
 
-function drawCapybara(ctx: CanvasRenderingContext2D, state: GameState, sprites: Sprites, clockMs: number, reducedMotion: boolean, shadow: string) {
+function drawPickup(ctx: CanvasRenderingContext2D, state: GameState, image: HTMLImageElement, clockMs: number, reducedMotion: boolean, palette: Palette) {
+  const pickup = state.pickup;
+  if (!pickup || !ready(image)) return;
+  const bob = reducedMotion ? 0 : Math.sin(clockMs / 140) * 4;
+  const w = PICKUP_RADIUS * 2.6;
+  const h = (w * image.naturalHeight) / image.naturalWidth;
+  ctx.shadowColor = palette.jump;
+  ctx.shadowBlur = 20;
+  ctx.drawImage(image, pickup.x - w / 2, pickup.y - h / 2 + bob, w, h);
+  ctx.shadowBlur = 0;
+}
+
+function drawCapybara(
+  ctx: CanvasRenderingContext2D,
+  state: GameState,
+  sprites: Sprites,
+  clockMs: number,
+  reducedMotion: boolean,
+  palette: Palette,
+  effects: Effects,
+) {
   const jump = state.jumpMs > 0 ? Math.sin((1 - state.jumpMs / JUMP_MS) * Math.PI) : 0;
   const ducking = state.duckMs > 0 && !state.hitBy;
   const frame = reducedMotion ? "stand" : RUN_FRAMES[Math.floor(clockMs / RUN_FRAME_MS) % RUN_FRAMES.length];
@@ -176,35 +381,109 @@ function drawCapybara(ctx: CanvasRenderingContext2D, state: GameState, sprites: 
   if (jump > 0) {
     // 떠 있는 동안 발밑 그림자가 작아져 높이가 보인다
     ctx.globalAlpha = 0.3;
-    ctx.fillStyle = shadow;
+    ctx.fillStyle = palette.shadow;
     ctx.beginPath();
     ctx.ellipse(state.x, CAPYBARA_Y + 22, 22 * (1 - jump * 0.35), 7 * (1 - jump * 0.35), 0, 0, Math.PI * 2);
     ctx.fill();
     ctx.globalAlpha = 1;
   }
+  // 보호막이 막은 뒤 무적인 동안 깜빡인다
+  if (state.invincibleMs > 0 && Math.floor(clockMs / 80) % 2 === 0) ctx.globalAlpha = 0.35;
   const size = ducking ? CAPYBARA_SIZE * 0.78 : CAPYBARA_SIZE * (1 + jump * 0.12);
-  // 그림 발바닥이 판정 박스 아래쪽에 오게 둔다
-  ctx.drawImage(image, state.x - size / 2, CAPYBARA_Y + 26 - size - jump * JUMP_HEIGHT, size, size);
+  // 발바닥을 기준으로 기울이고 찌그러뜨린다. 그림 발바닥이 판정 박스 아래쪽에 오게 둔다
+  const squash = (effects.landMs / LAND_SQUASH_MS) * 0.22;
+  ctx.save();
+  ctx.translate(state.x, CAPYBARA_Y + 26 - jump * JUMP_HEIGHT);
+  ctx.rotate(effects.tilt);
+  ctx.scale(1 + squash, 1 - squash);
+  ctx.drawImage(image, -size / 2, -size, size, size);
+  ctx.globalAlpha = 1;
+
+  const hat = sprites.yuzu;
+  if (state.shield && !state.hitBy && ready(hat)) {
+    const w = size * 0.5;
+    const h = (w * hat.naturalHeight) / hat.naturalWidth;
+    ctx.shadowColor = palette.jump;
+    ctx.shadowBlur = 12;
+    ctx.drawImage(hat, -w / 2, -size * 0.92 - h / 2, w, h);
+    ctx.shadowBlur = 0;
+  }
+  ctx.restore();
 }
 
-function draw(ctx: CanvasRenderingContext2D, state: GameState, sprites: Sprites, clockMs: number, reducedMotion: boolean, shadow: string) {
-  const scroll = reducedMotion ? 0 : (state.elapsedMs / 1000) * SCROLL_SPEED;
-  drawTiled(ctx, sprites.meadow, 0, GAME_WIDTH, scroll);
-  drawTiled(ctx, sprites.mud, 60, GAME_WIDTH - 120, scroll);
+/** 빨라질수록 짙어지는 속도선 — 달리는 속도가 눈에 보이게 */
+function drawSpeedLines(ctx: CanvasRenderingContext2D, state: GameState, palette: Palette) {
+  const { fallSpeed } = getDifficulty(state.elapsedMs);
+  const strength = Math.min(1, (fallSpeed - 300) / 500);
+  if (strength <= 0) return;
+  const travel = (state.elapsedMs / 1000) * fallSpeed * 1.4;
+  ctx.globalAlpha = 0.25 * strength;
+  ctx.strokeStyle = palette.text;
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  for (let i = 0; i < SPEED_LINE_COUNT; i += 1) {
+    const x = (i * 83 + 29) % GAME_WIDTH;
+    const length = 40 + ((i * 37) % 60) * strength;
+    const y = ((travel + i * 131) % (GAME_HEIGHT + length)) - length;
+    ctx.moveTo(x, y);
+    ctx.lineTo(x, y + length);
+  }
+  ctx.stroke();
+  ctx.globalAlpha = 1;
+}
 
-  // 바닥 통나무 → 카피바라 → 머리 위를 지나는 통나무 순서로 그린다
-  for (const log of state.logs) if (LOG_HEIGHTS[log.kind] !== "high") drawLog(ctx, sprites.log, log, shadow);
-  drawCapybara(ctx, state, sprites, clockMs, reducedMotion, shadow);
-  for (const log of state.logs) if (LOG_HEIGHTS[log.kind] === "high") drawLog(ctx, sprites.log, log, shadow);
+function drawParticles(ctx: CanvasRenderingContext2D, effects: Effects) {
+  for (const particle of effects.particles) {
+    ctx.globalAlpha = 1 - particle.ageMs / particle.lifeMs;
+    ctx.fillStyle = particle.color;
+    ctx.fillRect(particle.x - particle.size / 2, particle.y - particle.size / 2, particle.size, particle.size);
+  }
+  ctx.globalAlpha = 1;
+}
+
+function draw(
+  ctx: CanvasRenderingContext2D,
+  state: GameState,
+  sprites: Sprites,
+  clockMs: number,
+  reducedMotion: boolean,
+  palette: Palette,
+  effects: Effects,
+) {
+  const scroll = reducedMotion ? 0 : (state.elapsedMs / 1000) * SCROLL_SPEED;
+  const power = Math.min(SHAKE_MAX_PX, effects.shakePx * (effects.shakeMs / effects.shakeTotalMs));
+  ctx.save();
+  ctx.translate((Math.random() * 2 - 1) * power, (Math.random() * 2 - 1) * power);
+  drawTiled(ctx, sprites.meadow, -SHAKE_MAX_PX, GAME_WIDTH + SHAKE_MAX_PX * 2, scroll);
+  drawTiled(ctx, sprites.mud, 60, GAME_WIDTH - 120, scroll);
+  if (!reducedMotion) drawSpeedLines(ctx, state, palette);
+
+  // 바닥 통나무 → 유자 → 카피바라 → 머리 위를 지나는 통나무 → 파티클 순서로 그린다
+  for (const log of state.logs) if (LOG_HEIGHTS[log.kind] !== "high") drawLog(ctx, sprites.log, log, reducedMotion, palette);
+  drawPickup(ctx, state, sprites.yuzu, clockMs, reducedMotion, palette);
+  drawCapybara(ctx, state, sprites, clockMs, reducedMotion, palette, effects);
+  for (const log of state.logs) if (LOG_HEIGHTS[log.kind] === "high") drawLog(ctx, sprites.log, log, reducedMotion, palette);
+  drawParticles(ctx, effects);
+  ctx.restore();
 }
 
 function readHud(state: GameState, challengeMs: number | null): Hud {
+  const recent = (at: number | null, ms: number) => at !== null && state.elapsedMs - at < ms;
   return {
     tenths: Math.floor(state.elapsedMs / 100),
     nearMisses: state.nearMisses,
-    nearMissFlash: state.lastNearMissAt !== null && state.elapsedMs - state.lastNearMissAt < FLASH_MS,
+    combo: state.combo,
+    nearMissFlash: recent(state.lastNearMissAt, FLASH_MS),
     passedFlash: challengeMs !== null && state.elapsedMs >= challengeMs && state.elapsedMs - challengeMs < FLASH_MS * 2,
     cue: getCue(state),
+    shield: state.shield,
+    shieldFlash: recent(state.lastBlockAt, SHIELD_FLASH_MS)
+      ? "block"
+      : recent(state.lastShieldAt, SHIELD_FLASH_MS)
+        ? state.lastShieldAt === state.lastNearMissAt
+          ? "combo"
+          : "get"
+        : null,
   };
 }
 
@@ -217,6 +496,12 @@ function formatCourseLabel(course: string | null) {
   const [, month, day] = course.split("-");
   return `${Number(month)}월 ${Number(day)}일 코스`;
 }
+
+/** step 직전 상태 중 이번 프레임에 무슨 일이 있었는지 비교할 값 */
+type FrameBefore = Pick<
+  GameState,
+  "hitBy" | "elapsedMs" | "jumpMs" | "duckMs" | "waveInMs" | "nextId" | "nearMisses" | "pickup" | "shield" | "lastBlockAt"
+>;
 
 interface Drag {
   pointerX: number;
@@ -323,9 +608,20 @@ export function CapybaraLogDodge() {
     const ctx = canvas?.getContext("2d");
     if (!canvas || !ctx) return;
     const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    // 그림자 색은 하드코딩하지 않고 토큰 값을 읽는다 (플레이 영역은 .dark 범위)
-    const shadow = getComputedStyle(canvas).getPropertyValue("--background").trim();
+    const styles = getComputedStyle(canvas);
+    const token = (name: string) => styles.getPropertyValue(name).trim();
+    const palette: Palette = {
+      shadow: token("--background"),
+      text: token("--foreground"),
+      jump: token("--warning"),
+      duck: token("--primary"),
+      fast: token("--destructive"),
+      dust: token("--foreground"),
+      wood: token("--capybara-dark"),
+      font: styles.fontFamily,
+    };
     const sprites = loadSprites();
+    const effects = createEffects();
     const challengeMs = challenge === null ? null : challenge * 1000;
 
     function resize() {
@@ -349,14 +645,36 @@ export function CapybaraLogDodge() {
     let lastCue: Hud["cue"] = null;
     let lastPassed = false;
     let lastStepAt = 0;
+    let nextBeatAt = startAt;
+    let beat = 0;
     let frameId = 0;
     let hitTimer: ReturnType<typeof setTimeout> | undefined;
 
+    /** 달리기 비트: 매 박 쿵, 박 사이 칙, 2·4박 짝. 난이도가 오를수록 빨라진다 */
+    function playBeat(state: GameState, now: number) {
+      if (now < nextBeatAt) return;
+      const rushBpm = Math.max(0, state.elapsedMs - PEAK_MS) / 1000;
+      const bpm = BEAT_BPM.min + (BEAT_BPM.max - BEAT_BPM.min) * getDifficulty(state.elapsedMs).level + rushBpm;
+      const beatMs = 60_000 / Math.min(BEAT_BPM.rush, bpm);
+      const hat = { ...BEAT_HAT, at: beatMs / 2 };
+      playGameSound(beat % 2 === 1 ? [BEAT_KICK, BEAT_SNARE, hat] : [BEAT_KICK, hat]);
+      beat += 1;
+      // 멈췄다 이어하면 밀린 박을 몰아 치지 않는다
+      nextBeatAt = Math.max(nextBeatAt + beatMs, now);
+    }
+
     /** step 앞뒤 상태를 비교해 이번 프레임에 일어난 일마다 소리를 한 번씩 낸다 */
-    function playFrameSounds(state: GameState, before: Pick<GameState, "elapsedMs" | "jumpMs" | "duckMs" | "waveInMs" | "nextId" | "nearMisses">, now: number) {
+    function playFrameSounds(
+      state: GameState,
+      before: FrameBefore,
+      now: number,
+    ) {
       if (state.hitBy) {
-        playGameSound(GAME_SOUNDS.hit);
-        playGameSound(SOUNDS.caught);
+        // 맞은 뒤에도 흔들림·파편이 보이게 프레임은 계속 돈다 — 소리는 맞은 프레임에 한 번만
+        if (!before.hitBy) {
+          playGameSound(GAME_SOUNDS.hit);
+          playGameSound(SOUNDS.caught);
+        }
         return;
       }
       if (state.jumpMs > before.jumpMs) playGameSound(JUMP_SOUND);
@@ -374,20 +692,63 @@ export function CapybaraLogDodge() {
         // 쪼개진 조각은 원래 통나무(LOG_THICKNESS + 8)보다 얇다
         if (log.id >= before.nextId && log.kind === "split" && log.h === LOG_THICKNESS) split = true;
         // 튕긴 프레임에만 벽에 딱 붙어 있다 (step이 가장자리로 되돌림)
-        if (log.vx !== 0 && (log.x === log.w / 2 || log.x === GAME_WIDTH - log.w / 2)) bounced = true;
+        if (log.kind === "bounce" && (log.x === log.w / 2 || log.x === GAME_WIDTH - log.w / 2)) bounced = true;
       }
       if (state.waveInMs > before.waveInMs) {
         const wave = state.logs.find((log) => log.id >= before.nextId);
-        if (wave) playGameSound(WAVE_SOUNDS[wave.kind]);
+        if (wave) {
+          playGameSound(WAVE_SOUNDS[wave.kind]);
+          if (wave.pace !== "normal") playGameSound(PACE_SOUNDS[wave.pace]);
+        }
       }
       if (split) playGameSound(SPLIT_SOUND);
       else if (bounced) playGameSound(BOUNCE_SOUND);
-      if (state.nearMisses > before.nearMisses) playGameSound(GAME_SOUNDS.whoosh);
+      if (state.nearMisses > before.nearMisses) {
+        playGameSound(GAME_SOUNDS.whoosh);
+        if (state.combo >= 2) playGameSound(COMBO_SOUNDS[Math.min(state.combo, COMBO_SOUNDS.length) - 1]);
+      }
+      if (state.pickup && !before.pickup) playGameSound(PICKUP_SPAWN_SOUND);
+      if (state.shield && !before.shield) playGameSound(SHIELD_GET_SOUND);
+      if (state.lastBlockAt !== before.lastBlockAt) playGameSound(SHIELD_BREAK_SOUND);
 
       // 등급 시간을 넘기면 빠라밤, 새 통나무 종류가 풀리면 따단 (겹치면 등급 소리만)
       const crossed = (ms: number) => before.elapsedMs < ms && state.elapsedMs >= ms;
       if (getLogDodgeTier(before.elapsedMs) !== getLogDodgeTier(state.elapsedMs)) playGameSound(TIER_UP_SOUND);
       else if (Object.values(LOG_UNLOCK_MS).some((ms) => ms > 0 && crossed(ms))) playGameSound(LEVEL_UP_SOUND);
+    }
+
+    /** 흔들림·파티클·착지 찌그러짐. 움직임 줄이기 설정이면 아무것도 만들지 않는다 */
+    function playFrameEffects(state: GameState, before: FrameBefore) {
+      if (reducedMotion) return;
+      const feetY = CAPYBARA_Y + 22;
+      if (state.hitBy) {
+        if (before.hitBy) return;
+        shake(effects, SHAKE_MAX_PX, 360);
+        burst(effects, state.x, CAPYBARA_Y, palette.wood, 18, 340);
+        burst(effects, state.x, CAPYBARA_Y, palette.dust, 12, 280);
+        return;
+      }
+      if (state.jumpMs > before.jumpMs) burst(effects, state.x, feetY, palette.dust, 5, 120, true);
+      else if (before.jumpMs > 0 && state.jumpMs === 0) {
+        effects.landMs = LAND_SQUASH_MS;
+        burst(effects, state.x, feetY, palette.dust, 8, 170, true);
+      }
+      for (const log of state.logs) {
+        if (log.id >= before.nextId && log.kind === "split" && log.h === LOG_THICKNESS) {
+          burst(effects, log.x, log.y, palette.wood, 7, 260);
+          shake(effects, 4, 180);
+        }
+        if (log.vx !== 0 && (log.x === log.w / 2 || log.x === GAME_WIDTH - log.w / 2)) {
+          burst(effects, log.x === log.w / 2 ? 0 : GAME_WIDTH, log.y, palette.wood, 5, 200);
+        }
+      }
+      if (state.nearMisses > before.nearMisses) burst(effects, state.x, CAPYBARA_Y, palette.jump, 8 + 3 * state.combo, 260);
+      if (state.shield && !before.shield) burst(effects, state.x, CAPYBARA_Y - 30, palette.jump, 16, 240);
+      if (state.lastBlockAt !== before.lastBlockAt) {
+        shake(effects, 7, 260);
+        burst(effects, state.x, CAPYBARA_Y - 20, palette.jump, 14, 340);
+        burst(effects, state.x, CAPYBARA_Y - 20, palette.wood, 10, 300);
+      }
     }
 
     function tick(now: number) {
@@ -396,19 +757,25 @@ export function CapybaraLogDodge() {
       if (pausedRef.current) {
         // step은 건너뛰고 기준 시각만 옮긴다 → 이어할 때 시간이 튀지 않음. 멈춘 동안 resize로 캔버스가 지워져도 다시 그림
         lastAt = now;
-        draw(ctx, state, sprites, Math.max(0, now - startAt), reducedMotion, shadow);
+        effects.shakeMs = 0;
+        draw(ctx, state, sprites, Math.max(0, now - startAt), reducedMotion, palette, effects);
         frameId = requestAnimationFrame(tick);
         return;
       }
       const { left, right } = keysRef.current;
       const action = actionRef.current;
-      const before = {
+      const frameMs = Math.min(50, now - lastAt);
+      const before: FrameBefore = {
+        hitBy: state.hitBy,
         elapsedMs: state.elapsedMs,
         jumpMs: state.jumpMs,
         duckMs: state.duckMs,
         waveInMs: state.waveInMs,
         nextId: state.nextId,
         nearMisses: state.nearMisses,
+        pickup: state.pickup,
+        shield: state.shield,
+        lastBlockAt: state.lastBlockAt,
       };
       let targetX: number | null = null;
       let duckSwipe = false;
@@ -427,12 +794,15 @@ export function CapybaraLogDodge() {
       lastAt = now;
       // 움직임 줄이기 설정이면 아슬아슬 슬로모션을 쓰지 않는다
       if (reducedMotion) state.slowmoMs = 0;
-      draw(ctx, state, sprites, Math.max(0, now - startAt), reducedMotion, shadow);
+      playFrameEffects(state, before);
+      stepEffects(effects, frameMs, reducedMotion || state.hitBy ? 0 : state.lean);
+      draw(ctx, state, sprites, Math.max(0, now - startAt), reducedMotion, palette, effects);
       playFrameSounds(state, before, now);
+      if (!state.hitBy) playBeat(state, now);
 
       const nextHud = readHud(state, challengeMs);
-      // "점프!"/"숙여!" 안내가 새로 뜨면 삐삐, 친구 기록을 넘은 순간 띵동
-      if (nextHud.cue && nextHud.cue !== lastCue && !state.hitBy) playGameSound(GAME_SOUNDS.warning);
+      // "점프!"는 올라가는 삐삐↑, "숙여!"는 내려가는 삐삐↓ — 소리만 들어도 위아래 구분. 친구 기록을 넘은 순간 띵동
+      if (nextHud.cue && nextHud.cue !== lastCue && !state.hitBy) playGameSound(nextHud.cue === "jump" ? JUMP_CUE_SOUND : DUCK_CUE_SOUND);
       if (nextHud.passedFlash && !lastPassed) playGameSound(GAME_SOUNDS.correct);
       lastCue = nextHud.cue;
       lastPassed = nextHud.passedFlash;
@@ -442,10 +812,7 @@ export function CapybaraLogDodge() {
         setHud(nextHud);
       }
 
-      if (state.hitBy) {
-        hitTimer = setTimeout(() => finishRound(state), HIT_PAUSE_MS);
-        return;
-      }
+      if (state.hitBy) hitTimer ??= setTimeout(() => finishRound(state), HIT_PAUSE_MS);
       frameId = requestAnimationFrame(tick);
     }
 
@@ -639,7 +1006,7 @@ export function CapybaraLogDodge() {
             />
             <h1 className="px-12 text-title-1 font-bold text-text-strong">{TITLE}</h1>
             <p className="text-caption-1 text-balance text-text-caption">
-              비탈 위에서 통나무가 굴러 내려와요. 좌우로 드래그해 피하고, 바닥에 깔린 통나무는 탭하거나 위로 쓸어 점프, 머리 높이로 날아오는 통나무는 아래로 쓸어 숙이세요. 한 손가락으로 옮기면서 다른 손가락으로 점프·숙이기를 해도 돼요. 키보드는 방향키(←→ 이동, ↑·Space 점프, ↓ 숙이기)예요. 한 번 맞으면 끝, 아슬아슬하게 스치면 잠깐 느려져요.
+              비탈 위에서 통나무가 굴러 내려와요. 좌우로 드래그해 피하고, 노란 ▲ 바닥 통나무는 탭하거나 위로 쓸어 점프, 파란 밧줄에 매달린 ▼ 통나무는 아래로 쓸어 숙이세요. 한 손가락으로 옮기면서 다른 손가락으로 점프·숙이기를 해도 돼요. 빨갛게 빛나는 통나무는 빠르고, 휘어 오는 통나무는 끝까지 따라와요. 유자 수건을 먹거나 아슬아슬하게 {COMBO_SHIELD_AT}번 연달아 스치면 한 번 막아 줘요. 키보드는 방향키(←→ 이동, ↑·Space 점프, ↓ 숙이기)예요.
             </p>
           </header>
 
@@ -693,7 +1060,7 @@ export function CapybaraLogDodge() {
           >
             {COUNTDOWN_VALUES[countdownIndex]}
           </span>
-          <p className="text-title-3 font-semibold text-balance opacity-80">좌우로 피하고 · 바닥 통나무는 점프 · 머리 높이 통나무는 숙이기</p>
+          <p className="text-title-3 font-semibold text-balance opacity-80">좌우로 피하고 · 노란 ▲는 점프 · 파란 ▼는 숙이기</p>
         </div>
       )}
 
@@ -725,9 +1092,23 @@ export function CapybaraLogDodge() {
               <p className="flex gap-2 text-caption-1 font-semibold tabular-nums">
                 {challenge !== null && <span className="rounded-full bg-black/40 px-3 py-0.5">친구 {challenge}초</span>}
                 {hud.nearMisses > 0 && <span className="rounded-full bg-black/40 px-3 py-0.5">아슬아슬 {hud.nearMisses}</span>}
+                {hud.shield && <span className="rounded-full bg-warning px-3 py-0.5 text-neutral-950">유자 보호막</span>}
               </p>
               {hud.nearMissFlash && (
-                <p className="mt-24 animate-in zoom-in-75 text-title-1 font-black text-warning">아슬아슬!</p>
+                <p
+                  key={hud.combo}
+                  className={cn(
+                    "mt-24 animate-in zoom-in-50 font-black text-warning drop-shadow-lg",
+                    hud.combo >= COMBO_SHIELD_AT ? "text-[2.75rem] leading-none" : "text-title-1",
+                  )}
+                >
+                  {hud.combo >= 2 ? `아슬아슬 ×${hud.combo}!` : "아슬아슬!"}
+                </p>
+              )}
+              {hud.shieldFlash && (
+                <p className={cn("animate-in zoom-in-75 text-title-2 font-black", hud.shieldFlash === "block" ? "text-primary" : "text-warning")}>
+                  {hud.shieldFlash === "block" ? "보호막이 막았어요!" : hud.shieldFlash === "combo" ? "콤보 보상! 유자 보호막" : "유자 보호막!"}
+                </p>
               )}
               {hud.passedFlash && (
                 <p className="mt-4 animate-in zoom-in-75 text-title-1 font-black text-success">친구 추월!</p>
@@ -735,17 +1116,27 @@ export function CapybaraLogDodge() {
             </div>
           )}
           {hud?.cue && (
+            // 점프는 노랑·위쪽·↑, 숙이기는 파랑·아래쪽·↓ — 캔버스 화살표·버튼과 같은 색
             <p
+              key={hud.cue}
               data-testid="action-cue"
-              className="pointer-events-none absolute inset-x-0 bottom-[34%] animate-in zoom-in-75 text-center text-[2.5rem] font-black text-warning drop-shadow-lg"
+              className={cn(
+                "pointer-events-none absolute inset-x-0 flex animate-in zoom-in-75 items-center justify-center gap-1 text-[2.5rem] font-black drop-shadow-lg",
+                hud.cue === "jump" ? "bottom-[38%] text-warning" : "bottom-[27%] text-primary",
+              )}
             >
+              {hud.cue === "jump" ? (
+                <ArrowUp aria-hidden="true" strokeWidth={3.5} className="size-10" />
+              ) : (
+                <ArrowDown aria-hidden="true" strokeWidth={3.5} className="size-10" />
+              )}
               {hud.cue === "jump" ? "점프!" : "숙여!"}
             </p>
           )}
           <div className="absolute inset-x-0 bottom-0 flex justify-between gap-4 px-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
             <button
               type="button"
-              className={actionButtonClass}
+              className={cn(actionButtonClass, "ring-2 ring-primary/70", hud?.cue === "duck" && "bg-primary active:bg-primary")}
               onPointerDown={(event) => {
                 event.stopPropagation();
                 actionRef.current.duckButton = true;
@@ -760,7 +1151,11 @@ export function CapybaraLogDodge() {
             </button>
             <button
               type="button"
-              className={actionButtonClass}
+              className={cn(
+                actionButtonClass,
+                "ring-2 ring-warning/70",
+                hud?.cue === "jump" && "bg-warning text-neutral-950 active:bg-warning",
+              )}
               onPointerDown={(event) => {
                 event.stopPropagation();
                 actionRef.current.jump = true;
