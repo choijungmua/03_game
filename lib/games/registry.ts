@@ -87,6 +87,16 @@ export const GAMES: GameEntry[] = [
     component: dynamic(() => import("@/app/games/_games/capybara-log-dodge")),
     seo: () => import("@/app/games/_games/capybara-log-dodge/seo"),
   },
+  {
+    slug: "watermelon-game",
+    title: GAME_TITLES["watermelon-game"],
+    description: "같은 과일끼리 닿게 떨어뜨려 체리부터 수박까지 합쳐 키우는 물리 퍼즐. 과일이 선을 넘으면 끝, 점수로 등급과 순위를 확인하는 게임",
+    tier: "A",
+    playDifficulty: "보통",
+    pageName: "watermelon",
+    component: dynamic(() => import("@/app/games/_games/watermelon-game")),
+    seo: () => import("@/app/games/_games/watermelon-game/seo"),
+  },
   // 새 게임은 여기에 한 줄씩 추가 (제목은 constants.ts GAME_TITLES에, CLAUDE.md "새 게임 추가 절차" 참고)
 ];
 
