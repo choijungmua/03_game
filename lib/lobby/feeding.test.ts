@@ -9,23 +9,25 @@ describe("카피바라 먹이 주기", () => {
   beforeEach(() => localStorage.clear());
 
   it("가방에서 하나 줄고 포만감이 오른다. 다 먹으면 가방에서 사라진다", () => {
-    recordCatch("붕어");
+    recordCatch("사과");
     recordCatch("메기");
-    const result = feedCapybara("붕어", 1000);
-    expect(result).toEqual({ ok: true, inventory: { 메기: 1 }, satiety: { value: 15, at: 1000 } });
+    const result = feedCapybara("사과", 1000);
+    expect(result).toEqual({ ok: true, inventory: { 메기: 1 }, satiety: { value: 10, at: 1000 } });
     expect(loadFishInventory()).toEqual({ 메기: 1 });
-    expect(loadSatiety()).toEqual({ value: 15, at: 1000 });
+    expect(loadSatiety()).toEqual({ value: 10, at: 1000 });
   });
 
-  it("없는 것·장화·배부를 땐 아무것도 안 바뀐다", () => {
-    expect(feedCapybara("붕어", 0)).toEqual({ ok: false, reason: "none" });
+  it("없는 것·물고기·장화·배부를 땐 아무것도 안 바뀐다 (카피바라는 초식동물)", () => {
+    expect(feedCapybara("사과", 0)).toEqual({ ok: false, reason: "none" });
     recordCatch("낡은 장화");
+    recordCatch("황금 잉어");
     expect(feedCapybara("낡은 장화", 0)).toEqual({ ok: false, reason: "inedible" });
-    for (let i = 0; i < 4; i++) recordCatch("황금 잉어");
-    for (let i = 0; i < 3; i++) feedCapybara("황금 잉어", 0);
+    expect(feedCapybara("황금 잉어", 0)).toEqual({ ok: false, reason: "inedible" });
+    for (let i = 0; i < 11; i++) recordCatch("사과");
+    for (let i = 0; i < 10; i++) feedCapybara("사과", 0);
     expect(loadSatiety().value).toBe(100);
-    expect(feedCapybara("황금 잉어", 0)).toEqual({ ok: false, reason: "full" });
-    expect(loadFishInventory()).toEqual({ "낡은 장화": 1, "황금 잉어": 1 });
+    expect(feedCapybara("사과", 0)).toEqual({ ok: false, reason: "full" });
+    expect(loadFishInventory()).toEqual({ "낡은 장화": 1, "황금 잉어": 1, 사과: 1 });
   });
 
   it("포만감은 시간이 지나면 떨어지고 0 밑으로 안 간다", () => {
@@ -34,8 +36,9 @@ describe("카피바라 먹이 주기", () => {
     expect(parseSatiety("망가짐")).toEqual({ value: 0, at: 0 });
   });
 
-  it("먹이기 채팅을 그대로 읽고, 평범한 채팅·장화·모르는 이름은 버린다", () => {
-    expect(parseFeedChat(cleanChat(feedChat(1001, "황금 잉어")))).toBe("황금 잉어");
+  it("먹이기 채팅을 그대로 읽고, 평범한 채팅·물고기·장화·모르는 이름은 버린다", () => {
+    expect(parseFeedChat(cleanChat(feedChat(1001, "사과")))).toBe("사과");
+    expect(parseFeedChat("[[feed:1:황금 잉어]]")).toBeNull();
     expect(parseFeedChat("[[feed:1:낡은 장화]]")).toBeNull();
     expect(parseFeedChat("[[feed:1:상어]]")).toBeNull();
     expect(parseFeedChat("안녕")).toBeNull();
