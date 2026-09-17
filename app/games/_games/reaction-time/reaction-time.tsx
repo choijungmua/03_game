@@ -189,7 +189,6 @@ export function ReactionTime() {
   return (
     <div
       data-testid="reaction-area"
-      data-hide-page-scrollbar="true"
       data-phase={phase}
       onPointerDown={handlePress}
       onClick={handleClick}

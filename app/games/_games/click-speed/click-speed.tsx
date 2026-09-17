@@ -286,7 +286,6 @@ export function ClickSpeed() {
     <div
       ref={containerRef}
       data-testid="click-speed-screen"
-      data-hide-page-scrollbar="true"
       data-phase={phase}
       onPointerDown={handlePointerDown}
       onClick={handleClick}
