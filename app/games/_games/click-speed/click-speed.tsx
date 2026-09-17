@@ -354,7 +354,7 @@ export function ClickSpeed() {
         <>
           <span
             data-testid="count"
-            className="pointer-events-none text-[9rem] font-black leading-none tabular-nums sm:text-[13rem]"
+            className="pointer-events-none whitespace-nowrap text-[9rem] font-black leading-none tabular-nums sm:text-[13rem]"
           >
             {count}
           </span>

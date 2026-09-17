@@ -24,8 +24,19 @@ export const SOUND_BUTTON_SRC = "/assets/images/ui/lobby/sound.webp";
 export const PROFILE_BUTTON_SRC = "/assets/images/ui/lobby/profile.webp";
 /** 물가에서 뜨는 낚시 버튼 그림 (나무 테·펠트 판 위 낚싯대 든 카피바라) */
 export const FISH_BUTTON_SRC = "/assets/images/ui/lobby/fish.webp";
+export const BATH_BUTTON_SRC = "/assets/images/ui/lobby/bath.webp";
+export const GUESTBOOK_BUTTON_SRC = "/assets/images/ui/lobby/guestbook.webp";
 /** 오른쪽 위 낚시 가방 버튼 그림 (나무 테·펠트 판 위 카피바라 얼굴 백팩) */
 export const FISH_BAG_SRC = "/assets/images/ui/lobby/bag.webp";
+
+/** 오른쪽 위 "내 카피바라" 메뉴 탭 순서. code가 있으면 그 키로 해당 탭을 열고 닫는다 (M은 소리를 바로 켜고 끄느라 소리 패널이 직접 처리) */
+export const LOBBY_MENU_TABS = [
+  { id: "wardrobe", label: "옷장", title: "카피바라 옷 입히기", icon: WARDROBE_BUTTON_SRC, shortcut: "P", code: "KeyP" },
+  { id: "fish", label: "가방", title: "낚시 가방", icon: FISH_BAG_SRC, shortcut: "I", code: "KeyI" },
+  { id: "sound", label: "소리", title: "효과음 설정", icon: SOUND_BUTTON_SRC, shortcut: "M", code: null },
+  { id: "profile", label: "이름", title: "이름 바꾸기", icon: PROFILE_BUTTON_SRC, shortcut: null, code: null },
+] as const;
+export type LobbyPanelId = (typeof LOBBY_MENU_TABS)[number]["id"];
 /** 통나무에 이만큼 앉아 있으면 잠든다(ms) */
 export const SLEEP_AFTER_MS = 30 * 60_000;
 /** 잠든 그림 두 장(숨 쉬기 ↔ 콧방울)을 번갈아 보여 주는 간격(ms) */

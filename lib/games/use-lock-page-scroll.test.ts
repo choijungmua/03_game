@@ -1,5 +1,5 @@
 import { renderHook } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { useLockPageScroll } from "./use-lock-page-scroll";
 
@@ -27,5 +27,19 @@ describe("useLockPageScroll", () => {
     rerender({ active: true });
     unmount();
     expect(touchMove()).toBe(false);
+  });
+
+  it("스크롤바가 숨겨진 페이지에서는 잠금 중에도 빈 스크롤바 자리를 남기지 않는다", () => {
+    const html = document.documentElement;
+    const scrollHeight = vi.spyOn(html, "scrollHeight", "get").mockReturnValue(window.innerHeight + 1);
+    html.style.scrollbarWidth = "none";
+
+    const { unmount } = renderHook(() => useLockPageScroll(true));
+
+    expect(html.style.scrollbarGutter).toBe("");
+
+    unmount();
+    scrollHeight.mockRestore();
+    html.style.scrollbarWidth = "";
   });
 });
