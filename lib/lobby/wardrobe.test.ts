@@ -95,6 +95,17 @@ describe("로비 옷장", () => {
         if (fit.view === "side" || fit.view === "front3q") {
           expect(Math.sign((aperture?.[0] ?? 0) - fit.head[0])).toBe(fit.flip ? -1 : 1);
         }
+        if (fit.view === "side") {
+          // 옆모습 구멍은 늘려 붙인 후드 조각 앞쪽 안에 있고, 얼굴은 가로세로 같은 비율로 담는다
+          const { silhouette } = dressSprite(sprite, { onepiece: item });
+          const hood = silhouette[0];
+          const [cx = 0, cy = 0, rx = 0, ry = 0] = aperture ?? [];
+          expect(cx - rx).toBeGreaterThan(hood?.left ?? 0);
+          expect(cx + rx).toBeLessThan((hood?.left ?? 0) + (hood?.width ?? 0));
+          expect(cy - ry).toBeGreaterThan(hood?.top ?? 0);
+          const [, , sourceRx = 1, sourceRy = 1] = face[0]?.source ?? [];
+          expect(rx / sourceRx).toBeCloseTo(ry / sourceRy);
+        }
         expect(aperture?.[1]).toBeGreaterThan(fit.head[1]);
         expect(aperture?.[2]).toBeLessThan(fit.head[2]);
         expect(aperture?.[3]).toBeLessThan(fit.head[3]);

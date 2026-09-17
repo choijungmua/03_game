@@ -3,7 +3,7 @@
 // 자리: 스프라이트마다 잰 몸 기준점 × 옷마다 몸에 맞춘 상자 (wardrobe-fit.ts, scripts/wardrobe_fit.py 로 생성)
 
 import { ITEM_FIT, SPRITE_FIT } from "./wardrobe-fit";
-import { onepieceCoversHead, onepieceFaceAperture, rigOnepieceCollar, rigOnepieceSilhouette } from "./onepiece-rig";
+import { onepieceCoversHead, onepieceFace, rigOnepieceCollar, rigOnepieceSilhouette } from "./onepiece-rig";
 
 // 상의·하의·신발·장갑은 보류 (그림은 public/.../wardrobe 에 남아 있다). 칸을 다시 넣으면 scripts/wardrobe_fit.py 를 다시 돌린다
 export const WARDROBE_SLOTS = ["hat", "glasses", "onepiece"] as const;
@@ -104,6 +104,13 @@ export const wardrobeViewSrc = (slot: WardrobeSlot, id: string, view: WardrobeVi
 export const wardrobeSilhouetteSrc = (id: string, view: WardrobeView) =>
   VIEW_ART.includes(view) ? `/assets/images/characters/capybara/wardrobe/onepiece/${id}-${view}.webp` : wardrobeSrc("onepiece", id);
 
+/** 그 옷을 입었을 때 로비가 쓰는 그림 전부 (미리 불러오기용): 정면 + 방향별 + 한벌옷의 원본 실루엣 */
+export const outfitImageSrcs = (slot: WardrobeSlot, id: string) => [
+  wardrobeSrc(slot, id),
+  ...viewArtOf(slot).map((view) => wardrobeViewSrc(slot, id, view)),
+  ...(slot === "onepiece" ? viewArtOf(slot).map((view) => wardrobeSilhouetteSrc(id, view)) : []),
+];
+
 /** 옷 한 조각을 그릴 자리 — 스프라이트 이미지 %: 왼쪽·위 끝, 폭·높이. mirror면 좌우 뒤집어 그린다 */
 export interface OutfitPiece {
   readonly src: string;
@@ -127,13 +134,6 @@ type DressedSprite = {
   readonly redraw: readonly FitEllipse[];
   readonly over: readonly OutfitPiece[];
 };
-
-function faceSource([cx, cy, rx, ry]: FitEllipse, view: WardrobeView, mirror: boolean): FitEllipse {
-  const direction = mirror ? -1 : 1;
-  if (view === "side") return [cx + rx * 0.18 * direction, cy + ry * 0.2, rx * 0.72, ry * 0.75];
-  if (view === "front3q") return [cx + rx * 0.08 * direction, cy + ry * 0.18, rx * 0.78, ry * 0.78];
-  return [cx, cy + ry * 0.18, rx * 0.82, ry * 0.78];
-}
 
 /** 스프라이트 이미지 경로(…/capybara-<이름>.webp)에서 <이름> */
 export const spriteName = (src: string) => /capybara-([^/.]+)\.webp/.exec(src)?.[1] ?? "";
@@ -174,7 +174,7 @@ export function dressSprite(sprite: string, outfit: Outfit): DressedSprite {
           rigOnepieceSilhouette({ piece, id: onepieceId, view: fit.view, headTop: fit.head[1] - fit.head[3] }),
         )
       : silhouette;
-  const faceAperture = fit && onepieceId ? onepieceFaceAperture(onepieceId, fit.view, fit.head, fit.flip) : undefined;
+  const face = fit && onepieceId ? onepieceFace(onepieceId, fit.view, fit.head, fit.flip, riggedSilhouette) : undefined;
   const collar =
     fit && onepieceId ? silhouette.flatMap((piece) => rigOnepieceCollar(piece, onepieceId, fit.view)) : [];
   const paws: readonly FitEllipse[] = fit
@@ -191,7 +191,7 @@ export function dressSprite(sprite: string, outfit: Outfit): DressedSprite {
             rigOnepieceSilhouette({ piece, id: onepieceId, view: fit.view, headTop: fit.head[1] - fit.head[3] }),
           )
         : under,
-    face: faceAperture && fit ? [{ source: faceSource(fit.head, fit.view, fit.flip), clip: faceAperture }] : [],
+    face: face ? [face] : [],
     redraw:
       fit && BODY_LAYERS.some((slot) => outfit[slot])
         ? [...paws, ...(hooded ? [] : [fit.head])]
@@ -230,7 +230,6 @@ export function parseOutfit(raw: string | null): Outfit {
 
 const STORAGE_KEY = "lobby-outfit-v1";
 
-/** 이 기기에 저장한 옷 (서버 저장은 백엔드 배포 뒤에) */
 export function loadOutfit(): Outfit {
   try {
     return parseOutfit(localStorage.getItem(STORAGE_KEY));
@@ -244,4 +243,3 @@ export function saveOutfit(outfit: Outfit) {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(outfit));
   } catch {}
 }
-

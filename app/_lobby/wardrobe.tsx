@@ -1,20 +1,12 @@
 "use client";
 
 import NextImage from "next/image";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { cn } from "@/lib";
-import {
-  dressSprite,
-  type Outfit,
-  type OutfitPiece,
-  SLOT_INFO,
-  spriteName,
-  WARDROBE_SLOTS,
-  type WardrobeSlot,
-  wardrobeSrc,
-  wear,
-} from "@/lib/lobby/wardrobe";
+import { dressSprite, type Outfit, SLOT_INFO, spriteName, WARDROBE_SLOTS, type WardrobeSlot, wardrobeSrc, wear } from "@/lib/lobby/wardrobe";
+
+import { drawOutfit } from "./outfit-canvas";
 
 export const CAPYBARA_SRC = "/assets/images/characters/capybara/capybara-idle-down.webp";
 
@@ -23,45 +15,8 @@ export function Wardrobe({ outfit, onChange }: { outfit: Outfit; onChange: (outf
   const [slot, setSlot] = useState<WardrobeSlot>("hat");
 
   const choose = (id: string | null) => {
-    const next = wear(outfit, slot, id);
-    onChange(next);
+    onChange(wear(outfit, slot, id));
   };
-
-  // 로비 맵의 앉은 정면과 같은 스프라이트·같은 자리
-  const { silhouette, under, face, redraw, over } = dressSprite(spriteName(CAPYBARA_SRC), outfit);
-  const layers = (pieces: readonly OutfitPiece[]) =>
-    pieces.map((piece, index) => {
-      const [cropLeft, cropTop, cropWidth, cropHeight] = piece.crop ?? [0, 0, 1, 1];
-      return (
-        <div
-          key={`${piece.src}-${index}`}
-          className="absolute overflow-hidden"
-          aria-hidden="true"
-          style={{
-            left: `${piece.left}%`,
-            top: `${piece.top}%`,
-            width: `${piece.width}%`,
-            height: `${piece.height}%`,
-            transform: piece.mirror ? "scaleX(-1)" : undefined,
-          }}
-        >
-          <NextImage
-            src={piece.src}
-            alt=""
-            width={256}
-            height={256}
-            unoptimized
-            className="absolute max-w-none"
-            style={{
-              left: `${(-cropLeft / cropWidth) * 100}%`,
-              top: `${(-cropTop / cropHeight) * 100}%`,
-              width: `${100 / cropWidth}%`,
-              height: `${100 / cropHeight}%`,
-            }}
-          />
-        </div>
-      );
-    });
 
   return (
     <section aria-label="카피바라 옷 입히기" className="flex w-full flex-col gap-3">
@@ -69,49 +24,7 @@ export function Wardrobe({ outfit, onChange }: { outfit: Outfit; onChange: (outf
       <div className="sticky top-0 z-[1] flex items-center gap-3 rounded-2xl bg-muted p-2 pr-3">
         {/* 키 큰 모자가 머리 위로 조금 나와도 잘리지 않게 overflow는 그대로 둔다 */}
         <div className="relative size-20 shrink-0 md:size-24">
-          <NextImage src={CAPYBARA_SRC} alt="" fill unoptimized sizes="224px" />
-          {/* 채움층은 몸과 움직이는 팔을 옷감으로 덮고, 원본층은 그 위에서 소매·후드·꼬리처럼 몸 밖으로 나온 옷 윤곽을 보존한다 */}
-          <div
-            className="absolute inset-0"
-            style={{ maskImage: `url(${CAPYBARA_SRC})`, maskSize: "100% 100%", WebkitMaskImage: `url(${CAPYBARA_SRC})`, WebkitMaskSize: "100% 100%" }}
-          >
-            {layers(under)}
-          </div>
-          {layers(silhouette)}
-          {face.map(({ source: [sourceX, sourceY, sourceRx, sourceRy], clip: [cx, cy, rx, ry] }, index) => {
-            const scaleX = rx / sourceRx;
-            const scaleY = ry / sourceRy;
-            return (
-              <div key={`face-${index}`} aria-hidden className="absolute inset-0 overflow-hidden" style={{ clipPath: `ellipse(${rx}% ${ry}% at ${cx}% ${cy}%)` }}>
-                <NextImage
-                  src={CAPYBARA_SRC}
-                  alt=""
-                  width={256}
-                  height={256}
-                  unoptimized
-                  className="absolute max-w-none"
-                  style={{
-                    left: `${cx - sourceX * scaleX}%`,
-                    top: `${cy - sourceY * scaleY}%`,
-                    width: `${scaleX * 100}%`,
-                    height: `${scaleY * 100}%`,
-                  }}
-                />
-              </div>
-            );
-          })}
-          {redraw.map(([cx, cy, rx, ry], index) => (
-            <NextImage
-              key={`redraw-${index}`}
-              src={CAPYBARA_SRC}
-              alt=""
-              fill
-              unoptimized
-              sizes="224px"
-              style={{ clipPath: `ellipse(${rx}% ${ry}% at ${cx}% ${cy}%)` }}
-            />
-          ))}
-          {layers(over)}
+          <OutfitPreview outfit={outfit} />
         </div>
         <div className="flex min-w-0 flex-1 flex-col gap-2">
           <p aria-live="polite" className="truncate text-caption-1 text-text-caption">
@@ -174,4 +87,39 @@ export function Wardrobe({ outfit, onChange }: { outfit: Outfit; onChange: (outf
       </div>
     </section>
   );
+}
+
+const previewImages = new Map<string, HTMLImageElement>();
+const previewImage = (src: string) => {
+  const cached = previewImages.get(src);
+  if (cached) return cached;
+  const image = new Image();
+  image.src = src;
+  previewImages.set(src, image);
+  return image;
+};
+
+/** 로비 맵과 같은 스프라이트 자리·같은 합성(outfit-canvas.ts drawOutfit)으로 그린 옷장 미리보기 */
+function OutfitPreview({ outfit }: { outfit: Outfit }) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    const ctx = canvas?.getContext("2d");
+    if (!canvas || !ctx) return;
+    const { silhouette, under, over } = dressSprite(spriteName(CAPYBARA_SRC), outfit);
+    const images = [CAPYBARA_SRC, ...[...silhouette, ...under, ...over].map((piece) => piece.src)].map(previewImage);
+    let cancelled = false;
+    // 이미지를 다 불러온 뒤에 그린다 (덜 불러온 옷은 drawOutfit이 건너뛴다)
+    Promise.all(images.map((image) => image.decode().catch(() => undefined))).then(() => {
+      if (cancelled) return;
+      const [base] = images;
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(base, 0, 0, canvas.width, canvas.height);
+      drawOutfit({ ctx, base, outfit, left: 0, top: 0, size: canvas.width, imageFor: previewImage });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [outfit]);
+  return <canvas ref={canvasRef} width={448} height={448} aria-hidden className="size-full" />;
 }
