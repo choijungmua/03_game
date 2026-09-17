@@ -34,7 +34,8 @@ const panelId = (id: LobbyPanelId) => `lobby-menu-panel-${id}`;
 
 /**
  * 오른쪽 위 "내 카피바라" 메뉴. 카피바라 버튼 하나로 열고, 안에서는 옷장·가방·소리·이름 탭을 오간다.
- * 모바일은 위에서 내려오는 시트, md 이상은 버튼 자리에서 펼쳐지는 카드. 높이는 보이는 탭 내용만큼이고, 화면보다 길면 패널 안에서만 스크롤된다
+ * 모바일은 아래에서 올라오는 시트, md 이상은 버튼 자리에서 펼쳐지는 카드. 탭 줄은 엄지가 닿는 맨 아래에 두고 내용은 그 위에 쌓는다.
+ * 높이는 보이는 탭 내용만큼이고, 화면보다 길면 내용 영역 안에서만 스크롤된다
  */
 export function LobbyMenu({ name, panels }: LobbyMenuProps) {
   const [open, setOpen] = useState(false);
@@ -135,11 +136,14 @@ export function LobbyMenu({ name, panels }: LobbyMenuProps) {
         inert={!open}
         onKeyDown={(event) => trapDialogFocus(event, event.currentTarget)}
         className={cn(
-          "pointer-events-auto fixed inset-x-0 top-0 flex max-h-[calc(100dvh-4rem)] flex-col gap-3 overflow-hidden rounded-b-3xl border-b border-border-default bg-card/95 px-4 pb-4 pt-[max(1rem,env(safe-area-inset-top))] text-text-strong shadow-xl backdrop-blur-md transition-[opacity,translate,scale] duration-200 ease-out motion-reduce:transition-none",
-          "md:absolute md:inset-auto md:right-0 md:top-0 md:max-h-[calc(100dvh-1.5rem)] md:w-[25rem] md:origin-top-right md:rounded-3xl md:border md:p-4",
-          open ? "opacity-100" : "pointer-events-none -translate-y-3 opacity-0 md:translate-y-0 md:scale-95",
+          "pointer-events-auto fixed inset-x-0 bottom-0 flex max-h-[calc(100dvh-4.5rem)] flex-col gap-3 overflow-hidden rounded-t-3xl border-t border-border-default bg-card/95 px-4 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-2 text-text-strong shadow-xl backdrop-blur-md transition-[opacity,translate,scale] duration-200 ease-out motion-reduce:transition-none",
+          "md:absolute md:inset-x-auto md:bottom-auto md:right-0 md:top-0 md:max-h-[calc(100dvh-1.5rem)] md:w-[25rem] md:origin-top-right md:rounded-3xl md:border md:p-4",
+          open ? "opacity-100" : "pointer-events-none translate-y-4 opacity-0 md:translate-y-0 md:scale-95",
         )}
       >
+        {/* 아래에서 올라온 시트라는 표시 (모바일만). 끌지는 않고 보기용 */}
+        <span aria-hidden className="mx-auto h-1 w-10 shrink-0 rounded-full bg-border-default md:hidden" />
+
         <header className="flex min-w-0 items-center gap-3">
           <NextImage src={PROFILE_BUTTON_SRC} alt="" width={96} height={96} unoptimized draggable={false} className="size-10 shrink-0 drop-shadow-sm" />
           <div className="min-w-0 flex-1">
@@ -152,17 +156,27 @@ export function LobbyMenu({ name, panels }: LobbyMenuProps) {
             type="button"
             onClick={close}
             aria-label="닫기"
-            className="flex size-11 shrink-0 touch-manipulation items-center justify-center rounded-full text-text-caption transition-colors hover:bg-muted hover:text-text-strong focus-visible:outline-2 focus-visible:outline-primary"
+            className="flex size-11 shrink-0 touch-manipulation items-center justify-center rounded-full bg-muted text-text-caption transition-[background-color,color,scale] duration-150 hover:bg-border-default hover:text-text-strong focus-visible:outline-2 focus-visible:outline-primary motion-safe:active:scale-90 motion-reduce:transition-none"
           >
             <X aria-hidden className="size-5" />
           </button>
         </header>
 
-        {/* 알약 트랙 위를 흰 판(선택 표시)이 미끄러진다. 판은 탭 한 칸 폭이라 translateX 100%씩 옮기면 된다 */}
+        <LobbyMenuContext.Provider value={{ open, active, openTab }}>
+          {/* 선택된 패널만 보인다. 시트·카드는 내용 높이만큼만 커지고(탭 줄 위치는 그대로), 화면보다 길면 이 안에서만 스크롤된다 */}
+          <div className="-mx-1 min-h-0 overflow-y-auto overscroll-contain px-1 pb-1">
+            {LOBBY_MENU_TABS.map((tab) => (
+              <div key={tab.id} id={panelId(tab.id)} role="tabpanel" aria-labelledby={tabId(tab.id)} hidden={tab.id !== active}>
+                {panels[tab.id]}
+              </div>
+            ))}
+          </div>
+        </LobbyMenuContext.Provider>
+        {/* 맨 아래 탭 줄. 알약 트랙 위를 판(선택 표시)이 미끄러진다 — 판은 탭 한 칸 폭이라 translateX 100%씩 옮기면 된다 */}
         <div role="tablist" aria-label="메뉴 탭" onKeyDown={onTabKeyDown} className="relative grid shrink-0 grid-cols-4 rounded-2xl bg-muted p-1">
           <span
             aria-hidden
-            className="absolute inset-y-1 left-1 w-[calc((100%-0.5rem)/4)] rounded-xl bg-card shadow-sm ring-1 ring-border-default transition-transform duration-200 ease-out motion-reduce:transition-none"
+            className="absolute inset-y-1 left-1 w-[calc((100%-0.5rem)/4)] rounded-xl bg-card shadow-md ring-1 ring-border-default transition-transform duration-200 ease-out motion-reduce:transition-none"
             style={{ transform: `translateX(${activeIndex * 100}%)` }}
           />
           {LOBBY_MENU_TABS.map((tab) => {
@@ -184,7 +198,7 @@ export function LobbyMenu({ name, panels }: LobbyMenuProps) {
                 tabIndex={selected ? 0 : -1}
                 onClick={() => setActive(tab.id)}
                 className={cn(
-                  "group relative flex min-h-16 min-w-0 touch-manipulation flex-col items-center justify-center gap-0.5 rounded-xl text-caption-2 font-semibold transition-colors focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-primary",
+                  "group relative flex min-h-[4.25rem] min-w-0 touch-manipulation flex-col items-center justify-center gap-1 rounded-xl text-caption-2 font-semibold transition-[color,scale] duration-150 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-primary motion-safe:active:scale-95 motion-reduce:transition-none",
                   selected ? "text-text-strong" : "text-text-caption hover:text-text-strong",
                 )}
               >
@@ -196,8 +210,8 @@ export function LobbyMenu({ name, panels }: LobbyMenuProps) {
                   unoptimized
                   draggable={false}
                   className={cn(
-                    "size-9 drop-shadow-sm transition-[scale,opacity,filter] duration-200 motion-reduce:transition-none",
-                    selected ? "scale-110" : "opacity-60 saturate-50 group-hover:opacity-100 group-hover:saturate-100",
+                    "size-10 drop-shadow-sm transition-[scale,opacity,filter] duration-200 motion-reduce:transition-none",
+                    selected ? "scale-110" : "opacity-55 saturate-50 group-hover:opacity-100 group-hover:saturate-100",
                   )}
                 />
                 <span aria-hidden>{tab.label}</span>
@@ -206,16 +220,6 @@ export function LobbyMenu({ name, panels }: LobbyMenuProps) {
           })}
         </div>
 
-        <LobbyMenuContext.Provider value={{ open, active, openTab }}>
-          {/* 선택된 패널만 보인다. 시트·카드는 내용 높이만큼만 커지고(탭 줄 위치는 그대로), 화면보다 길면 이 안에서만 스크롤된다 */}
-          <div className="-mx-1 min-h-0 overflow-y-auto overscroll-contain px-1 pb-1">
-            {LOBBY_MENU_TABS.map((tab) => (
-              <div key={tab.id} id={panelId(tab.id)} role="tabpanel" aria-labelledby={tabId(tab.id)} hidden={tab.id !== active}>
-                {panels[tab.id]}
-              </div>
-            ))}
-          </div>
-        </LobbyMenuContext.Provider>
       </section>
     </div>
   );

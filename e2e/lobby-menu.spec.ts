@@ -22,12 +22,17 @@ test("내 카피바라 메뉴가 화면 크기에 맞춰 열리고 탭을 오간
   await expect(menu).toHaveCSS("translate", "none");
   await page.screenshot({ path: `artifacts/lobby-menu-${testInfo.project.name}-open.png` });
 
-  // 탭을 바꿔도 탭 줄 자리는 그대로다
+  // 탭 줄은 언제나 메뉴 맨 아래에 붙어 있다 (모바일은 화면 아래 시트, PC는 카드 아래)
   const tablist = menu.getByRole("tablist");
-  const before = await tablist.boundingBox();
+  const atBottom = async () => {
+    const tabs = await tablist.boundingBox();
+    const box = await menu.boundingBox();
+    expect((box?.y ?? 0) + (box?.height ?? 0) - ((tabs?.y ?? 0) + (tabs?.height ?? 0))).toBeLessThanOrEqual(24);
+  };
+  await atBottom();
   await menu.getByRole("tab", { name: "효과음 설정" }).click();
   await expect(menu.getByRole("tabpanel", { name: "효과음 설정" })).toBeVisible();
-  expect(await tablist.boundingBox()).toEqual(before);
+  await atBottom();
   await page.screenshot({ path: `artifacts/lobby-menu-${testInfo.project.name}-sound.png` });
 
   await page.keyboard.press("Escape");
