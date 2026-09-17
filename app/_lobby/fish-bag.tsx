@@ -1,6 +1,6 @@
 "use client";
 
-import { Apple } from "lucide-react";
+import { Apple, Heart } from "lucide-react";
 import NextImage from "next/image";
 import { useEffect, useState } from "react";
 
@@ -16,10 +16,13 @@ import { useLobbyMenuPanel } from "./lobby-menu";
 export function FishBag({
   inventory,
   satiety,
+  affection,
   onFeed,
 }: {
   inventory: FishInventory;
   satiety: Satiety;
+  /** 카피바라 애정도(0~100). 사과를 먹일수록 오른다 */
+  affection: number;
   onFeed: (name: FishCatch) => void;
 }) {
   const { open } = useLobbyMenuPanel("fish");
@@ -45,6 +48,16 @@ export function FishBag({
             <span className="tabular-nums text-text-caption">{fullness}%</span>
           </span>
           <Progress value={fullness} aria-label="카피바라 포만감" className="h-1.5 bg-card" />
+        </div>
+        <div className="flex min-w-0 flex-col gap-1">
+          <span className="flex justify-between text-caption-2 font-semibold text-text-strong">
+            <span className="flex items-center gap-1">
+              <Heart aria-hidden="true" className="size-3 fill-primary text-primary" />
+              애정도
+            </span>
+            <span className="tabular-nums text-text-caption">{affection}%</span>
+          </span>
+          <Progress value={affection} aria-label="카피바라 애정도" className="h-1.5 bg-card" />
         </div>
         <p className="text-caption-2 text-text-caption" aria-live="polite">
           {full

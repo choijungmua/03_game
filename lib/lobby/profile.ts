@@ -3,10 +3,12 @@ import { cleanName } from "./presence";
 
 /**
  * 로비 프로필. 이 기기(localStorage)에만 저장한다.
- * id는 서버가 채팅·낚시 이력을 묶는 기기별 UUID, name은 사용자가 정한 이름표(비었으면 서버가 고른 이름)
+ * id는 서버가 채팅·낚시 이력을 묶는 기기별 UUID, token은 서버 가방(g_fishing)을 이 기기만 바꾸게 하는 비밀 값,
+ * name은 사용자가 정한 이름표(비었으면 서버가 고른 이름)
  */
 export interface LobbyProfile {
   id: string;
+  token: string;
   name: string;
 }
 
@@ -18,10 +20,13 @@ export function parseLobbyProfile(raw: string | null, newId: () => string): Lobb
   try {
     saved = JSON.parse(raw ?? "null");
   } catch {}
-  const { id, name } = saved ?? {};
+  const { id, token, name } = saved ?? {};
+  // id만 있고 토큰이 없던 기기(서버 가방 이전)는 둘 다 새로 만든다 — 남의 가방을 물려받지 않게
+  const known = typeof id === "string" && UUID.test(id) && typeof token === "string" && UUID.test(token);
   return {
-    id: typeof id === "string" && UUID.test(id) ? id : newId(),
-    name: typeof name === "string" ? cleanName(name) : "",
+    id: known ? id : newId(),
+    token: known ? token : newId(),
+    name: known && typeof name === "string" ? cleanName(name) : "",
   };
 }
 
