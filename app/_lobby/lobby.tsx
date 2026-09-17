@@ -1189,7 +1189,8 @@ function facingOf(dx: number, dy: number): Facing {
   return OCTANTS[Math.round(Math.atan2(dy, dx) / (Math.PI / 4)) + 4];
 }
 
-export function Lobby({ games }: { games: DoorGame[] }) {
+/** games: 맵에 오두막으로 세울 게임, listGames: 오두막 없이 왼쪽 위 게임 목록에서만 고르는 게임 */
+export function Lobby({ games, listGames }: { games: DoorGame[]; listGames: DoorGame[] }) {
   const router = useRouter();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   /** Space(앉기·목욕·낚시 버튼): 통나무 앞이면 앉기·일어나기, 온천 둘레면 목욕·나오기, 물가면 계속 낚기 시작·그만하기 */
@@ -1623,7 +1624,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
         return;
       }
       // 버튼·링크에 포커스가 있으면 Space/Enter는 그 요소의 기본 동작(누르기)에 맡긴다
-      if (event.target instanceof HTMLElement && event.target.closest("a, button")) return;
+      if (event.target instanceof HTMLElement && event.target.closest("a, button, summary")) return;
       if (event.code === "Space") {
         event.preventDefault();
         if (!event.repeat) {
@@ -2548,6 +2549,28 @@ export function Lobby({ games }: { games: DoorGame[] }) {
           {heardChat}
         </p>
       </form>
+
+      {/* 채팅창 아래: 오두막 없이 목록에서만 들어가는 게임 */}
+      {listGames.length > 0 && (
+        <details className="group/list absolute left-[max(0.75rem,env(safe-area-inset-left))] top-[calc(max(0.75rem,env(safe-area-inset-top))+2.5rem)] text-caption-1">
+          <summary className="flex h-8 w-fit cursor-pointer list-none items-center rounded-full bg-black/25 px-3 font-semibold text-white focus-visible:outline-2 focus-visible:outline-primary [&::-webkit-details-marker]:hidden">
+            게임 목록
+          </summary>
+          <ul className="mt-1 flex flex-col rounded-xl bg-card/90 p-1 shadow-md">
+            {listGames.map((game) => (
+              <li key={game.slug}>
+                <Link
+                  href={`/games/${game.slug}`}
+                  onClick={() => markLobbyExit(`/games/${game.slug}`)}
+                  className="flex min-h-11 items-center rounded-lg px-3 text-body-2 text-text-strong hover:bg-black/10 focus-visible:outline-2 focus-visible:outline-primary"
+                >
+                  {game.title}
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
 
       {/* 오른쪽 위 세로 줄: 카피바라 옷장 → 낚시 가방 → 효과음 → 이름 바꾸기. 설정 버튼은 나중에 이 줄에 다시 넣는다 */}
       {/* 효과음 버튼의 헤드폰이 원 밖으로 삐져나오는 만큼 위(옷장)·오른쪽(화면 끝)을 띄운다. 두 버튼은 앉기·때리기와 같은 크기(모바일 size-14, md 이상 size-18) */}
