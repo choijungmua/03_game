@@ -1,5 +1,22 @@
 import { SHORTCUT_FLASH_MS } from "./constants";
 
+type DialogKeyEvent = Pick<KeyboardEvent, "key" | "shiftKey" | "preventDefault">;
+
+export function trapDialogFocus(event: DialogKeyEvent, dialog: HTMLElement) {
+  if (event.key !== "Tab") return;
+  const controls = dialog.querySelectorAll<HTMLElement>("button:not([disabled]), input:not([disabled]), [href]");
+  if (!controls.length) return;
+  const first = controls[0];
+  const last = controls[controls.length - 1];
+  if (event.shiftKey && document.activeElement === first) {
+    event.preventDefault();
+    last?.focus();
+  } else if (!event.shiftKey && document.activeElement === last) {
+    event.preventDefault();
+    first?.focus();
+  }
+}
+
 /** 로비 단축키(P 프로필·M 소리·, 이모티콘)로 처리할 키인지. 채팅 입력 중·조합키(Ctrl·Cmd·Alt)·꾹 눌러 반복되는 입력은 무시한다 */
 export function isShortcutKey(event: KeyboardEvent, code: string) {
   if (event.code !== code || event.repeat || event.ctrlKey || event.metaKey || event.altKey) return false;

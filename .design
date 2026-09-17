@@ -1,8 +1,8 @@
 schema: design.v1
 name: ggpli
-version: 0.3.0
+version: 0.6.0
 status: bootstrap
-updated_at: "2026-09-15"
+updated_at: "2026-09-17"
 description: "Dark-first shadcn foundation with the reusable ZMZM component architecture adapted for ggpli."
 
 $schema: https://raw.githubusercontent.com/AgentsORG/DESIGN/main/schema/design.v1.schema.json
@@ -21,7 +21,7 @@ agent:
 overview: |
   The repository uses a dark-first, capybara-brown-accented product foundation adapted from the local ZMZM reference.
   Shared UI is grouped by role, while route-only UI belongs in colocated _components folders.
-  Game-specific art direction remains intentionally undecided.
+  The lobby uses a deliberate 2.5D felt miniature direction: gameplay stays in a 2D canvas, while every world object shares one elevated three-quarter camera, soft upper-left key light, rounded plush-felt material, and renderer-owned contact shadows.
 
 intent:
   reference: "ZMZM's restrained Korean product UI structure adapted to a dark shadcn base-nova foundation"
@@ -106,6 +106,18 @@ components:
     when_not: ["route-specific compositions; colocate those under the route _components folder"]
     groups: [inputs, display, feedback, navigation, overlay]
     entries: [avatar, badge, button, card, carousel, checkbox, dialog, dropdown-menu, fab, form, input, label, loading, pagination, popover, progress, skeleton, sonner, tabs, tooltip]
+  lobby-menu:
+    import: "@/app/_lobby/lobby-menu"
+    description: "Single entry point for wardrobe, fishing bag, sound, and profile controls; right panel on desktop and bottom sheet on mobile."
+    when: ["persistent lobby utility controls"]
+    when_not: ["contextual gameplay actions"]
+    states: [closed, open, focus-visible, reduced-motion]
+  lobby-wardrobe:
+    import: "@/app/_lobby/wardrobe"
+    description: "Capybara outfit editor; full-screen dialog on mobile and compact right panel on desktop."
+    when: ["editing the lobby character outfit"]
+    when_not: ["quick outfit status display"]
+    states: [closed, open, slot-selected, item-selected, focus-visible, reduced-motion]
 
 policy:
   if_missing: ask
@@ -126,6 +138,13 @@ decisions:
   navigation:
     - if: "the interaction changes location"
       then: { element: "Next.js Link or anchor" }
+  lobby_art:
+    - if: "a lobby world asset is added or replaced"
+      then: "use the capybara plush-felt reference, keep the elevated three-quarter camera, omit baked floor shadows, and register its bottom anchor and screen bounds in lib/lobby/assets"
+    - if: "a ground texture is added or replaced"
+      then: "use a flat top-down seamless felt texture with no objects or cast shadows; terrain transitions are renderer-owned"
+    - if: "a contextual lobby action button is added or replaced"
+      then: "match the existing circular honey-brown wooden frame and cream felt disk, use one centered plush-felt object with no baked text, and keep the exterior transparent"
 
 constraints:
   always:
@@ -219,6 +238,8 @@ sources:
     path: components/ui/button.tsx
   - type: repo
     path: components/index.ts
+  - type: repo
+    path: docs/LOBBY-MAP.md
   - type: local-reference
     path: C:/Users/user/Desktop/project/99_Archive/95_zmzm/src/components
 

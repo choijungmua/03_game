@@ -3,15 +3,17 @@
 import { Backpack } from "lucide-react";
 import NextImage from "next/image";
 import { useEffect, useEffectEvent, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 
 import { Progress } from "@/components/feedback/progress";
 import { cn } from "@/lib";
-import { FISH_CATCHES, FOOD_SATIETY } from "@/lib/lobby/constants";
+import { FISH_CATCHES, FOOD_SATIETY, SATIETY_MAX } from "@/lib/lobby/constants";
 import { currentSatiety, type Satiety } from "@/lib/lobby/feeding";
 import { type FishCatch, fishCatchSrc, type FishInventory } from "@/lib/lobby/fishing";
 
-import { FISH_BAG_SRC } from "./constants";
-import { flashButton, isShortcutKey } from "./shortcut";
+import { FISH_BAG_SRC, LOBBY_SIDE_PANEL } from "./constants";
+import { useLobbyMenuPanel } from "./lobby-menu";
+import { flashButton, isShortcutKey, trapDialogFocus } from "./shortcut";
 
 /** 오른쪽 위 카피바라 백팩 버튼. 누르면 그 자리에서 커지며 지금까지 낚은 것들과 포만감이 보이고, 낚은 걸 누르면 카피바라에게 먹인다 (옷장과 같은 방식) */
 export function FishBag({
@@ -23,7 +25,7 @@ export function FishBag({
   satiety: Satiety;
   onFeed: (name: FishCatch) => void;
 }) {
-  const [open, setOpen] = useState(false);
+  const { open, panelHost, setOpen } = useLobbyMenuPanel("fish");
   // 포만감은 시간이 지나면 떨어져서, 열려 있는 동안 가끔 다시 읽는다
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
@@ -32,22 +34,10 @@ export function FishBag({
     return () => window.clearInterval(id);
   }, [open]);
   const fullness = Math.round(currentSatiety(satiety, now));
+  const full = fullness >= SATIETY_MAX;
   const openButtonRef = useRef<HTMLButtonElement>(null);
-  const closeButtonRef = useRef<HTMLButtonElement>(null);
   const kinds = FISH_CATCHES.filter((name) => inventory[name]).length;
   const total = FISH_CATCHES.reduce((sum, name) => sum + (inventory[name] ?? 0), 0);
-
-  useEffect(() => {
-    if (!open) return;
-    closeButtonRef.current?.focus();
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return;
-      setOpen(false);
-      openButtonRef.current?.focus();
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [open]);
 
   const close = () => {
     setOpen(false);
@@ -68,8 +58,7 @@ export function FishBag({
   }, []);
 
   return (
-    // z-[5]: 열린 가방 창이 아래 효과음 버튼 위에, 위 옷장 창(z-10) 아래에 그려지게
-    <div className="relative z-[5] flex justify-end">
+    <div className="relative flex justify-end">
       <button
         ref={openButtonRef}
         type="button"
@@ -101,27 +90,23 @@ export function FishBag({
         )}
       </button>
 
-      <section
-        role="dialog"
+      {open && panelHost && createPortal(<section
+        role="region"
         aria-label="낚시 가방"
         inert={!open}
-        className={cn(
-          "absolute right-0 top-0 flex max-h-[calc(100dvh-2rem)] w-[min(20rem,calc(100vw-2rem))] origin-top-right flex-col gap-3 overflow-y-auto overscroll-contain rounded-2xl bg-card/95 p-4 shadow-lg backdrop-blur transition-[transform,opacity] duration-300 ease-out motion-reduce:transition-none",
-          open ? "scale-100 opacity-100" : "pointer-events-none scale-[0.15] opacity-0",
-        )}
+        onKeyDown={(event) => {
+          if (event.key === "Escape") {
+            event.stopPropagation();
+            close();
+            return;
+          }
+          trapDialogFocus(event, event.currentTarget);
+        }}
+        className={cn(LOBBY_SIDE_PANEL, "flex w-full flex-col gap-3 border-t border-border-default pt-4")}
       >
         <div className="flex items-center gap-2">
           <NextImage src={FISH_BAG_SRC} alt="" width={96} height={96} unoptimized className="size-10" />
           <h2 className="flex-1 text-title-3 font-bold text-text-strong">낚시 가방</h2>
-          <button
-            ref={closeButtonRef}
-            type="button"
-            onClick={close}
-            aria-label="닫기"
-            className="flex size-10 items-center justify-center rounded-full text-title-3 text-text-caption hover:bg-muted focus-visible:outline-2 focus-visible:outline-primary"
-          >
-            ×
-          </button>
         </div>
         <div className="flex items-center gap-2">
           <span className="shrink-0 text-caption-1 font-semibold text-text-strong">포만감</span>
@@ -129,7 +114,9 @@ export function FishBag({
           <span className="w-10 shrink-0 text-right text-caption-1 tabular-nums text-text-caption">{fullness}%</span>
         </div>
         <p className="text-caption-1 text-text-caption" aria-live="polite">
-          {total > 0
+          {full && total > 0
+            ? "배가 불러 지금은 더 먹을 수 없어요"
+            : total > 0
             ? `${FISH_CATCHES.length}종 중 ${kinds}종 · 사과를 눌러 카피바라에게 먹여 보세요`
             : "아직 가방이 비었어요. 물가에서 낚시하거나 사과나무 밑에서 사과를 따 보세요"}
         </p>
@@ -168,10 +155,11 @@ export function FishBag({
                   <button
                     type="button"
                     onClick={() => onFeed(name)}
-                    aria-label={`${name} 먹이기 (${count}개)`}
+                    disabled={full}
+                    aria-label={full ? `${name} 먹이기 불가, 배부름` : `${name} 먹이기 (${count}개)`}
                     className={cn(
                       cell,
-                      "transition-transform duration-100 hover:bg-muted/70 focus-visible:outline-2 focus-visible:outline-primary motion-safe:active:scale-95",
+                      "transition-transform duration-100 enabled:hover:bg-muted/70 focus-visible:outline-2 focus-visible:outline-primary motion-safe:enabled:active:scale-95 disabled:cursor-not-allowed disabled:opacity-45",
                     )}
                   >
                     {content}
@@ -183,7 +171,7 @@ export function FishBag({
             );
           })}
         </ul>
-      </section>
+      </section>, panelHost)}
     </div>
   );
 }

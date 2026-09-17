@@ -5,5 +5,5 @@ export default {
   id: "hut-1",
   category: "buildings",
   width: 5.8,
-  screen: { x: 0.409, y: 0.108, width: 0.196, height: 0.154 },
+  screen: { x: 0.368, y: 0.269, width: 0.289, height: 0.146 },
 } as const satisfies BuildingAsset;

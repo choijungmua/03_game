@@ -16,8 +16,9 @@ export function useLockPageScroll(active: boolean) {
     const html = document.documentElement;
     const previous = { overflow: html.style.overflow, gutter: html.style.scrollbarGutter };
     if (window.scrollY > 0) window.scrollTo(0, 0);
-    // 스크롤바가 있던 페이지는 막는 순간 스크롤바가 사라져 화면 폭이 늘고 내용이 옆으로 튄다 — 그 자리를 비워 둔다
-    if (html.scrollHeight > window.innerHeight) html.style.scrollbarGutter = "stable";
+    if (html.scrollHeight > window.innerHeight && getComputedStyle(html).scrollbarWidth !== "none") {
+      html.style.scrollbarGutter = "stable";
+    }
     html.style.overflow = "hidden";
     // 모바일(특히 iOS Safari)은 overflow: hidden만으로는 터치 드래그 스크롤이 막히지 않는다
     document.addEventListener("touchmove", preventTouchScroll, { passive: false });

@@ -3,6 +3,7 @@
 import { Shirt } from "lucide-react";
 import NextImage from "next/image";
 import { useEffect, useEffectEvent, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 
 import { cn } from "@/lib";
 import {
@@ -19,36 +20,24 @@ import {
   wear,
 } from "@/lib/lobby/wardrobe";
 
-import { WARDROBE_BUTTON_SRC } from "./constants";
-import { flashButton, isShortcutKey } from "./shortcut";
+import { LOBBY_SIDE_PANEL, WARDROBE_BUTTON_SRC } from "./constants";
+import { useLobbyMenuPanel } from "./lobby-menu";
+import { flashButton, isShortcutKey, trapDialogFocus } from "./shortcut";
 
 export const CAPYBARA_SRC = "/assets/images/characters/capybara/capybara-idle-down.webp";
 
 /** 오른쪽 위 카피바라 얼굴 버튼. 누르면 그 자리에서 커지며 옷 입히기 창이 열린다 */
 export function Wardrobe({ onChange }: { onChange: (outfit: Outfit) => void }) {
-  const [open, setOpen] = useState(false);
+  const { open, panelHost, setOpen } = useLobbyMenuPanel("wardrobe");
   const [slot, setSlot] = useState<WardrobeSlot>("hat");
   const [outfit, setOutfit] = useState<Outfit>({});
   const openButtonRef = useRef<HTMLButtonElement>(null);
-  const closeButtonRef = useRef<HTMLButtonElement>(null);
 
   // 옷은 창 안에서만 보이니, 서버 렌더와 어긋나지 않게 열 때 저장값을 불러온다
   const openWardrobe = () => {
     setOutfit(loadOutfit());
     setOpen(true);
   };
-
-  useEffect(() => {
-    if (!open) return;
-    closeButtonRef.current?.focus();
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return;
-      setOpen(false);
-      openButtonRef.current?.focus();
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [open]);
 
   const choose = (id: string | null) => {
     const next = wear(outfit, slot, id);
@@ -98,8 +87,7 @@ export function Wardrobe({ onChange }: { onChange: (outfit: Outfit) => void }) {
   }, []);
 
   return (
-    // z-10: 열린 옷 입히기 창이 아래 효과음 버튼 위에 그려지게
-    <div className="relative z-10 flex justify-end">
+    <div className="relative flex justify-end">
       <button
         ref={openButtonRef}
         type="button"
@@ -121,30 +109,24 @@ export function Wardrobe({ onChange }: { onChange: (outfit: Outfit) => void }) {
         </span>
       </button>
 
-      <section
-        role="dialog"
+      {open && panelHost && createPortal(<section
+        role="region"
         aria-label="카피바라 옷 입히기"
         inert={!open}
-        className={cn(
-          "absolute right-0 top-0 flex max-h-[calc(100dvh-2rem)] w-[min(22rem,calc(100vw-2rem))] origin-top-right flex-col gap-3 overflow-y-auto overscroll-contain rounded-2xl bg-card/95 p-4 shadow-lg backdrop-blur transition-[transform,opacity] duration-300 ease-out motion-reduce:transition-none",
-          open ? "scale-100 opacity-100" : "pointer-events-none scale-[0.15] opacity-0",
-        )}
+        onKeyDown={(event) => {
+          if (event.key === "Escape") {
+            event.stopPropagation();
+            close();
+            return;
+          }
+          trapDialogFocus(event, event.currentTarget);
+        }}
+        className={cn(LOBBY_SIDE_PANEL, "flex w-full flex-col gap-3 border-t border-border-default pt-4")}
       >
-        <div className="flex items-center justify-between">
-          <h2 className="text-title-3 font-bold text-text-strong">옷 입히기</h2>
-          <button
-            ref={closeButtonRef}
-            type="button"
-            onClick={close}
-            aria-label="닫기"
-            className="flex size-10 items-center justify-center rounded-full text-title-3 text-text-caption hover:bg-muted focus-visible:outline-2 focus-visible:outline-primary"
-          >
-            ×
-          </button>
-        </div>
+        <h2 className="text-title-3 font-bold text-text-strong">옷 입히기</h2>
 
         {/* 키 큰 모자가 머리 위로 삐져나오는 만큼 위를 비워 둔다 */}
-        <div className="relative mx-auto mt-10 aspect-square w-full max-w-56">
+        <div className="relative mx-auto aspect-square w-full max-w-32 md:mt-4 md:max-w-52">
           <NextImage src={CAPYBARA_SRC} alt="" fill unoptimized sizes="224px" />
           {/* 로비 맵과 같이: 한벌옷의 채운 그림은 카피바라 윤곽 안에만 깔아 몸을 가리고, 원래 그림은 자르지 않아 후드·꼬리·소매가 몸 밖으로 나온다 */}
           <div
@@ -225,7 +207,7 @@ export function Wardrobe({ onChange }: { onChange: (outfit: Outfit) => void }) {
             </button>
           ))}
         </div>
-      </section>
+      </section>, panelHost)}
     </div>
   );
 }

@@ -12,6 +12,7 @@ import { Apple, Armchair, Bath, Fish, HandFist, NotebookPen } from "lucide-react
 import { API_URL } from "@/lib/api-url";
 
 import { Loading } from "@/components/feedback/loading";
+import { ButtonFocusGuard } from "@/app/games/[slug]/button-focus-guard";
 
 import { flashButton, isShortcutKey } from "./shortcut";
 
@@ -92,8 +93,10 @@ import {
   EMOTE_BAKE_SCALE,
   EMOTE_OUTLINE,
   EMOTE_SIZE,
+  BATH_BUTTON_SRC,
   FISH_BUTTON_SRC,
   FRAME_SRC,
+  GUESTBOOK_BUTTON_SRC,
   SITE_LINKS,
   SLEEP_AFTER_MS,
   SLEEP_FRAME_MS,
@@ -103,6 +106,7 @@ import { FishBag } from "./fish-bag";
 import { GuestbookPanel } from "./guestbook-panel";
 import { KeyboardGuide } from "./keyboard-guide";
 import { SoundToggle } from "./lobby-settings";
+import { LobbyMenu } from "./lobby-menu";
 import { ProfileName } from "./profile-name";
 import {
   ATTACK_COOLDOWN_MS,
@@ -128,6 +132,7 @@ import {
 } from "@/lib/lobby/wardrobe";
 import { SPRITE_FIT } from "@/lib/lobby/wardrobe-fit";
 import {
+  BATH_OFFSET_Y,
   BATH_RX,
   BATH_RY,
   type Building,
@@ -142,7 +147,6 @@ import {
   FACING_VECTORS,
   FACINGS,
   hash2,
-  isBlockingTile,
   LOBBY_SEED,
   nearestWater,
   SPRING_RX,
@@ -342,10 +346,18 @@ const mod = (value: number, size: number) => ((value % size) + size) % size;
 
 /** 발밑 접지 그림자. 캐릭터·오두막·나무·소품 모두 같은 색으로 깔아야 투명 배경 그림이 바닥에 떠 보이지 않는다 */
 function drawGroundShadow(ctx: CanvasRenderingContext2D, x: number, y: number, radiusX: number, radiusY = radiusX / 3) {
-  ctx.fillStyle = "rgba(30,40,10,0.25)";
+  const offsetX = Math.min(5, radiusX * 0.14);
+  const offsetY = Math.min(6, radiusY * 0.55);
+  ctx.save();
+  ctx.fillStyle = "rgba(30,40,10,0.12)";
   ctx.beginPath();
-  ctx.ellipse(x, y, radiusX, radiusY, 0, 0, Math.PI * 2);
+  ctx.ellipse(x + offsetX, y + offsetY, radiusX * 1.1, radiusY * 1.2, 0, 0, Math.PI * 2);
   ctx.fill();
+  ctx.fillStyle = "rgba(30,40,10,0.22)";
+  ctx.beginPath();
+  ctx.ellipse(x + offsetX * 0.55, y + offsetY * 0.45, radiusX * 0.82, radiusY * 0.74, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
 }
 
 /** 이미지를 가운데·바닥 기준으로 폭에 맞춰 그리고 그린 영역을 돌려준다 */
@@ -423,11 +435,27 @@ function drawChunk(
         gradient.addColorStop(0, `rgba(${rgb},${alpha})`);
         gradient.addColorStop(1, `rgba(${rgb},0)`);
         ctx.fillStyle = gradient;
-        ctx.fillRect(dx > 0 ? x + TILE - thick : x, dy > 0 ? y + TILE - thick : y, dx === 0 ? TILE : thick, dy === 0 ? TILE : thick);
+        const jitter = hash2(13, tx + dx, ty + dy) * 5 - 2.5;
+        ctx.beginPath();
+        if (dx !== 0) {
+          const inward = -dx * thick;
+          const edge = edgeX;
+          ctx.moveTo(edge, y);
+          ctx.bezierCurveTo(edge + inward * 0.48, y + TILE * 0.18 + jitter, edge + inward * 0.92, y + TILE * 0.34, edge + inward * 0.72, y + TILE * 0.52);
+          ctx.bezierCurveTo(edge + inward * 0.48, y + TILE * 0.72, edge + inward * 0.92, y + TILE * 0.86 + jitter, edge, y + TILE);
+        } else {
+          const inward = -dy * thick;
+          const edge = edgeY;
+          ctx.moveTo(x, edge);
+          ctx.bezierCurveTo(x + TILE * 0.18 + jitter, edge + inward * 0.48, x + TILE * 0.34, edge + inward * 0.92, x + TILE * 0.52, edge + inward * 0.72);
+          ctx.bezierCurveTo(x + TILE * 0.72, edge + inward * 0.48, x + TILE * 0.86 + jitter, edge + inward * 0.92, x + TILE, edge);
+        }
+        ctx.closePath();
+        ctx.fill();
       };
-      if (kind === "deck") softBand(10, "110,63,34", 0.5); // 데크 가장자리 그늘
-      else if (kind === "water") softBand(14, "138,86,52", 0.55); // 물가 진흙 둑
-      else if (kind === "mud" && other === "meadow") softBand(12, "70,110,30", 0.3);
+      if (kind === "deck") softBand(16, "110,63,34", 0.42); // 데크 가장자리 그늘
+      else if (kind === "water") softBand(18, "138,86,52", 0.42); // 물가 진흙 둑
+      else if (kind === "mud" && other === "meadow") softBand(14, "70,110,30", 0.24);
     }
   });
   return canvas;
@@ -1389,19 +1417,18 @@ export function Lobby({ games, listGames }: { games: DoorGame[]; listGames: Door
       return chunkAt(cx, cy).tiles[(ty - cy * CHUNK) * CHUNK + (tx - cx * CHUNK)];
     };
     const blocked = (x: number, y: number) => {
-      const left = Math.floor((x - HIT.halfWidth) / TILE);
-      const right = Math.floor((x + HIT.halfWidth) / TILE);
-      const top = Math.floor((y - HIT.up) / TILE);
-      const bottom = Math.floor((y + HIT.down) / TILE);
-      for (let ty = top; ty <= bottom; ty++) {
-        for (let tx = left; tx <= right; tx++) if (isBlockingTile(tileAt(tx, ty))) return true;
-      }
-      return false;
+      return (
+        world.blockedAt(x - HIT.halfWidth, y - HIT.up) ||
+        world.blockedAt(x + HIT.halfWidth, y - HIT.up) ||
+        world.blockedAt(x - HIT.halfWidth, y + HIT.down) ||
+        world.blockedAt(x + HIT.halfWidth, y + HIT.down)
+      );
     };
 
     const { spring } = world;
+    const bathCenterY = spring.y + BATH_OFFSET_Y * TILE;
     /** 발 위치가 온천 물 안(목욕 중)인지. 목욕 상태를 따로 보내지 않고 위치로 판단해서 남의 카피바라도 똑같이 그린다 */
-    const inBath = (x: number, y: number) => ellipseDistance(x - spring.x, y - spring.y, BATH_RX + 0.3, BATH_RY + 0.3) <= 1;
+    const inBath = (x: number, y: number) => ellipseDistance(x - spring.x, y - bathCenterY, BATH_RX + 0.3, BATH_RY + 0.3) <= 1;
     const nearSpring = () =>
       ellipseDistance(me.x - spring.x, me.y - spring.y, SPRING_RX + BATH_REACH, SPRING_RY + BATH_REACH) <= 1;
 
@@ -1487,10 +1514,10 @@ export function Lobby({ games, listGames }: { games: DoorGame[]; listGames: Door
     };
     /** 선 자리에서 온천 가운데 쪽으로 폴짝 뛰어들어 물 안쪽 가장자리에 담근다 */
     const enterBath = () => {
-      const angle = Math.atan2((me.y - spring.y) / BATH_RY, (me.x - spring.x) / BATH_RX);
+      const angle = Math.atan2((me.y - bathCenterY) / BATH_RY, (me.x - spring.x) / BATH_RX);
       startHop();
       me.x = spring.x + Math.cos(angle) * BATH_RX * TILE * 0.8;
-      me.y = spring.y + Math.sin(angle) * BATH_RY * TILE * 0.8;
+      me.y = bathCenterY + Math.sin(angle) * BATH_RY * TILE * 0.8;
       me.facing = "down";
       playSound("bathIn", settingsRef.current);
       showNotice("아~ 따끈따끈해요 · Space로 나오기");
@@ -1696,6 +1723,14 @@ export function Lobby({ games, listGames }: { games: DoorGame[]; listGames: Door
       stick.dy = 0;
       renderStick();
     };
+    const onRightPointerDown = (event: PointerEvent) => {
+      if (event.pointerType !== "mouse" || event.button !== 2) return;
+      event.preventDefault();
+      if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+      pointer.active = true;
+      aimAt(event);
+    };
+    const preventContextMenu = (event: MouseEvent) => event.preventDefault();
     const onPointerMove = (event: PointerEvent) => {
       if (event.pointerId === stick.id) {
         stick.dx = event.clientX - stick.originX;
@@ -2088,7 +2123,7 @@ export function Lobby({ games, listGames }: { games: DoorGame[]; listGames: Door
         // 목욕 중엔 물 안쪽 타원 밖으로 못 걸어 나가고(나오기는 Space), 뭍에선 막히는 타일에 막힌다
         const bathing = inBath(me.x, me.y);
         const stuck = (x: number, y: number) =>
-          bathing ? ellipseDistance(x - spring.x, y - spring.y, BATH_RX, BATH_RY) > 1 : blocked(x, y);
+          bathing ? ellipseDistance(x - spring.x, y - bathCenterY, BATH_RX, BATH_RY) > 1 : blocked(x, y);
         // x·y를 따로 검사해서 벽에 비스듬히 부딪히면 벽을 따라 미끄러진다
         const nextX = me.x + (dx / length) * step;
         if (!stuck(nextX, me.y)) {
@@ -2285,7 +2320,7 @@ export function Lobby({ games, listGames }: { games: DoorGame[]; listGames: Door
         // 온천은 납작해서 뒤(북쪽) 둘레에 선 캐릭터 말고는 먼저 그린다. 목욕 중인 캐릭터는 물 위에 그려지고,
         // 가운데보다 아래를 기준으로 두면 옆에 선 캐릭터가 둘레 돌 그림에 가려진다
         drawables.push({
-          y: spring.y - SPRING_RY * TILE,
+          y: spring.layerY,
           draw: () => {
             sprite("onsen", spring.x, spring.y + ONSEN_BOTTOM * TILE);
             drawSteam(ctx, spring.x, spring.y, now, !reducedMotion);
@@ -2484,6 +2519,8 @@ export function Lobby({ games, listGames }: { games: DoorGame[]; listGames: Door
       window.addEventListener("resize", resize);
       window.addEventListener("keydown", onKeyDown);
       window.addEventListener("keyup", onKeyUp);
+      window.addEventListener("pointerdown", onRightPointerDown, true);
+      window.addEventListener("contextmenu", preventContextMenu);
       canvas.addEventListener("pointerdown", onPointerDown);
       window.addEventListener("pointermove", onPointerMove);
       window.addEventListener("pointerup", onPointerUp);
@@ -2510,6 +2547,8 @@ export function Lobby({ games, listGames }: { games: DoorGame[]; listGames: Door
       window.removeEventListener("resize", resize);
       window.removeEventListener("keydown", onKeyDown);
       window.removeEventListener("keyup", onKeyUp);
+      window.removeEventListener("pointerdown", onRightPointerDown, true);
+      window.removeEventListener("contextmenu", preventContextMenu);
       canvas.removeEventListener("pointerdown", onPointerDown);
       window.removeEventListener("pointermove", onPointerMove);
       window.removeEventListener("pointerup", onPointerUp);
@@ -2571,6 +2610,7 @@ export function Lobby({ games, listGames }: { games: DoorGame[]; listGames: Door
 
   return (
     <>
+      <ButtonFocusGuard />
       <canvas
         ref={canvasRef}
         role="img"
@@ -2626,24 +2666,35 @@ export function Lobby({ games, listGames }: { games: DoorGame[]; listGames: Door
         </details>
       )}
 
-      {/* 오른쪽 위 세로 줄: 카피바라 옷장 → 낚시 가방 → 효과음 → 이름 바꾸기. 설정 버튼은 나중에 이 줄에 다시 넣는다 */}
-      {/* 효과음 버튼의 헤드폰이 원 밖으로 삐져나오는 만큼 위(옷장)·오른쪽(화면 끝)을 띄운다. 두 버튼은 앉기·때리기와 같은 크기(모바일 size-14, md 이상 size-18) */}
-      <div className="absolute right-[max(1.25rem,env(safe-area-inset-right))] top-[max(0.75rem,env(safe-area-inset-top))] flex flex-col items-center gap-6">
-        <Wardrobe
-          onChange={(outfit) => {
-            outfitRef.current = outfit;
-          }}
-        />
-        <FishBag
-          inventory={fishInventory}
-          satiety={satiety}
-          onFeed={(name) => {
-            feedRequest.current = name;
-          }}
-        />
-        <SoundToggle settings={settings} onChange={updateSettings} />
-        <ProfileName name={myName} onRename={rename} />
-      </div>
+      {/* 오른쪽 위 "내 카피바라" 메뉴: 옷장·가방·소리·이름 */}
+      <LobbyMenu name={myName}>
+        <div className="flex min-w-0 flex-col items-center gap-1">
+          <Wardrobe
+            onChange={(outfit) => {
+              outfitRef.current = outfit;
+            }}
+          />
+          <span className="text-caption-3 font-semibold text-text-caption">옷장</span>
+        </div>
+        <div className="flex min-w-0 flex-col items-center gap-1">
+          <FishBag
+            inventory={fishInventory}
+            satiety={satiety}
+            onFeed={(name) => {
+              feedRequest.current = name;
+            }}
+          />
+          <span className="text-caption-3 font-semibold text-text-caption">가방</span>
+        </div>
+        <div className="flex min-w-0 flex-col items-center gap-1">
+          <SoundToggle settings={settings} onChange={updateSettings} />
+          <span className="text-caption-3 font-semibold text-text-caption">소리</span>
+        </div>
+        <div className="flex min-w-0 flex-col items-center gap-1">
+          <ProfileName name={myName} onRename={rename} />
+          <span className="text-caption-3 font-semibold text-text-caption">이름</span>
+        </div>
+      </LobbyMenu>
 
       {/* 왼쪽 아래 미니맵: 보기 전용이라 터치는 아래 로비 캔버스(조이스틱)로 지나간다 */}
       <canvas
@@ -2724,18 +2775,22 @@ export function Lobby({ games, listGames }: { games: DoorGame[]; listGames: Door
               aria-keyshortcuts="Space"
               className="group flex flex-col items-center gap-0.5 rounded-full focus-visible:outline-2 focus-visible:outline-primary"
             >
-              {/* 나무 테(방명록·옷장과 같은 그림) 안 펠트 판 위에 욕조 아이콘. 누르면 그림과 아이콘이 같이 줄어든다 */}
               <span className="relative block size-14 transition-transform md:size-18 duration-100 motion-safe:group-active:scale-90">
+                <NextImage
+                  src={BATH_BUTTON_SRC}
+                  alt=""
+                  width={256}
+                  height={256}
+                  unoptimized
+                  draggable={false}
+                  className={cn("size-full drop-shadow-md", bath === "in" && "brightness-90")}
+                />
                 <span
                   aria-hidden
-                  className={cn(
-                    "absolute inset-[16%] flex items-center justify-center rounded-full bg-capybara-light text-capybara-dark",
-                    bath === "in" && "brightness-90",
-                  )}
+                  className="absolute inset-[16%] flex items-center justify-center rounded-full bg-overlay text-white opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-visible:opacity-100 group-data-flash:opacity-100 motion-reduce:transition-none"
                 >
-                  <Bath className="size-6 md:size-7" />
+                  <Bath className="size-7" />
                 </span>
-                <NextImage src={FRAME_SRC} alt="" fill unoptimized sizes="72px" draggable={false} className="drop-shadow-md" />
               </span>
               <span className="rounded-full bg-card/85 px-2 py-0.5 text-caption-3 font-semibold text-text-strong">{bath === "in" ? "나오기" : "목욕"}</span>
             </button>
@@ -2752,12 +2807,22 @@ export function Lobby({ games, listGames }: { games: DoorGame[]; listGames: Door
               aria-keyshortcuts="Space"
               className="group flex flex-col items-center gap-0.5 rounded-full focus-visible:outline-2 focus-visible:outline-primary"
             >
-              {/* 나무 테(옷장·효과음과 같은 그림) 안 펠트 판 위에 공책 아이콘 */}
               <span className="relative block size-14 transition-transform md:size-18 duration-100 motion-safe:group-active:scale-90">
-                <span aria-hidden className="absolute inset-[16%] flex items-center justify-center rounded-full bg-capybara-light text-capybara-dark">
+                <NextImage
+                  src={GUESTBOOK_BUTTON_SRC}
+                  alt=""
+                  width={256}
+                  height={256}
+                  unoptimized
+                  draggable={false}
+                  className="size-full drop-shadow-md"
+                />
+                <span
+                  aria-hidden
+                  className="absolute inset-[16%] flex items-center justify-center rounded-full bg-overlay text-white opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-visible:opacity-100 group-data-flash:opacity-100 motion-reduce:transition-none"
+                >
                   <NotebookPen className="size-6 md:size-7" />
                 </span>
-                <NextImage src={FRAME_SRC} alt="" fill unoptimized sizes="72px" draggable={false} className="drop-shadow-md" />
               </span>
               <span className="rounded-full bg-card/85 px-2 py-0.5 text-caption-3 font-semibold text-text-strong">방명록</span>
             </button>

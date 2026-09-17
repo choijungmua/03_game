@@ -24,8 +24,13 @@ export const SOUND_BUTTON_SRC = "/assets/images/ui/lobby/sound.webp";
 export const PROFILE_BUTTON_SRC = "/assets/images/ui/lobby/profile.webp";
 /** 물가에서 뜨는 낚시 버튼 그림 (나무 테·펠트 판 위 낚싯대 든 카피바라) */
 export const FISH_BUTTON_SRC = "/assets/images/ui/lobby/fish.webp";
+export const BATH_BUTTON_SRC = "/assets/images/ui/lobby/bath.webp";
+export const GUESTBOOK_BUTTON_SRC = "/assets/images/ui/lobby/guestbook.webp";
 /** 오른쪽 위 낚시 가방 버튼 그림 (나무 테·펠트 판 위 카피바라 얼굴 백팩) */
 export const FISH_BAG_SRC = "/assets/images/ui/lobby/bag.webp";
+
+export const LOBBY_SIDE_PANEL =
+  "relative z-[1] min-h-0";
 /** 통나무에 이만큼 앉아 있으면 잠든다(ms) */
 export const SLEEP_AFTER_MS = 30 * 60_000;
 /** 잠든 그림 두 장(숨 쉬기 ↔ 콧방울)을 번갈아 보여 주는 간격(ms) */
