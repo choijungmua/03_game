@@ -83,11 +83,24 @@ export const FISH_LOOKS: Record<(typeof FISH_CATCHES)[number], { color: string; 
   "황금 잉어": { color: "#f5c542", size: 34 },
   "낡은 장화": { color: "#7a5230", size: 28 },
   사과: { color: "#d8453a", size: 22 },
+  "초록 사과": { color: "#8cc152", size: 22 },
+  "썩은 사과": { color: "#7b5b34", size: 22 },
 };
-/** 가방에 들어가는 것들 (남미 습지 테마). 사과는 나무에서 따고, 나머지는 낚는다 */
-export const FISH_CATCHES = ["송사리", "붕어", "메기", "피라냐", "아로와나", "황금 잉어", "낡은 장화", "사과"] as const;
-/** 낚시로 낚이는 것들. 똑같은 확률로 하나 */
-export const FISHABLE = FISH_CATCHES.filter((name) => name !== "사과");
+/** 낚시로 낚이는 것들 (남미 습지 테마). 똑같은 확률로 하나 */
+export const FISHABLE = ["송사리", "붕어", "메기", "피라냐", "아로와나", "황금 잉어", "낡은 장화"] as const;
+/** 사과나무에서 따는 것들. 어떤 게 나올지는 딸 때 APPLE_ODDS로 정한다 */
+export const APPLE_KINDS = ["사과", "초록 사과", "썩은 사과"] as const;
+/** 가방에 들어가는 것들 */
+export const FISH_CATCHES = [...FISHABLE, ...APPLE_KINDS] as const;
+/**
+ * 사과를 딸 때 나올 확률(합 1). 대부분은 보통 사과라 따는 맛이 있고, 네 번에 한 번꼴 꽝(썩은 사과)으로 긴장감을,
+ * 열 번에 한 번꼴 대박(초록 사과, 포만감 2.5배)으로 계속 따고 싶게 만든다
+ */
+export const APPLE_ODDS: Record<(typeof APPLE_KINDS)[number], number> = {
+  사과: 0.65,
+  "초록 사과": 0.1,
+  "썩은 사과": 0.25,
+};
 /** 낚은 것 그림 파일 이름 (public/assets/images/ui/lobby/fish-catches/<이름>.webp) */
 export const FISH_CATCH_SLUGS = {
   송사리: "minnow",
@@ -98,6 +111,8 @@ export const FISH_CATCH_SLUGS = {
   "황금 잉어": "golden-carp",
   "낡은 장화": "old-boot",
   사과: "apple",
+  "초록 사과": "green-apple",
+  "썩은 사과": "rotten-apple",
 } as const satisfies Record<(typeof FISH_CATCHES)[number], string>;
 
 /** 카피바라 포만감(0~100, 이 기기에만 저장). 먹이면 오르고 시간이 지나면 떨어진다 */
@@ -115,12 +130,16 @@ export const FOOD_SATIETY: Record<(typeof FISH_CATCHES)[number], number> = {
   "황금 잉어": 0,
   "낡은 장화": 0,
   사과: 10,
+  "초록 사과": 25,
+  "썩은 사과": 0,
 };
 
 /** 사과나무: 한 그루에 열리는 사과 수, 딴 사과가 다시 열리기까지(ms), 나무 밑동에서 딸 수 있는 거리(px, 1.6타일) */
 export const APPLES_PER_TREE = 3;
 export const APPLE_REGROW_MS = 60_000;
 export const APPLE_REACH = 77;
+/** 사과 하나를 따는 데 걸리는 시간(ms). 그동안 폴짝폴짝 뛰고, 움직이면 멈춘다 — Space 연타로 한꺼번에 못 딴다 */
+export const APPLE_PICK_MS = 1200;
 /** 먹는 동작 한 번(세 입 베어 물기)과 한 입 간격, 먹은 뒤 하트가 더 떠오르는 시간 */
 export const EAT_MS = 1800;
 export const EAT_BITE_MS = 600;

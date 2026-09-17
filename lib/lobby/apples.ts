@@ -1,4 +1,14 @@
-import { APPLE_REGROW_MS, APPLES_PER_TREE } from "./constants";
+import { APPLE_KINDS, APPLE_ODDS, APPLE_REGROW_MS, APPLES_PER_TREE } from "./constants";
+
+/** [0, 1) 난수 하나로 딴 사과 종류를 APPLE_ODDS 확률대로 고른다 */
+export function rollApple(random: number) {
+  let sum = 0;
+  for (const kind of APPLE_KINDS) {
+    sum += APPLE_ODDS[kind];
+    if (random < sum) return kind;
+  }
+  return APPLE_KINDS[0]; // 확률 합의 부동소수 오차로 끝까지 오면 보통 사과
+}
 
 // ponytail: 딴 사과는 이 탭 메모리에만 남는다 (새로고침하면 다시 열리고, 다른 유저 나무에는 그대로 보인다).
 // 모두가 같은 나무를 봐야 하면 백엔드 로비 상태에 나무별 딴 시각을 둘 것
