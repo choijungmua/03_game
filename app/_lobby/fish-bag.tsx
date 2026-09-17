@@ -1,27 +1,24 @@
 "use client";
 
-import { Heart } from "lucide-react";
 import NextImage from "next/image";
 import { useEffect, useState } from "react";
 
 import { Progress } from "@/components/feedback/progress";
 import { cn } from "@/lib";
-import { FISH_CATCHES, FOOD_AFFECTION, FOOD_SATIETY, SATIETY_MAX } from "@/lib/lobby/constants";
+import { FISH_CATCHES, FOOD_SATIETY, SATIETY_MAX } from "@/lib/lobby/constants";
 import { currentSatiety, type Satiety } from "@/lib/lobby/feeding";
 import { type FishCatch, fishCatchSrc, type FishInventory } from "@/lib/lobby/fishing";
 
 import { useLobbyMenuPanel } from "./lobby-menu";
 
-/** 내 카피바라 메뉴의 가방 탭: 포만감·애정도와 지금까지 낚은 것들. 낚은 걸 누르면 카피바라에게 먹인다 */
+/** 내 카피바라 메뉴의 가방 탭: 포만감과 지금까지 낚고 딴 것들. 먹을 수 있는 것(사과)을 누르면 카피바라에게 먹인다 */
 export function FishBag({
   inventory,
   satiety,
-  affection,
   onFeed,
 }: {
   inventory: FishInventory;
   satiety: Satiety;
-  affection: number;
   onFeed: (name: FishCatch) => void;
 }) {
   const { open } = useLobbyMenuPanel("fish");
@@ -39,33 +36,21 @@ export function FishBag({
 
   return (
     <section aria-label="낚시 가방" className="flex w-full flex-col gap-3">
-      {/* 위: 포만감·애정 한 줄 + 안내. 목록을 내려도 붙어 있어 먹이면서 바로 차오르는 걸 본다 */}
+      {/* 위: 포만감 + 안내. 목록을 내려도 붙어 있어 먹이면서 바로 차오르는 걸 본다 */}
       <div className="sticky top-0 z-[1] flex flex-col gap-2 rounded-2xl bg-muted px-3 py-2.5">
-        <div className="grid grid-cols-2 gap-3">
-          <div className="flex min-w-0 flex-col gap-1">
-            <span className="flex justify-between text-caption-2 font-semibold text-text-strong">
-              포만감
-              <span className="tabular-nums text-text-caption">{fullness}%</span>
-            </span>
-            <Progress value={fullness} aria-label="카피바라 포만감" className="h-1.5 bg-card" />
-          </div>
-          <div className="flex min-w-0 flex-col gap-1">
-            <span className="flex justify-between text-caption-2 font-semibold text-text-strong">
-              <span className="flex items-center gap-1">
-                <Heart aria-hidden className="size-3 fill-primary text-primary" />
-                애정
-              </span>
-              <span className="tabular-nums text-text-caption">{affection}%</span>
-            </span>
-            <Progress value={affection} aria-label="카피바라 애정도" className="h-1.5 bg-card" />
-          </div>
+        <div className="flex min-w-0 flex-col gap-1">
+          <span className="flex justify-between text-caption-2 font-semibold text-text-strong">
+            포만감
+            <span className="tabular-nums text-text-caption">{fullness}%</span>
+          </span>
+          <Progress value={fullness} aria-label="카피바라 포만감" className="h-1.5 bg-card" />
         </div>
         <p className="text-caption-2 text-text-caption" aria-live="polite">
           {full
             ? "배가 불러 지금은 더 먹을 수 없어요"
             : total > 0
-            ? `${FISH_CATCHES.length}종 중 ${kinds}종 · 눌러서 카피바라에게 먹여 보세요`
-            : "아직 낚은 게 없어요. 물가에서 Space로 낚시해 보세요"}
+            ? `${FISH_CATCHES.length}종 중 ${kinds}종 · 사과를 눌러 카피바라에게 먹여 보세요`
+            : "아직 가방이 비었어요. 물가에서 낚시하거나 사과나무 밑에서 사과를 따 보세요"}
         </p>
       </div>
       <ul className="grid grid-cols-3 gap-2">
@@ -95,14 +80,15 @@ export function FishBag({
                 )}
               </span>
               {count > 0 && FOOD_SATIETY[name] > 0 && (
-                <span className="text-center text-caption-3 tabular-nums text-text-caption">포만 +{FOOD_SATIETY[name]} · 애정 +{FOOD_AFFECTION[name]}</span>
+                <span className="text-center text-caption-3 tabular-nums text-text-caption">포만 +{FOOD_SATIETY[name]}</span>
               )}
             </>
           );
           const cell = "flex w-full min-w-0 flex-col items-center gap-0.5 rounded-xl bg-muted p-2";
           return (
             <li key={name} className="min-w-0">
-              {count > 0 ? (
+              {/* 먹을 수 있는 것(사과)만 누를 수 있다. 물고기·장화는 모아 보기만 한다 (카피바라는 초식동물) */}
+              {count > 0 && FOOD_SATIETY[name] > 0 ? (
                 <button
                   type="button"
                   onClick={() => onFeed(name)}

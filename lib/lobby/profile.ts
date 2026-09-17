@@ -6,9 +6,8 @@ import { cleanName } from "./presence";
  * id는 서버가 채팅·낚시 이력을 묶는 기기별 UUID, name은 사용자가 정한 이름표(비었으면 서버가 고른 이름)
  */
 export interface LobbyProfile {
-  readonly id: string;
-  readonly token: string;
-  readonly name: string;
+  id: string;
+  name: string;
 }
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -19,12 +18,10 @@ export function parseLobbyProfile(raw: string | null, newId: () => string): Lobb
   try {
     saved = JSON.parse(raw ?? "null");
   } catch {}
-  const { id, token, name } = saved ?? {};
-  const hasCredentials = typeof id === "string" && UUID.test(id) && typeof token === "string" && UUID.test(token);
+  const { id, name } = saved ?? {};
   return {
-    id: hasCredentials ? id : newId(),
-    token: hasCredentials ? token : newId(),
-    name: hasCredentials && typeof name === "string" ? cleanName(name) : "",
+    id: typeof id === "string" && UUID.test(id) ? id : newId(),
+    name: typeof name === "string" ? cleanName(name) : "",
   };
 }
 

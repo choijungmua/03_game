@@ -209,11 +209,11 @@ export function wear(outfit: Outfit, slot: WardrobeSlot, id: string | null): Out
 }
 
 /** 바깥 입력(저장값·네트워크)에서 아는 칸·아는 옷만 남긴다 */
-export function sanitizeOutfit(saved: unknown): Outfit {
+export function sanitizeOutfit(saved: Partial<Record<string, string>> | null | undefined): Outfit {
   let outfit: Outfit = {};
-  if (!saved || typeof saved !== "object" || Array.isArray(saved)) return outfit;
+  if (!saved || typeof saved !== "object") return outfit;
   for (const slot of WARDROBE_SLOTS) {
-    const id = Reflect.get(saved, slot);
+    const id = saved[slot];
     if (typeof id === "string" && SLOT_INFO[slot].items.some((item) => item.id === id)) outfit = wear(outfit, slot, id);
   }
   return outfit;
@@ -226,5 +226,22 @@ export function parseOutfit(raw: string | null): Outfit {
   } catch {
     return {};
   }
+}
+
+const STORAGE_KEY = "lobby-outfit-v1";
+
+/** 이 기기에 저장한 옷 (서버 저장은 백엔드 배포 뒤에) */
+export function loadOutfit(): Outfit {
+  try {
+    return parseOutfit(localStorage.getItem(STORAGE_KEY));
+  } catch {
+    return {};
+  }
+}
+
+export function saveOutfit(outfit: Outfit) {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(outfit));
+  } catch {}
 }
 

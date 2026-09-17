@@ -88,6 +88,7 @@ export type LobbySound =
   | "fishCast"
   | "fishBite"
   | "fishCatch"
+  | "applePick"
   | "bathIn"
   | "bathOut"
   | "stepWater";

@@ -15,6 +15,7 @@
 | 8방향 걷기 | `capybara-*-{up-left,…}.webp` + `app/_lobby/lobby.tsx` | 대각선 전용 걷기 스프라이트(없으면 옆모습). 걸음 프레임을 시간이 아니라 걸은 거리로 넘기고, 걸음마다 몸이 살짝 뜨고 기울어 뒤뚱뒤뚱 |
 | 모바일 조이스틱 | `ui/lobby/joystick-{base,knob}.webp` | 터치한 자리가 조이스틱 중심, 끈 방향으로 걷고 끈 거리만큼 빨라짐(40~100%). 마우스는 누른 곳으로 걷기 그대로 |
 | 온천 목욕 | `props/onsen` + `app/_lobby/lobby.tsx` | 온천 둘레에서 Space 또는 목욕 버튼 → 폴짝 뛰어들어 머리·어깨만 내놓고 물속을 걸어 다닌다(물 밖으로는 못 나감). 머리에 유자를 얹고, 다시 Space면 가까운 풀밭으로 나온다. 첨벙·찰박·촤르르 효과음. 목욕 여부는 위치로 판단해 다른 유저에게도 보인다 |
+| 사과나무 | `lib/lobby/world.ts` `appleTrees` + `lib/lobby/apples.ts` + `app/_lobby/lobby.tsx` | 마을 안 풀밭에 사과나무(막히는 `tree` 타일). 밑에서 Space 또는 "사과 따기" 버튼 → 폴짝 뛰어 한 개 따서 낚시 가방에 넣고, 가방에서 먹이면 포만감 10. 카피바라는 초식동물이라 먹을 수 있는 건 사과뿐이고, 낚은 물고기는 모아 보기만 한다. 한 그루 3개, 딴 사과는 1분 뒤 다시 열린다. 딴 기록은 탭 메모리에만(다른 유저와 공유 안 함). 사과나무·사과 그림이 아직 없어 열대 나무 그림 + 빨간 원으로 대신 그린다 — `nature/apple-tree` 에셋과 `ui/lobby/fish-catches/apple.webp`가 들어오면 교체 |
 | 낚시 버튼 | `ui/lobby/fish.webp` | 물가에서 뜨는 버튼. 낚싯대 든 카피바라 그림, 누르면 계속 낚기·한 번 더 누르면 그만 |
 | 때리기 버튼 | `ui/lobby/punch.webp` | 누르면 눌림 애니메이션, 주먹은 빠르게 뻗고 천천히 거둬들임 |
 | 대기 동작 | `capybara-{scratch,yawn,doze}-*.webp` | 가만히 서 있으면 3.5초씩 쉬면서 엉덩이 긁기(씰룩) → 하품·기지개 → 꾸벅꾸벅 졸기(천천히 흔들림)를 돌아가며 한다. 이미지가 없는 동작은 서 있는 모습으로 대신. 다른 플레이어도 똑같이 보인다 |
@@ -24,6 +25,11 @@
 | 오픈월드 멀티 | `lib/lobby/presence.ts`(타입), 백엔드 `04_game_b/src/lobby` (WebSocket `/api/lobby/ws`) | 내 상태가 바뀔 때만 33ms마다 보내고(가만히 있으면 25초마다, 때리기·채팅은 즉시), 서버가 33ms 틱마다 근처 플레이어를 밀어 줌(때리기는 즉시). 남은 66ms 과거를 보간해 그림. 반경 2000px 안 가까운 순 60명, 순간이동 보정은 `corrected`일 때만, 끊기면 혼자 모드로 두고 1→8초 간격으로 다시 붙음 |
 
 한계: 멀티 상태가 백엔드 프로세스 메모리라 백엔드 한 대에서만 맞다. 백엔드를 여러 대로 늘리면 Redis pub/sub으로 틱을 나눠 보내야 한다. 게임이 수십 개를 넘으면 북쪽 건물 줄이 너무 길어지므로 카테고리 건물이나 뒷골목 줄이 필요하다.
+
+### 남은 할 일 (TODO)
+
+- [ ] **사과 따는 애니메이션**: 지금은 제자리에서 폴짝 뛰기만 한다(`app/_lobby/lobby.tsx` `pickFromTree`). 나무를 올려다보며 앞발을 뻗어 사과를 따는 카피바라 스프라이트(`capybara-pick-*`)와, 딴 사과가 가지에서 떨어져 머리 위로 들려 오는 동작을 만든다
+- [ ] **가방 사과 아이콘**: `public/assets/images/ui/lobby/fish-catches/apple.webp` (원본 `assets-src/ui/lobby/fish-catches/apple.png`, 다른 낚은 것 그림과 같은 펠트 질감). 넣으면 가방 칸·나무에 달린 사과·먹는 사과가 자동으로 이 그림을 쓴다 (지금은 가방 칸이 깨진 그림, 나무·먹이는 빨간 원)
 
 레퍼런스: [Trafalgar Square — Parks & Gardens](https://www.parksandgardens.org/places/trafalgar-square-westminster), [Fountains and terrace walls — British Listed Buildings](https://britishlistedbuildings.co.uk/101066235-fountains-and-terrace-walls-with-lampstandards-steps-and-stone-bollards-enclosing-the-square-st-jamess-ward), [Den Den Town — Japan Nakama](https://www.japannakama.co.uk/travel/osaka-guides/nipponbashi-den-den-town/), [Osaka Arcade Guide — Playable Japan](https://www.playablejapan.com/en/articles/osaka-arcades-2026-guide), [MapleStory Worlds 포털 만들기 가이드](https://maplestoryworlds-creators.nexon.com/en/docs?postId=90)
 

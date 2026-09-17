@@ -66,6 +66,8 @@ const PICKUP_FIRST_MS = 9_000;
 export const SHIELD_INVINCIBLE_MS = 1_200;
 /** 아슬아슬이 이 시간 안에 이어지면 콤보 */
 export const COMBO_WINDOW_MS = 2_500;
+/** 아슬아슬 콤보가 이 수의 배수에 닿으면 유자 보호막 보상 — 아슬아슬하게 스칠수록 이득 */
+export const COMBO_SHIELD_AT = 3;
 
 export type LogKind = "roll" | "hurdle" | "wall" | "beam" | "bounce" | "split" | "chase";
 /** low는 점프로 넘고, high는 숙여서 지나가고, full은 좌우로만 피한다 */
@@ -475,6 +477,10 @@ export function step(state: GameState, realDtMs: number, input: GameInput) {
         state.nearMisses += 1;
         state.lastNearMissAt = state.elapsedMs;
         state.slowmoMs = NEAR_MISS_SLOWMO_MS;
+        if (state.combo % COMBO_SHIELD_AT === 0 && !state.shield) {
+          state.shield = true;
+          state.lastShieldAt = state.elapsedMs;
+        }
       }
       log.closest = Infinity;
     }

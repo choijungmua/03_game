@@ -9,7 +9,11 @@ export const GAME_TITLES = {
   "capybara-gomoku": "오목",
   "capybara-alkkagi": "알까기",
   "capybara-log-dodge": "통나무 피하기",
+  "capybara-pang": "카피바라 팡",
 } as const;
+
+/** 로비 맵에 오두막 없이 왼쪽 위 "게임 목록"에서만 고르는 게임 (마을 테마와 안 맞음). 게임 페이지·검색 노출은 그대로 */
+export const LIST_ONLY_GAMES: readonly string[] = ["reaction-time", "click-speed", "capybara-baduk"];
 
 /**
  * 게임 배경을 화면 끝까지 까는 층. 게임 화면은 보이는 영역(dvh)에 맞춰 버튼·HUD를 두지만,

@@ -4,11 +4,11 @@
 import NextImage from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { type FormEvent, useCallback, useEffect, useEffectEvent, useRef, useState } from "react";
+import { type FormEvent, useEffect, useEffectEvent, useRef, useState } from "react";
 
 import { pretendard } from "@/config";
 import { cn } from "@/lib";
-import { Armchair, Bath, Fish, HandFist, NotebookPen } from "lucide-react";
+import { Apple, Armchair, Bath, Fish, HandFist, NotebookPen } from "lucide-react";
 import { API_URL } from "@/lib/api-url";
 
 import { Loading } from "@/components/feedback/loading";
@@ -37,10 +37,14 @@ import {
   EAT_BITE_MS,
   EAT_MS,
   HEART_LINGER_MS,
+  FISH_BITE_MAX_MS,
+  FISH_BITE_MIN_MS,
   FISH_AUTO_RECAST_MS,
   FISH_AUTO_REEL_MS,
   FISH_BITE_WINDOW_MS,
   FISH_CAST_MS,
+  APPLE_REACH,
+  FISHABLE,
   FISH_LOOKS,
   FISH_MOTIONS,
   FISH_REACH,
@@ -60,19 +64,22 @@ import {
   fishCatchSrc,
   type FishEvent,
   type FishingLine,
-  type FishingState,
   type FishInventory,
   fishChat,
+  loadFishInventory,
   parseFishChat,
-  syncFishing,
+  recordCatch,
 } from "@/lib/lobby/fishing";
 import {
+  feedCapybara,
   feedChat,
+  loadSatiety,
   type Meal,
   mealDone,
   parseFeedChat,
   type Satiety,
 } from "@/lib/lobby/feeding";
+import { applesLeft, nearestTree, pickApple } from "@/lib/lobby/apples";
 import { pushSnapshot, sampleSnapshots, type Snapshot } from "@/lib/lobby/interpolation";
 import { loadLobbyProfile, type LobbyProfile, saveLobbyProfile } from "@/lib/lobby/profile";
 import { type LobbySettings, playSound, saveLobbySettings, useLobbySettings } from "@/lib/lobby/settings";
@@ -89,6 +96,7 @@ import {
   EMOTE_OUTLINE,
   EMOTE_SIZE,
   FISH_BUTTON_SRC,
+  FRAME_SRC,
   GUESTBOOK_BUTTON_SRC,
   SITE_LINKS,
   SLEEP_AFTER_MS,
@@ -117,19 +125,21 @@ import {
 } from "@/lib/lobby/presence";
 import {
   dressSprite,
+  loadOutfit,
   type Outfit,
+  saveOutfit,
   spriteName,
+  viewArtOf,
   WARDROBE_SLOTS,
   wardrobeSilhouetteSrc,
   wardrobeSrc,
-  viewArtOf,
   wardrobeViewSrc,
 } from "@/lib/lobby/wardrobe";
 import { SPRITE_FIT } from "@/lib/lobby/wardrobe-fit";
 import {
+  BATH_OFFSET_Y,
   BATH_RX,
   BATH_RY,
-  BATH_OFFSET_Y,
   type Building,
   BUILDING_WIDTH,
   createWorld,
@@ -263,6 +273,12 @@ const ENTER_CHARGE_MS = 900;
 const SEAT_REACH = TILE * 1.4;
 /** 방명록 게시판 앞 이 거리 안에서 Space로 방명록을 연다 */
 const GUESTBOOK_REACH = TILE * 1.5;
+/** 사과나무 밑동 가운데에서 사과가 달린 자리(타일). 달린 사과 수만큼 앞에서부터 그린다 */
+const APPLE_SPOTS: readonly [number, number][] = [
+  [-0.45, -1.9],
+  [0.4, -2.2],
+  [0.05, -1.55],
+];
 /** 로비 WebSocket 주소 (http→ws, https→wss) */
 const LOBBY_WS_URL = `${API_URL.replace(/^http/, "ws")}/api/lobby/ws`;
 /**
@@ -939,7 +955,16 @@ function drawCatch(ctx: CanvasRenderingContext2D, name: FishCatch, x: number, y:
   ctx.strokeStyle = "rgba(40,28,16,0.9)";
   ctx.fillStyle = color;
   ctx.beginPath();
-  if (name === "낡은 장화") {
+  if (name === "사과") {
+    // ponytail: 사과 펠트 그림(fish-catches/apple.webp)이 들어오면 위 그림으로 그려져 이 도형은 안 쓰인다
+    ctx.arc(0, half * 0.1, half * 0.8, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(0, -half * 0.6);
+    ctx.lineTo(half * 0.15, -half);
+    ctx.stroke();
+  } else if (name === "낡은 장화") {
     ctx.moveTo(-half * 0.7, -half * 0.9);
     ctx.lineTo(half * 0.8, -half * 0.9);
     ctx.lineTo(half * 0.8, half * 0.1);
@@ -1100,11 +1125,12 @@ function drawFishingRod(
       fx = lerp(line.x, x, u);
       fy = lerp(line.y, holdY, u) - Math.sin(u * Math.PI) * 60;
       angle += u * Math.PI * 2;
-      } else if (motion) {
-        const itemMotion = FISH_MOTIONS[name];
-        fx += Math.sin(now / itemMotion.period) * itemMotion.sway;
-        fy -= Math.abs(Math.sin(now / (itemMotion.period * 0.8))) * itemMotion.lift;
-        angle += Math.sin(now / (itemMotion.period * 1.2)) * itemMotion.rotate;
+    } else if (motion) {
+      // 종류마다 흔들리는 모양이 달라 무엇을 낚았는지 한눈에 보인다
+      const itemMotion = FISH_MOTIONS[name];
+      fx += Math.sin(now / itemMotion.period) * itemMotion.sway;
+      fy -= Math.abs(Math.sin(now / (itemMotion.period * 0.8))) * itemMotion.lift;
+      angle += Math.sin(now / (itemMotion.period * 1.2)) * itemMotion.rotate;
     }
     endX = fx + Math.cos(angle) * half * 0.8;
     endY = fy + Math.sin(angle) * half * 0.8;
@@ -1114,9 +1140,10 @@ function drawFishingRod(
       if (reel < 1) return;
       const sparkle = (now - line.reelAt - FISH_REEL_MS) / 600;
       if (motion && sparkle < 1) {
-          const sparkleCount = name === "황금인어" ? 10 : 4;
-          for (let i = 0; i < sparkleCount; i++) {
-            const around = (i * Math.PI * 2) / sparkleCount + sparkle;
+        // 황금 잉어는 대박이라 반짝임을 더 많이 두른다
+        const sparkleCount = name === "황금 잉어" ? 10 : 4;
+        for (let i = 0; i < sparkleCount; i++) {
+          const around = (i * Math.PI * 2) / sparkleCount + sparkle;
           drawStar(ctx, fx + Math.cos(around) * (half + 8 + sparkle * 10), fy + Math.sin(around) * (half + 8 + sparkle * 10), 5 * (1 - sparkle));
         }
       }
@@ -1159,7 +1186,8 @@ function facingOf(dx: number, dy: number): Facing {
   return OCTANTS[Math.round(Math.atan2(dy, dx) / (Math.PI / 4)) + 4];
 }
 
-export function Lobby({ games }: { games: DoorGame[] }) {
+/** games: 맵에 오두막으로 세울 게임, listGames: 오두막 없이 왼쪽 위 게임 목록에서만 고르는 게임 */
+export function Lobby({ games, listGames }: { games: DoorGame[]; listGames: DoorGame[] }) {
   const router = useRouter();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   /** Space(앉기·목욕·낚시 버튼): 통나무 앞이면 앉기·일어나기, 온천 둘레면 목욕·나오기, 물가면 계속 낚기 시작·그만하기 */
@@ -1171,7 +1199,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
   /** 입은 옷. 게임 루프가 매 프레임 읽어서 그리고 서버에 보낸다 */
   const outfitRef = useRef<Outfit>({});
   /** 기기별 프로필 id·내가 정한 이름표. 게임 루프가 서버에 보내고, 이름 바꾸기 창이 고친다 */
-  const profileRef = useRef<LobbyProfile>({ id: "", token: "", name: "" });
+  const profileRef = useRef<LobbyProfile>({ id: "", name: "" });
   /** 이름 바꾸기 버튼에 보일 지금 이름표 (서버가 받아들인 값) */
   const [myName, setMyName] = useState("");
   /** 보낼 채팅. 게임 루프가 가져가 말풍선을 띄우고 다음 동기화에 실어 보낸다 */
@@ -1183,6 +1211,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
   const fishButtonRef = useRef<HTMLButtonElement>(null);
   const bathButtonRef = useRef<HTMLButtonElement>(null);
   const guestbookButtonRef = useRef<HTMLButtonElement>(null);
+  const appleButtonRef = useRef<HTMLButtonElement>(null);
   const lastChatAt = useRef(-Infinity);
   /** 화면(소리 버튼)은 저장값을 구독하고(다른 탭·게임 화면에서 바꿔도 따라간다), 게임 루프는 ref로 같은 설정을 읽는다 */
   const settings = useLobbySettings();
@@ -1200,6 +1229,8 @@ export function Lobby({ games }: { games: DoorGame[] }) {
   /** 방명록 게시판 앞에 서 있음 / 방명록 창이 열려 있음 (게시판 앞에서 Space로 연다) */
   const [guestbookNearby, setGuestbookNearby] = useState(false);
   const [guestbookOpen, setGuestbookOpen] = useState(false);
+  /** 사과나무 밑에 서 있음 (Space·버튼으로 사과를 딴다) */
+  const [appleNearby, setAppleNearby] = useState(false);
   const [fishing, setFishing] = useState(false);
   /** 온천: 둘레에 서 있으면 near(목욕 버튼), 물 안이면 in(나오기 버튼) */
   const [bath, setBath] = useState<"near" | "in" | null>(null);
@@ -1208,26 +1239,15 @@ export function Lobby({ games }: { games: DoorGame[] }) {
   const autoFishingRef = useRef(false);
   /** 낚시 가방. 게임 루프가 낚을 때마다 저장하고 새 값을 넣는다 */
   const [fishInventory, setFishInventory] = useState<FishInventory>({});
-  const fishingNextAtRef = useRef<number | null>(null);
   /** 카피바라 포만감. 가방에서 먹이를 누르면 feedRequest에 넣고, 게임 루프가 먹이며 새 값을 넣는다 */
   const [satiety, setSatiety] = useState<Satiety>({ value: 0, at: 0 });
-  const [affection, setAffection] = useState(0);
+  /** 옷장 탭에 보일 입은 옷. 게임 루프는 outfitRef를 읽는다 */
   const [outfit, setOutfit] = useState<Outfit>({});
   const feedRequest = useRef<FishCatch | null>(null);
   const [stunned, setStunned] = useState(false);
   const [notice, setNotice] = useState("");
   /** 로비 이미지를 받은 비율(%). 100이 되기 전엔 로딩창을 덮고 게임 루프를 돌리지 않는다 */
   const [loadProgress, setLoadProgress] = useState(0);
-  const applyFishingState = useCallback((state: FishingState) => {
-    setFishInventory(state.inventory);
-    setSatiety(state.satiety);
-    setAffection(state.affection);
-    setOutfit(state.outfit);
-    outfitRef.current = state.outfit;
-    fishingNextAtRef.current = state.nextCatchAt ? Date.parse(state.nextCatchAt) : null;
-    autoFishingRef.current = state.active;
-    setAutoFishing(state.active);
-  }, []);
   // 게임 루프 effect가 router 변경으로 다시 실행되면 캐릭터·멀티 상태가 초기화되므로 이벤트로 감싼다
   const goToGame = useEffectEvent((slug: string) => {
     // 게임 화면의 로비 링크가 새 기록을 쌓지 않고 뒤로 가게 표시해 둔다 (components/navigation/lobby-link)
@@ -1242,14 +1262,13 @@ export function Lobby({ games }: { games: DoorGame[] }) {
     if (!canvas || !ctx) return;
 
     const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    outfitRef.current = loadOutfit();
+    setOutfit(outfitRef.current);
     profileRef.current = loadLobbyProfile();
     // 캔버스는 쓰는 굵기의 폰트를 스스로 내려받지 않아서, 안 받아 둔 굵기는 대체 폰트로 그려진다
     for (const weight of [500, 600, 700]) document.fonts.load(`${weight} 13px ${CANVAS_FONT}`, "가A").catch(() => {});
-    void syncFishing(profileRef.current.id, profileRef.current.token, "sync")
-      .then(applyFishingState)
-      .catch((caught: unknown) => {
-        setNotice(caught instanceof Error ? caught.message : "낚시 정보를 불러올 수 없어요");
-      });
+    setFishInventory(loadFishInventory());
+    setSatiety(loadSatiety());
 
     const sprites = new Map<SpriteKey, HTMLImageElement>();
     for (const facing of FACINGS) {
@@ -1352,16 +1371,15 @@ export function Lobby({ games }: { games: DoorGame[] }) {
       const cy = Math.floor(ty / CHUNK);
       return chunkAt(cx, cy).tiles[(ty - cy * CHUNK) * CHUNK + (tx - cx * CHUNK)];
     };
-    const blocked = (x: number, y: number) => {
-      return (
-        world.blockedAt(x - HIT.halfWidth, y - HIT.up) ||
-        world.blockedAt(x + HIT.halfWidth, y - HIT.up) ||
-        world.blockedAt(x - HIT.halfWidth, y + HIT.down) ||
-        world.blockedAt(x + HIT.halfWidth, y + HIT.down)
-      );
-    };
+    /** 몸 네 모서리 중 하나라도 막히면 못 간다. 온천 돌 테두리·오두막 앞은 타일보다 그림에 맞춘 타원으로 막는다 (world.blockedAt) */
+    const blocked = (x: number, y: number) =>
+      world.blockedAt(x - HIT.halfWidth, y - HIT.up) ||
+      world.blockedAt(x + HIT.halfWidth, y - HIT.up) ||
+      world.blockedAt(x - HIT.halfWidth, y + HIT.down) ||
+      world.blockedAt(x + HIT.halfWidth, y + HIT.down);
 
     const { spring } = world;
+    /** 그림 속 물 타원 가운데. 온천 그림은 원근으로 물이 가운데보다 아래에 있다 */
     const bathCenterY = spring.y + BATH_OFFSET_Y * TILE;
     /** 발 위치가 온천 물 안(목욕 중)인지. 목욕 상태를 따로 보내지 않고 위치로 판단해서 남의 카피바라도 똑같이 그린다 */
     const inBath = (x: number, y: number) => ellipseDistance(x - spring.x, y - bathCenterY, BATH_RX + 0.3, BATH_RY + 0.3) <= 1;
@@ -1414,6 +1432,19 @@ export function Lobby({ games }: { games: DoorGame[] }) {
     const nearestDoor = () => world.doors.find((door) => Math.hypot(door.x - me.x, door.y - me.y) < DOOR_RADIUS) ?? null;
     const nearestSeat = () => world.seats.findIndex((seat) => Math.hypot(seat.seatX - me.x, seat.standY - me.y) < SEAT_REACH);
     const nearGuestbook = () => Math.hypot(world.guestbook.x - me.x, world.guestbook.y - me.y) < GUESTBOOK_REACH;
+    /** 나무마다 사과를 딴 시각들 (lib/lobby/apples.ts) */
+    const applePicks = world.appleTrees.map((): number[] => []);
+    const nearestAppleTree = () => nearestTree(world.appleTrees, me.x, me.y, APPLE_REACH);
+    /** 나무를 올려다보며 폴짝 뛰어 사과를 하나 따서 가방에 넣는다 */
+    const pickFromTree = (index: number, now: number) => {
+      const tree = world.appleTrees[index];
+      me.facing = facingOf(tree.x - me.x, tree.y - TILE - me.y);
+      if (!pickApple(applePicks[index], now)) return showNotice("사과가 다 떨어졌어요. 조금 있으면 다시 열려요");
+      startHop();
+      setFishInventory(recordCatch("사과"));
+      playSound("applePick", settingsRef.current);
+      showNotice(`사과 땄어요! 남은 사과 ${applesLeft(applePicks[index], now)}개`);
+    };
     /** 통나무 두 자리 중 비어 있는 나와 가까운 자리의 x. 둘 다 찼으면 null */
     const freeSpot = (index: number) => {
       const seat = world.seats[index];
@@ -1475,6 +1506,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
     let shownBath: typeof bath = null;
     let shownWater = false;
     let shownGuestbook = false;
+    let shownApple = false;
     let shownFishing = false;
     let shownStunned = false;
     // 내 캐릭터 동작 프레임이 바뀌는 순간에만 효과음을 내려고 지난 프레임을 기억한다
@@ -1499,51 +1531,30 @@ export function Lobby({ games }: { games: DoorGame[] }) {
       fishQueued = fishChat(fishSeq, event);
     };
     const castLine = (water: { x: number; y: number }, now: number) => {
-      me.fishing = { x: water.x, y: water.y, castAt: now, biteAt: Infinity, reelAt: Infinity, catch: null };
-      const line = me.fishing;
-      void syncFishing(profileRef.current.id, profileRef.current.token, "start").then((state) => {
-        applyFishingState(state);
-        if (line === me.fishing && fishingNextAtRef.current !== null) {
-          line.biteAt = performance.now() + Math.max(FISH_CAST_MS, fishingNextAtRef.current - Date.now());
-        }
-      }).catch((caught: unknown) => {
-        showNotice(caught instanceof Error ? caught.message : "낚시를 시작할 수 없어요");
-      });
+      const wait = FISH_BITE_MIN_MS + Math.random() * (FISH_BITE_MAX_MS - FISH_BITE_MIN_MS);
+      me.fishing = { x: water.x, y: water.y, castAt: now, biteAt: now + FISH_CAST_MS + wait, reelAt: Infinity, catch: null };
       biteAnnounced = false;
       me.facing = facingOf(water.x - me.x, water.y - me.y);
       queueFish({ kind: "cast", x: water.x, y: water.y });
       playSound("fishCast", settingsRef.current);
     };
+    /** 당기기. caught면 무작위 하나를 낚아 가방에 넣고, 아니면 빈 찌를 감아 온다. 이미 당겼으면 무시 */
     const reelLine = (now: number, caught: boolean) => {
       const line = me.fishing;
       if (!line || line.reelAt !== Infinity) return;
-      if (!caught) {
-        line.reelAt = now;
-        queueFish({ kind: "reel", catch: null });
-        return;
-      }
-      void syncFishing(profileRef.current.id, profileRef.current.token, "sync").then((state) => {
-        applyFishingState(state);
-        const name = state.caughtCount > 0 ? state.lastCatch : null;
-        line.reelAt = performance.now();
-        line.catch = name;
-        queueFish({ kind: "reel", catch: name });
-        if (!name) return;
-        showNotice(state.caughtCount > 1 ? `${name} 외 ${state.caughtCount - 1}개 낚았어요!` : `${name} 낚았어요!`);
-        playSound("fishCatch", settingsRef.current);
-      }).catch((caught: unknown) => {
-        showNotice(caught instanceof Error ? caught.message : "낚시 결과를 확인할 수 없어요");
-      });
+      const name = caught ? FISHABLE[Math.floor(Math.random() * FISHABLE.length)] : null;
+      line.reelAt = now;
+      line.catch = name;
+      queueFish({ kind: "reel", catch: name });
+      if (!name) return;
+      showNotice(`${name} 낚았어요!`);
+      setFishInventory(recordCatch(name));
+      playSound("fishCatch", settingsRef.current);
     };
     const stopAuto = () => {
       if (!autoFishingRef.current) return;
       autoFishingRef.current = false;
       setAutoFishing(false);
-      void syncFishing(profileRef.current.id, profileRef.current.token, "stop")
-        .then(applyFishingState)
-        .catch((caught: unknown) => {
-          showNotice(caught instanceof Error ? caught.message : "낚시를 멈출 수 없어요");
-        });
     };
 
     // --- 먹이 주기 ---
@@ -1552,35 +1563,25 @@ export function Lobby({ games }: { games: DoorGame[] }) {
     let feedSeq = 0;
     /** 마지막으로 쩝 소리를 낸 한 입 번호 */
     let soundBite = -1;
-    let feedPending = false;
-    const feed = async (name: FishCatch, now: number, isStunned: boolean) => {
+    const feed = (name: FishCatch, now: number, isStunned: boolean) => {
       if (isStunned) return showNotice("기절해서 못 먹어요");
       if (eatingMs(me.meal, now) >= 0) return showNotice("아직 먹는 중이에요");
-      if (feedPending) return showNotice("먹이를 확인하고 있어요");
-      feedPending = true;
-      let result: FishingState;
-      try {
-        result = await syncFishing(profileRef.current.id, profileRef.current.token, "consume", name);
-      } catch (caught) {
-        feedPending = false;
-        return showNotice(caught instanceof Error ? caught.message : "먹이를 줄 수 없어요");
+      const result = feedCapybara(name, Date.now());
+      if (!result.ok) {
+        const reason = { full: "배불러서 더 못 먹어요", inedible: "카피바라는 풀과 과일만 먹어요", none: "가방에 없어요" };
+        return showNotice(reason[result.reason]);
       }
-      feedPending = false;
-      applyFishingState(result);
-      if (!result.consumed || result.feedStatus !== "fed") {
-        const reason = { full: "배불러서 더 못 먹어요", inedible: "그건 못 먹어요, 퉤!", none: "가방에 없어요", fed: "" };
-        return showNotice(reason[result.feedStatus ?? "none"]);
-      }
-      const startedAt = performance.now();
       if (me.sitting) standUp();
-      reelLine(startedAt, false);
+      reelLine(now, false);
       stopAuto();
-      me.meal = { name, at: startedAt };
+      me.meal = { name, at: now };
       me.facing = "down";
       soundBite = -1;
       feedSeq += 1;
       feedQueued = feedChat(feedSeq, name);
-      showNotice(`${name} 냠냠! 포만감 ${Math.round(result.satiety.value)}% · 애정도 ${result.affection}%`);
+      setFishInventory(result.inventory);
+      setSatiety(result.satiety);
+      showNotice(`${name} 냠냠! 포만감 ${Math.round(result.satiety.value)}%`);
     };
 
     const enter = (door: Door) => {
@@ -1638,12 +1639,14 @@ export function Lobby({ games }: { games: DoorGame[] }) {
         return;
       }
       // 버튼·링크에 포커스가 있으면 Space/Enter는 그 요소의 기본 동작(누르기)에 맡긴다
-      if (event.target instanceof HTMLElement && event.target.closest("a, button")) return;
+      if (event.target instanceof HTMLElement && event.target.closest("a, button, summary")) return;
       if (event.code === "Space") {
         event.preventDefault();
         if (!event.repeat) {
           spaceRequest.current = true;
-          flashButton(sitButtonRef.current ?? bathButtonRef.current ?? fishButtonRef.current ?? guestbookButtonRef.current);
+          flashButton(
+            sitButtonRef.current ?? bathButtonRef.current ?? fishButtonRef.current ?? guestbookButtonRef.current ?? appleButtonRef.current,
+          );
         }
       } else if (event.code === "Enter") {
         const door = nearestDoor();
@@ -1674,6 +1677,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
       stick.dy = 0;
       renderStick();
     };
+    /** 우클릭: 메뉴·버튼에 포커스를 뺏기지 않고 누른 곳으로 걸어간다 (버튼 위에서 눌러도) */
     const onRightPointerDown = (event: PointerEvent) => {
       if (event.pointerType !== "mouse" || event.button !== 2) return;
       event.preventDefault();
@@ -1899,11 +1903,6 @@ export function Lobby({ games }: { games: DoorGame[] }) {
         onBlur();
         return;
       }
-      void syncFishing(profileRef.current.id, profileRef.current.token, "sync")
-        .then(applyFishingState)
-        .catch((caught: unknown) => {
-          showNotice(caught instanceof Error ? caught.message : "낚시 정보를 불러올 수 없어요");
-        });
       if (socket || disposed) return;
       window.clearTimeout(reconnectTimer);
       reconnectDelay = RECONNECT_MIN_MS;
@@ -1968,6 +1967,8 @@ export function Lobby({ games }: { games: DoorGame[] }) {
           enterBath();
         } else if (nearGuestbook()) {
           setGuestbookOpen(true);
+        } else if (nearestSeat() < 0 && nearestAppleTree() >= 0) {
+          pickFromTree(nearestAppleTree(), now);
         } else if (nearestSeat() < 0 && water) {
           // 한 번 던지면 멈출 때까지 입질마다 알아서 당기고 다시 던진다 (아래 게임 루프)
           castLine(water, now);
@@ -1989,7 +1990,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
             showNotice(
               index >= 0
                 ? "통나무 두 자리가 다 찼어요"
-                : "통나무 의자 앞에서 앉고, 온천 앞에서 목욕하고, 물가에서 낚시하고, 게시판 앞에서 방명록을 쓸 수 있어요",
+                : "통나무 의자 앞에서 앉고, 온천 앞에서 목욕하고, 물가에서 낚시하고, 사과나무 밑에서 사과를 따고, 게시판 앞에서 방명록을 쓸 수 있어요",
             );
           }
         }
@@ -2026,7 +2027,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
         chatRequest.current = null;
       }
       if (feedRequest.current !== null) {
-        void feed(feedRequest.current, now, isStunned);
+        feed(feedRequest.current, now, isStunned);
         feedRequest.current = null;
       }
       if (wantsMove && me.sitting) standUp(); // 움직이면 일어난다
@@ -2148,6 +2149,8 @@ export function Lobby({ games }: { games: DoorGame[] }) {
       if (waterHere !== shownWater) setWaterNearby((shownWater = waterHere));
       const guestbookHere = !me.sitting && !fishingActive && nearGuestbook();
       if (guestbookHere !== shownGuestbook) setGuestbookNearby((shownGuestbook = guestbookHere));
+      const appleHere = !me.sitting && !fishingActive && !seatHere && bathHere === null && nearestAppleTree() >= 0;
+      if (appleHere !== shownApple) setAppleNearby((shownApple = appleHere));
       if (fishingActive !== shownFishing) setFishing((shownFishing = fishingActive));
       if (isStunned !== shownStunned) setStunned((shownStunned = isStunned));
 
@@ -2231,7 +2234,9 @@ export function Lobby({ games }: { games: DoorGame[] }) {
           const bottom = (ty + 1) * TILE;
           const noise = hash2(9, tx, ty);
           if (tile === "tree") {
-            const kind = noise < 0.55 ? "tree-tropical" : "palm";
+            // 마을 안 나무는 사과나무라 야자수로 그리지 않는다
+            const inVillage = ty >= world.village.top && ty <= world.village.bottom && Math.abs(tx + 0.5) <= world.village.halfWidth;
+            const kind = noise < 0.55 || inVillage ? "tree-tropical" : "palm";
             drawables.push({ y: bottom - TILE * 0.2, draw: () => sprite(kind, x, bottom, 0.9 + noise * 0.25) });
           } else if (tile === "fence") {
             drawables.push({ y: bottom, draw: () => sprite("fence", x, bottom) });
@@ -2282,6 +2287,18 @@ export function Lobby({ games }: { games: DoorGame[] }) {
         const bottom = seat.seatY + TILE * 0.38;
         drawables.push({ y: bottom, draw: () => sprite("log-seat", seat.seatX, bottom) });
       }
+      // 사과나무 가지에 달린 사과. 나무 그림(아래 타일 루프) 바로 뒤에 그려 잎 위에 얹힌다
+      // ponytail: 사과나무 그림이 없어 열대 나무 그림을 쓰고, 사과 자리(APPLE_SPOTS)도 그 그림 잎에 맞췄다. 사과나무 에셋이 들어오면 둘 다 바꿀 것
+      world.appleTrees.forEach((tree, index) => {
+        if (!inView(tree.x, tree.y, TILE * 4)) return;
+        const hanging = applesLeft(applePicks[index], now);
+        drawables.push({
+          y: tree.y - TILE * 0.2 + 0.01,
+          draw: () => {
+            for (const [dx, dy] of APPLE_SPOTS.slice(0, hanging)) drawCatch(ctx, "사과", tree.x + dx * TILE, tree.y + dy * TILE, 0);
+          },
+        });
+      });
       for (const prop of world.props) {
         const x = (prop.tx + 0.5) * TILE;
         if (!inView(x, prop.ty * TILE, TILE * 4)) continue;
@@ -2504,7 +2521,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
       disposed = true;
       socket?.close();
     };
-  }, [applyFishingState, world]);
+  }, [world]);
 
   const status = stunned
     ? "기절! 2초 동안 못 움직여요"
@@ -2586,6 +2603,28 @@ export function Lobby({ games }: { games: DoorGame[] }) {
         </p>
       </form>
 
+      {/* 채팅창 아래: 오두막 없이 목록에서만 들어가는 게임 */}
+      {listGames.length > 0 && (
+        <details className="group/list absolute left-[max(0.75rem,env(safe-area-inset-left))] top-[calc(max(0.75rem,env(safe-area-inset-top))+2.5rem)] text-caption-1">
+          <summary className="flex h-8 w-fit cursor-pointer list-none items-center rounded-full bg-black/25 px-3 font-semibold text-white focus-visible:outline-2 focus-visible:outline-primary [&::-webkit-details-marker]:hidden">
+            게임 목록
+          </summary>
+          <ul className="mt-1 flex flex-col rounded-xl bg-card/90 p-1 shadow-md">
+            {listGames.map((game) => (
+              <li key={game.slug}>
+                <Link
+                  href={`/games/${game.slug}`}
+                  onClick={() => markLobbyExit(`/games/${game.slug}`)}
+                  className="flex min-h-11 items-center rounded-lg px-3 text-body-2 text-text-strong hover:bg-black/10 focus-visible:outline-2 focus-visible:outline-primary"
+                >
+                  {game.title}
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
+
       {/* 오른쪽 위 "내 카피바라" 메뉴: 버튼 하나로 열고 옷장·가방·소리·이름 탭을 오간다 */}
       <LobbyMenu
         name={myName}
@@ -2596,11 +2635,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
               onChange={(nextOutfit) => {
                 setOutfit(nextOutfit);
                 outfitRef.current = nextOutfit;
-                void syncFishing(profileRef.current.id, profileRef.current.token, "outfit", undefined, nextOutfit)
-                  .then(applyFishingState)
-                  .catch((caught) => {
-                    setNotice(caught instanceof Error ? caught.message : "옷을 바꿀 수 없어요");
-                  });
+                saveOutfit(nextOutfit);
               }}
             />
           ),
@@ -2608,7 +2643,6 @@ export function Lobby({ games }: { games: DoorGame[] }) {
             <FishBag
               inventory={fishInventory}
               satiety={satiety}
-              affection={affection}
               onFeed={(name) => {
                 feedRequest.current = name;
               }}
@@ -2698,6 +2732,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
               aria-keyshortcuts="Space"
               className="group flex flex-col items-center gap-0.5 rounded-full focus-visible:outline-2 focus-visible:outline-primary"
             >
+              {/* 나무 테·펠트 판까지 그려진 온천 버튼 그림. 마우스를 올리거나 포커스면 욕조 아이콘. 누르면 같이 줄어든다 */}
               <span className="relative block size-14 transition-transform md:size-18 duration-100 motion-safe:group-active:scale-90">
                 <NextImage
                   src={BATH_BUTTON_SRC}
@@ -2712,7 +2747,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
                   aria-hidden
                   className="absolute inset-[16%] flex items-center justify-center rounded-full bg-overlay text-white opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-visible:opacity-100 group-data-flash:opacity-100 motion-reduce:transition-none"
                 >
-                  <Bath className="size-7" />
+                  <Bath className="size-6 md:size-7" />
                 </span>
               </span>
               <span className="rounded-full bg-card/85 px-2 py-0.5 text-caption-3 font-semibold text-text-strong">{bath === "in" ? "나오기" : "목욕"}</span>
@@ -2730,6 +2765,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
               aria-keyshortcuts="Space"
               className="group flex flex-col items-center gap-0.5 rounded-full focus-visible:outline-2 focus-visible:outline-primary"
             >
+              {/* 나무 테·펠트 판까지 그려진 방명록 버튼 그림. 마우스를 올리거나 포커스면 공책 아이콘 */}
               <span className="relative block size-14 transition-transform md:size-18 duration-100 motion-safe:group-active:scale-90">
                 <NextImage
                   src={GUESTBOOK_BUTTON_SRC}
@@ -2748,6 +2784,27 @@ export function Lobby({ games }: { games: DoorGame[] }) {
                 </span>
               </span>
               <span className="rounded-full bg-card/85 px-2 py-0.5 text-caption-3 font-semibold text-text-strong">방명록</span>
+            </button>
+          )}
+          {appleNearby && (
+            <button
+              ref={appleButtonRef}
+              type="button"
+              onClick={() => {
+                spaceRequest.current = true;
+              }}
+              aria-label="사과 따기"
+              aria-keyshortcuts="Space"
+              className="group flex flex-col items-center gap-0.5 rounded-full focus-visible:outline-2 focus-visible:outline-primary"
+            >
+              {/* 나무 테(목욕·방명록과 같은 그림) 안 펠트 판 위에 사과 아이콘 */}
+              <span className="relative block size-14 transition-transform md:size-18 duration-100 motion-safe:group-active:scale-90">
+                <span aria-hidden className="absolute inset-[16%] flex items-center justify-center rounded-full bg-capybara-light text-capybara-dark">
+                  <Apple className="size-6 md:size-7" />
+                </span>
+                <NextImage src={FRAME_SRC} alt="" fill unoptimized sizes="72px" draggable={false} className="drop-shadow-md" />
+              </span>
+              <span className="rounded-full bg-card/85 px-2 py-0.5 text-caption-3 font-semibold text-text-strong">사과 따기</span>
             </button>
           )}
           {(waterNearby || fishing || autoFishing) && (

@@ -7,6 +7,7 @@ import {
   CAPYBARA_HALF_WIDTH,
   CAPYBARA_Y,
   CHASE_STOP_Y,
+  COMBO_SHIELD_AT,
   COMBO_UNLOCK_MS,
   createRandom,
   createState,
@@ -279,6 +280,18 @@ describe("유자 보호막·아슬아슬 콤보", () => {
     for (let i = 0; i < 120 && state.nearMisses < 2; i += 1) step(state, 16, IDLE);
     expect(state.nearMisses).toBe(2);
     expect(state.combo).toBe(2);
+  });
+
+  it("아슬아슬 콤보가 COMBO_SHIELD_AT에 닿으면 유자 보호막을 보상으로 준다", () => {
+    const x = GAME_WIDTH / 2 + CAPYBARA_HALF_WIDTH + 5 + 50;
+    const logs = Array.from({ length: COMBO_SHIELD_AT }, (_, i) => log({ id: i + 1, x, y: CAPYBARA_Y - 60 - 240 * i, vy: 600 }));
+    const state = playing({ logs });
+    for (let i = 0; i < 200 && state.nearMisses < COMBO_SHIELD_AT - 1; i += 1) step(state, 16, IDLE);
+    expect(state.shield).toBe(false);
+    for (let i = 0; i < 200 && state.nearMisses < COMBO_SHIELD_AT; i += 1) step(state, 16, IDLE);
+    expect(state.combo).toBe(COMBO_SHIELD_AT);
+    expect(state.shield).toBe(true);
+    expect(state.lastShieldAt).toBe(state.lastNearMissAt);
   });
 
   it("허들과 가로대가 같이 오면 가까운 쪽 동작을 안내한다", () => {
