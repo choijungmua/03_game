@@ -4,6 +4,6 @@ import type { BuildingAsset } from "../../types";
 export default {
   id: "hut-3",
   category: "buildings",
-  width: 5.8,
-  screen: { x: 0.33, y: 0.292, width: 0.26, height: 0.166 },
+  width: 8,
+  screen: { x: 0.363, y: 0.131, width: 0.26, height: 0.217 },
 } as const satisfies BuildingAsset;

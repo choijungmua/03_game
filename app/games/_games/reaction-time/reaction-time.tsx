@@ -39,7 +39,7 @@ function RunningTimer({ startAt }: { startAt: number }) {
   useFrameText(valueRef, () => String(Date.now() - startAt));
 
   return (
-    <p className="flex items-baseline gap-2 font-black tabular-nums">
+    <p className="flex items-baseline gap-2 whitespace-nowrap font-black tabular-nums">
       <span ref={valueRef} data-testid="timer" className="text-[8rem] leading-none sm:text-[11rem]">
         0
       </span>
@@ -189,6 +189,7 @@ export function ReactionTime() {
   return (
     <div
       data-testid="reaction-area"
+      data-hide-page-scrollbar="true"
       data-phase={phase}
       onPointerDown={handlePress}
       onClick={handleClick}

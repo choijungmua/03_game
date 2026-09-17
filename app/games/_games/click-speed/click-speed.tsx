@@ -286,6 +286,7 @@ export function ClickSpeed() {
     <div
       ref={containerRef}
       data-testid="click-speed-screen"
+      data-hide-page-scrollbar="true"
       data-phase={phase}
       onPointerDown={handlePointerDown}
       onClick={handleClick}
@@ -354,7 +355,7 @@ export function ClickSpeed() {
         <>
           <span
             data-testid="count"
-            className="pointer-events-none text-[9rem] font-black leading-none tabular-nums sm:text-[13rem]"
+            className="pointer-events-none whitespace-nowrap text-[9rem] font-black leading-none tabular-nums sm:text-[13rem]"
           >
             {count}
           </span>

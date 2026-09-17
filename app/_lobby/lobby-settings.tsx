@@ -3,6 +3,7 @@
 import { Settings, Volume2, VolumeX } from "lucide-react";
 import NextImage from "next/image";
 import { useEffect, useEffectEvent, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 
 import { Checkbox } from "@/components/inputs/checkbox";
 import { Button } from "@/components/ui/button";
@@ -10,6 +11,7 @@ import { cn } from "@/lib";
 import { type LobbySettings, toggledSound, withVolume } from "@/lib/lobby/settings";
 
 import { SOUND_BUTTON_SRC } from "./constants";
+import { useLobbyMenuPanel } from "./lobby-menu";
 import { flashButton, isShortcutKey } from "./shortcut";
 
 interface SettingsProps {
@@ -20,15 +22,7 @@ interface SettingsProps {
 /** 세로 툴바 안 아이콘 버튼. 모바일 터치 영역 44px을 지킨다 */
 const TOOL_BUTTON = "size-11 rounded-lg text-text-strong";
 
-/**
- * 헤드폰 위치: 둥근 버튼 기준 %. 얼굴 원(프로필과 같은 크기)은 그대로 두고 헤드폰은 원 바깥에 씌운다 —
- * 머리띠는 원 위로, 이어컵은 원 양옆 가장자리로. 머리띠 활이 높은 그림이라 세로만 살짝 누른다
- */
-const HEADPHONES = { src: "/assets/images/ui/lobby/headphones.webp", top: -24, width: 150, height: 120 };
-
-/** 터치에서 음량 알약이 마지막 조작 뒤 저절로 닫히기까지 */
-const PEEK_MS = 2500;
-
+const HEADPHONES = { src: "/assets/images/ui/lobby/headphones.webp", top: -4, width: 112, height: 92 };
 /**
  * 카피바라 아래 효과음 켜고 끄기. 헤드폰을 끼면 켜짐, 벗으면 꺼짐.
  * 마우스는 올리면(키보드는 포커스) 왼쪽에 음량 슬라이더가 나온다.
@@ -36,29 +30,8 @@ const PEEK_MS = 2500;
  */
 export function SoundToggle({ settings, onChange }: SettingsProps) {
   const volume = settings.muted ? 0 : Math.round(settings.volume * 100);
-  const [peek, setPeek] = useState(false);
+  const { open: peek, panelHost, setOpen: setPeek } = useLobbyMenuPanel("sound");
   const rootRef = useRef<HTMLDivElement>(null);
-  /** 방금 누른 게 터치(펜)인지. 키보드 Enter는 pointerdown이 없어서 false로 남는다 */
-  const touchRef = useRef(false);
-  const peekTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
-
-  const holdPeek = () => clearTimeout(peekTimerRef.current);
-  const openPeek = () => {
-    holdPeek();
-    setPeek(true);
-    peekTimerRef.current = setTimeout(() => setPeek(false), PEEK_MS);
-  };
-
-  useEffect(() => () => clearTimeout(peekTimerRef.current), []);
-
-  useEffect(() => {
-    if (!peek) return;
-    const onPointerDown = (event: PointerEvent) => {
-      if (event.target instanceof Node && !rootRef.current?.contains(event.target)) setPeek(false);
-    };
-    window.addEventListener("pointerdown", onPointerDown);
-    return () => window.removeEventListener("pointerdown", onPointerDown);
-  }, [peek]);
 
   // M: 소리 켜고 끄기 (S는 WASD 아래로 걷기라서 M)
   const onShortcut = useEffectEvent((event: KeyboardEvent) => {
@@ -66,6 +39,7 @@ export function SoundToggle({ settings, onChange }: SettingsProps) {
     event.preventDefault();
     // 아이콘 오버레이의 group이 감싼 div라서 거기에 표시한다
     flashButton(rootRef.current);
+    setPeek(true);
     onChange(toggledSound(settings));
   });
   useEffect(() => {
@@ -74,28 +48,17 @@ export function SoundToggle({ settings, onChange }: SettingsProps) {
   }, []);
 
   return (
-    <div ref={rootRef} className="group relative">
+    <div ref={rootRef} className="group relative min-w-0 overflow-hidden rounded-full">
       <button
         type="button"
-        onPointerDown={(event) => {
-          touchRef.current = event.pointerType !== "mouse";
-        }}
-        onClick={() => {
-          const touch = touchRef.current;
-          touchRef.current = false;
-          if (touch) {
-            openPeek();
-            if (!peek) return;
-          }
-          onChange(toggledSound(settings));
-        }}
+        onClick={() => setPeek((value) => !value)}
         aria-label="효과음"
+        aria-expanded={peek}
         aria-pressed={volume > 0}
         aria-keyshortcuts="M"
         // 크기는 오른쪽 아래 앉기·때리기 버튼(모바일 size-14, md 이상 size-18)과 같게. 헤드폰 위치는 버튼 기준 %라 같이 커진다
         className="relative size-14 md:size-18 rounded-full focus-visible:outline-2 focus-visible:outline-primary"
       >
-        {/* 나무 테·펠트 판까지 그려진 버튼 그림 (가방 버튼과 같은 방식). 헤드폰은 이 원 밖에 그려서 바깥으로 삐져나온다 */}
         <span aria-hidden className="relative block size-full">
           <NextImage src={SOUND_BUTTON_SRC} alt="" width={256} height={256} unoptimized draggable={false} className="size-full drop-shadow-md" />
           {/* 마우스를 올리거나 키보드 포커스·터치로 알약이 열렸으면 나무 테 안쪽 판 위에 지금 상태 스피커 아이콘 */}
@@ -127,19 +90,10 @@ export function SoundToggle({ settings, onChange }: SettingsProps) {
           }}
         />
       </button>
-      {/* pr-6가 버튼과 슬라이더 사이 틈을 메워서, 마우스를 슬라이더로 옮기는 중에 hover가 끊기지 않는다. 원 밖으로 나온 헤드폰 이어컵을 가리지 않을 만큼 띄운다.
-          키보드는 focus-visible일 때만 연다 (focus-within이면 마우스로 누른 뒤 포커스가 남아 슬라이더가 안 닫힌다) */}
-      <div
-        className={cn(
-          "pointer-events-none absolute right-full top-3.5 pr-6 opacity-0 transition-opacity duration-150 group-hover:pointer-events-auto group-hover:opacity-100 group-has-[:focus-visible]:pointer-events-auto group-has-[:focus-visible]:opacity-100 motion-reduce:transition-none",
-          peek && "pointer-events-auto opacity-100",
-        )}
-      >
-        {/* 터치로 끄는 동안은 닫히지 않게 멈추고, 손을 떼면 다시 잠시 뒤 닫힌다 */}
+      {peek && panelHost && createPortal(<section role="region" aria-label="효과음 설정" className="border-t border-border-default pt-4">
+        <h2 className="mb-3 text-title-3 font-bold text-text-strong">효과음 설정</h2>
         <label
-          onPointerDown={holdPeek}
-          onPointerUp={() => peek && openPeek()}
-          className="flex h-11 items-center gap-2 rounded-full bg-card/90 pl-4 pr-3 shadow-md backdrop-blur"
+          className="flex min-h-11 w-full min-w-0 items-center gap-3 rounded-xl bg-muted px-4"
         >
           <span className="sr-only">효과음 크기</span>
           <input
@@ -152,7 +106,7 @@ export function SoundToggle({ settings, onChange }: SettingsProps) {
             onChange={(event) => onChange(withVolume(settings, Number(event.currentTarget.value) / 100))}
             // 게이지는 카피바라 털색: 찬 쪽 털색, 빈 쪽 밝은 털색, 손잡이는 주둥이색.
             // 누르는 영역은 알약 높이(44px) 전체, 보이는 막대는 가운데 8px만(bg-clip-content). 터치 기기는 손잡이를 키운다
-            className="h-11 w-28 cursor-pointer touch-none appearance-none rounded-full bg-clip-content py-[18px] focus-visible:outline-2 focus-visible:outline-offset-0 focus-visible:outline-capybara-dark [&::-moz-range-thumb]:size-4 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:border-0 [&::-moz-range-thumb]:bg-capybara-dark [&::-webkit-slider-thumb]:size-4 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-capybara-dark [&::-webkit-slider-thumb]:shadow-md pointer-coarse:[&::-moz-range-thumb]:size-6 pointer-coarse:[&::-webkit-slider-thumb]:size-6"
+            className="h-11 min-w-0 flex-1 cursor-pointer touch-none appearance-none rounded-full bg-clip-content py-[18px] focus-visible:outline-2 focus-visible:outline-offset-0 focus-visible:outline-capybara-dark [&::-moz-range-thumb]:size-4 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:border-0 [&::-moz-range-thumb]:bg-capybara-dark [&::-webkit-slider-thumb]:size-4 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-capybara-dark [&::-webkit-slider-thumb]:shadow-md pointer-coarse:[&::-moz-range-thumb]:size-6 pointer-coarse:[&::-webkit-slider-thumb]:size-6"
             // background 단축 속성은 bg-clip-content를 초기화해서 막대가 44px 전체로 칠해진다 — backgroundImage만 준다
             style={{ backgroundImage: `linear-gradient(to right, var(--capybara) ${volume}%, var(--capybara-light) ${volume}%)` }}
           />
@@ -160,7 +114,7 @@ export function SoundToggle({ settings, onChange }: SettingsProps) {
             {volume}%
           </span>
         </label>
-      </div>
+      </section>, panelHost)}
     </div>
   );
 }

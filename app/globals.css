@@ -208,6 +208,16 @@
     }
 }
 
+html:has([data-hide-page-scrollbar="true"]),
+html:has([data-hide-page-scrollbar="true"]) body {
+  scrollbar-width: none;
+}
+
+html:has([data-hide-page-scrollbar="true"])::-webkit-scrollbar,
+html:has([data-hide-page-scrollbar="true"]) body::-webkit-scrollbar {
+  display: none;
+}
+
 @keyframes scale-press {
   50% { transform: scale(0.96); }
 }

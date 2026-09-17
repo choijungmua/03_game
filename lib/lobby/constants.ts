@@ -10,7 +10,6 @@ export const LOBBY_SETTINGS_STORAGE_KEY = "ggpli:lobby-settings";
 /** 같은 탭에서 설정을 저장했다고 알리는 이벤트 (storage 이벤트는 다른 탭에만 온다). 게임 화면 소리 버튼이 바로 따라 바뀐다 */
 export const LOBBY_SETTINGS_CHANGE_EVENT = "ggpli:lobby-settings-change";
 /** 로비 낚시로 낚은 것별 횟수 (lib/lobby/fishing.ts). 이 기기에만 저장한다 */
-export const FISH_INVENTORY_STORAGE_KEY = "ggpli:lobby-fish-inventory";
 /** 로비 프로필(기기별 id·사용자가 정한 이름표, lib/lobby/profile.ts). 이 기기에만 저장한다 */
 export const LOBBY_PROFILE_STORAGE_KEY = "ggpli:lobby-profile";
 /** 이름표 최대 글자 수(보이는 글자 단위). 백엔드 src/lobby/constants.ts NAME_MAX와 같아야 한다 */
@@ -58,8 +57,6 @@ export const MAX_SNAPSHOTS = 8;
 export const SNAPSHOT_RESTART_MS = 500;
 
 /** 물가 낚시: 찌를 던지고 입질이 오기까지 걸리는 시간(ms) 범위 */
-export const FISH_BITE_MIN_MS = 1500;
-export const FISH_BITE_MAX_MS = 5000;
 /** 입질(찌가 쑥 들어감) 뒤 이 시간 안에 Space를 눌러야 낚인다 */
 export const FISH_BITE_WINDOW_MS = 1500;
 /** 발에서 이 거리(px, 1.5타일) 안에 물이 있으면 낚시할 수 있다 */
@@ -80,11 +77,29 @@ export const FISH_LOOKS: Record<(typeof FISH_CATCHES)[number], { color: string; 
   메기: { color: "#6f6a55", size: 36 },
   피라냐: { color: "#e0645c", size: 28 },
   아로와나: { color: "#cfe0d4", size: 40 },
-  "황금 잉어": { color: "#f5c542", size: 34 },
+  황금인어: { color: "#f5c542", size: 38 },
   "낡은 장화": { color: "#7a5230", size: 28 },
 };
 /** 낚이는 것들 (남미 습지 테마). 똑같은 확률로 하나 */
-export const FISH_CATCHES = ["송사리", "붕어", "메기", "피라냐", "아로와나", "황금 잉어", "낡은 장화"] as const;
+export const FISH_CATCHES = ["송사리", "붕어", "메기", "피라냐", "아로와나", "낡은 장화", "황금인어"] as const;
+export const FISH_CHANCES = {
+  송사리: 42,
+  붕어: 25,
+  메기: 14,
+  피라냐: 9,
+  아로와나: 5,
+  "낡은 장화": 4.99,
+  황금인어: 0.01,
+} as const satisfies Record<(typeof FISH_CATCHES)[number], number>;
+export const FISH_MOTIONS = {
+  송사리: { period: 170, sway: 5, lift: 2, rotate: 0.18 },
+  붕어: { period: 240, sway: 3, lift: 5, rotate: 0.28 },
+  메기: { period: 330, sway: 7, lift: 2, rotate: 0.12 },
+  피라냐: { period: 95, sway: 4, lift: 7, rotate: 0.5 },
+  아로와나: { period: 420, sway: 8, lift: 4, rotate: 0.2 },
+  "낡은 장화": { period: 280, sway: 2, lift: 8, rotate: 0.65 },
+  황금인어: { period: 520, sway: 10, lift: 10, rotate: 0.16 },
+} as const satisfies Record<(typeof FISH_CATCHES)[number], { period: number; sway: number; lift: number; rotate: number }>;
 /** 낚은 것 그림 파일 이름 (public/assets/images/ui/lobby/fish-catches/<이름>.webp) */
 export const FISH_CATCH_SLUGS = {
   송사리: "minnow",
@@ -92,12 +107,10 @@ export const FISH_CATCH_SLUGS = {
   메기: "catfish",
   피라냐: "piranha",
   아로와나: "arowana",
-  "황금 잉어": "golden-carp",
+  황금인어: "golden-mermaid",
   "낡은 장화": "old-boot",
 } as const satisfies Record<(typeof FISH_CATCHES)[number], string>;
 
-/** 카피바라 포만감(0~100, 이 기기에만 저장). 먹이면 오르고 시간이 지나면 떨어진다 */
-export const SATIETY_STORAGE_KEY = "ggpli:lobby-satiety";
 export const SATIETY_MAX = 100;
 /** 포만감 1이 떨어지는 시간(ms). 가득 찬 배가 1시간이면 다 꺼진다 */
 export const SATIETY_DECAY_MS = 36_000;
@@ -108,7 +121,16 @@ export const FOOD_SATIETY: Record<(typeof FISH_CATCHES)[number], number> = {
   메기: 20,
   피라냐: 15,
   아로와나: 25,
-  "황금 잉어": 35,
+  황금인어: 35,
+  "낡은 장화": 0,
+};
+export const FOOD_AFFECTION: Record<(typeof FISH_CATCHES)[number], number> = {
+  송사리: 1,
+  붕어: 2,
+  메기: 3,
+  피라냐: 2,
+  아로와나: 4,
+  황금인어: 8,
   "낡은 장화": 0,
 };
 /** 먹는 동작 한 번(세 입 베어 물기)과 한 입 간격, 먹은 뒤 하트가 더 떠오르는 시간 */

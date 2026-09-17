@@ -3,13 +3,16 @@
 import { UserPen } from "lucide-react";
 import NextImage from "next/image";
 import { type FormEvent, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib";
 import { NAME_MAX } from "@/lib/lobby/constants";
 import { cleanName } from "@/lib/lobby/presence";
 
-import { PROFILE_BUTTON_SRC } from "./constants";
+import { LOBBY_SIDE_PANEL, PROFILE_BUTTON_SRC } from "./constants";
+import { useLobbyMenuPanel } from "./lobby-menu";
+import { trapDialogFocus } from "./shortcut";
 
 interface ProfileNameProps {
   /** 지금 머리 위 이름표 (첫 동기화 전엔 빈 문자열) */
@@ -19,7 +22,7 @@ interface ProfileNameProps {
 
 /** 오른쪽 세로 줄의 이름 바꾸기 버튼. 누르면 그 자리에서 커지며 이름 입력 창이 열린다 (낚시 가방과 같은 방식) */
 export function ProfileName({ name, onRename }: ProfileNameProps) {
-  const [open, setOpen] = useState(false);
+  const { open, panelHost, setOpen } = useLobbyMenuPanel("profile");
   const [error, setError] = useState("");
   const openButtonRef = useRef<HTMLButtonElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -56,8 +59,7 @@ export function ProfileName({ name, onRename }: ProfileNameProps) {
   };
 
   return (
-    // z-[4]: 열린 창이 효과음 버튼 위, 낚시 가방 창(z-[5]) 아래에 그려지게
-    <div className="relative z-[4] flex justify-end">
+    <div className="relative flex justify-end">
       <button
         ref={openButtonRef}
         type="button"
@@ -81,26 +83,24 @@ export function ProfileName({ name, onRename }: ProfileNameProps) {
         </span>
       </button>
 
-      <section
-        role="dialog"
+      {open && panelHost && createPortal(<section
+        role="region"
         aria-label="이름 바꾸기"
         inert={!open}
+        onKeyDown={(event) => {
+          if (event.key === "Escape") {
+            event.stopPropagation();
+            close();
+            return;
+          }
+          trapDialogFocus(event, event.currentTarget);
+        }}
         className={cn(
-          "absolute right-0 top-0 flex w-[min(18rem,calc(100vw-2rem))] origin-top-right flex-col gap-3 rounded-2xl bg-card/95 p-4 shadow-lg backdrop-blur transition-[transform,opacity] duration-300 ease-out motion-reduce:transition-none",
-          open ? "scale-100 opacity-100" : "pointer-events-none scale-[0.15] opacity-0",
+          LOBBY_SIDE_PANEL,
+          "flex w-full flex-col gap-3 border-t border-border-default pt-4",
         )}
       >
-        <div className="flex items-center justify-between">
-          <h2 className="text-title-3 font-bold text-text-strong">이름 바꾸기</h2>
-          <button
-            type="button"
-            onClick={close}
-            aria-label="닫기"
-            className="flex size-10 items-center justify-center rounded-full text-title-3 text-text-caption hover:bg-muted focus-visible:outline-2 focus-visible:outline-primary"
-          >
-            ×
-          </button>
-        </div>
+        <h2 className="text-title-3 font-bold text-text-strong">이름 바꾸기</h2>
         <form onSubmit={submit} noValidate className="flex flex-col gap-2">
           <label htmlFor="lobby-profile-name" className="text-caption-1 text-text-caption">
             머리 위에 보일 이름 ({NAME_MAX}글자까지)
@@ -126,7 +126,7 @@ export function ProfileName({ name, onRename }: ProfileNameProps) {
             저장
           </Button>
         </form>
-      </section>
+      </section>, panelHost)}
     </div>
   );
 }

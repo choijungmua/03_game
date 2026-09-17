@@ -1,50 +1,98 @@
-import { FISH_CATCH_SLUGS, FISH_CATCHES, FISH_INVENTORY_STORAGE_KEY } from "./constants";
+import { ApiError, fetchApi, SERVER_ERROR_MESSAGE } from "@/lib/api-url";
+import { FISH_CATCH_SLUGS, FISH_CATCHES } from "./constants";
+import type { Satiety } from "./feeding";
+import { type Outfit, sanitizeOutfit } from "./wardrobe";
 
 export type FishCatch = (typeof FISH_CATCHES)[number];
-/** 낚은 것별 횟수. 한 번도 안 낚은 건 비어 있다. 이 기기(localStorage)에만 저장한다 */
 export type FishInventory = Partial<Record<FishCatch, number>>;
+export type FishingCommand = "start" | "stop" | "sync" | "consume" | "outfit";
+export type FeedStatus = "fed" | "full" | "inedible" | "none" | null;
+export type FishingState = {
+  readonly active: boolean;
+  readonly nextCatchAt: string | null;
+  readonly inventory: FishInventory;
+  readonly lastCatch: FishCatch | null;
+  readonly caughtCount: number;
+  readonly consumed: boolean;
+  readonly feedStatus: FeedStatus;
+  readonly satiety: Satiety;
+  readonly affection: number;
+  readonly satietyGain: number;
+  readonly affectionGain: number;
+  readonly outfit: Outfit;
+};
 
-/** 낚은 것의 펠트 그림 경로 */
-export const fishCatchSrc = (name: FishCatch) => `/assets/images/ui/lobby/fish-catches/${FISH_CATCH_SLUGS[name]}.webp`;
+export const fishCatchSrc = (name: FishCatch) =>
+  `/assets/images/ui/lobby/fish-catches/${FISH_CATCH_SLUGS[name]}.${name === "황금인어" ? "png" : "webp"}`;
 
-/** 저장된 글 → 낚시 가방. 모르는 이름·0 이하·소수는 버린다 */
-export function parseFishInventory(raw: string | null): FishInventory {
-  const inventory: FishInventory = {};
-  try {
-    const parsed: Partial<Record<string, number>> | null = JSON.parse(raw ?? "null");
-    if (typeof parsed !== "object" || parsed === null) return inventory;
-    for (const name of FISH_CATCHES) {
-      const count = parsed[name];
-      if (typeof count === "number" && Number.isInteger(count) && count > 0) inventory[name] = count;
-    }
-  } catch {}
-  return inventory;
-}
-
-export function loadFishInventory(): FishInventory {
-  try {
-    return parseFishInventory(localStorage.getItem(FISH_INVENTORY_STORAGE_KEY));
-  } catch {
-    return {};
+export async function syncFishing(profileId: string, token: string, command: FishingCommand, name?: FishCatch, outfit?: Outfit): Promise<FishingState> {
+  const response = await fetchApi("/api/lobby/fishing", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ profileId, token, command, ...(name && { catch: name }), ...(outfit && { outfit }) }),
+  });
+  if (!response.ok) throw new ApiError(SERVER_ERROR_MESSAGE, response.status || null);
+  const state: unknown = await response.json().catch(() => {
+    throw new ApiError(SERVER_ERROR_MESSAGE, response.status || null);
+  });
+  if (typeof state !== "object" || state === null) throw new Error("낚시 서버 응답이 올바르지 않아요");
+  const active = Reflect.get(state, "active");
+  const nextCatchAt = Reflect.get(state, "nextCatchAt");
+  const inventory = Reflect.get(state, "inventory");
+  const lastCatch = Reflect.get(state, "lastCatch");
+  const caughtCount = Reflect.get(state, "caughtCount");
+  const consumed = Reflect.get(state, "consumed");
+  const feedStatus = Reflect.get(state, "feedStatus");
+  const satiety = Reflect.get(state, "satiety");
+  const affection = Reflect.get(state, "affection");
+  const satietyGain = Reflect.get(state, "satietyGain");
+  const affectionGain = Reflect.get(state, "affectionGain");
+  const savedOutfit = Reflect.get(state, "outfit");
+  const feedStatuses: readonly Exclude<FeedStatus, null>[] = ["fed", "full", "inedible", "none"];
+  const parsedFeedStatus = feedStatus === null ? null : feedStatuses.find((value) => value === feedStatus);
+  if (
+    typeof active !== "boolean" ||
+    (nextCatchAt !== null && typeof nextCatchAt !== "string") ||
+    typeof inventory !== "object" ||
+    inventory === null ||
+    typeof caughtCount !== "number" ||
+    typeof consumed !== "boolean" ||
+    (feedStatus !== null && !parsedFeedStatus) ||
+    typeof satiety !== "number" ||
+    !Number.isFinite(satiety) ||
+    satiety < 0 ||
+    satiety > 100 ||
+    typeof affection !== "number" ||
+    !Number.isFinite(affection) ||
+    affection < 0 ||
+    affection > 100 ||
+    typeof satietyGain !== "number" ||
+    typeof affectionGain !== "number"
+  ) {
+    throw new Error("낚시 서버 응답이 올바르지 않아요");
   }
+  const parsedInventory: FishInventory = {};
+  for (const catchName of FISH_CATCHES) {
+    const count = Reflect.get(inventory, catchName);
+    if (typeof count === "number" && Number.isInteger(count) && count > 0) parsedInventory[catchName] = count;
+  }
+  return {
+    active,
+    nextCatchAt,
+    inventory: parsedInventory,
+    lastCatch: FISH_CATCHES.find((value) => value === lastCatch) ?? null,
+    caughtCount,
+    consumed,
+    feedStatus: parsedFeedStatus ?? null,
+    satiety: { value: satiety, at: Date.now() },
+    affection,
+    satietyGain,
+    affectionGain,
+    outfit: sanitizeOutfit(savedOutfit),
+  };
 }
 
-/** 한 번 더 낚은 것으로 저장하고 새 가방을 돌려준다 */
-export function recordCatch(name: FishCatch, delta = 1): FishInventory {
-  const next = loadFishInventory();
-  const count = (next[name] ?? 0) + delta;
-  if (count > 0) next[name] = count;
-  else delete next[name];
-  try {
-    localStorage.setItem(FISH_INVENTORY_STORAGE_KEY, JSON.stringify(next));
-  } catch {}
-  return next;
-}
-
-/** 던지기(찌가 떨어질 물 위치) → 입질 → 당기기(낚은 것, 놓쳤으면 null) */
 export type FishEvent = { kind: "cast"; x: number; y: number } | { kind: "bite" } | { kind: "reel"; catch: FishCatch | null };
-
-/** 화면에 그리는 낚싯줄 하나. 시각은 performance.now 기준이고, 아직 안 일어난 단계는 Infinity */
 export interface FishingLine {
   x: number;
   y: number;
@@ -54,9 +102,6 @@ export interface FishingLine {
   catch: FishCatch | null;
 }
 
-// ponytail: 낚시 동작을 채팅 글로 실어 보낸다 (백엔드 필드 추가 없이 이모티콘 [[emote:번호]]와 같은 방식).
-// 서버 채팅 쿨타임에 걸리면 사이 동작이 빠질 수 있다 — 더 촘촘히 맞춰야 하면 PresenceRequest에 fishing 필드를 둘 것
-/** seq는 같은 동작이 5초 안에 또 와도 새 채팅으로 알아보게 붙인다 */
 export function fishChat(seq: number, event: FishEvent) {
   const arg = event.kind === "cast" ? `${Math.round(event.x)}:${Math.round(event.y)}` : event.kind === "reel" ? (event.catch ?? "") : "";
   return `[[fish:${seq % 1000}:${event.kind}:${arg}]]`;
@@ -64,7 +109,6 @@ export function fishChat(seq: number, event: FishEvent) {
 
 const FISH_CHAT = /^\[\[fish:\d{1,3}:(cast|bite|reel):([^\]]*)\]\]$/;
 
-/** 받은 채팅이 낚시 동작이면 그 동작, 아니면 null. 남이 보낸 글이라 모르는 물고기·이상한 좌표는 버린다 */
 export function parseFishChat(text: string): FishEvent | null {
   const match = FISH_CHAT.exec(text);
   if (!match) return null;
@@ -80,7 +124,6 @@ export function parseFishChat(text: string): FishEvent | null {
   return { kind: "cast", x, y };
 }
 
-/** 받은 낚시 동작을 at 시각에 일어난 것으로 반영한다. 던지기를 못 보고 들어온 입질·당기기는 그릴 찌가 없어 버린다 */
 export function applyFishEvent(line: FishingLine | null, event: FishEvent, at: number): FishingLine | null {
   if (event.kind === "cast") return { x: event.x, y: event.y, castAt: at, biteAt: Infinity, reelAt: Infinity, catch: null };
   if (!line) return null;

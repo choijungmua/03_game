@@ -4,7 +4,6 @@ import type { SoundLayer } from "@/lib/lobby/settings";
 export const GAME_TITLES = {
   "reaction-time": "반응속도 테스트",
   "click-speed": "클릭 스피드 테스트",
-  "capybara-sneak": "몰래 먹기",
   "capybara-plane-shooter": "비행기 슈팅",
   "capybara-baduk": "바둑",
   "capybara-gomoku": "오목",

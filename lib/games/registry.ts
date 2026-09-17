@@ -25,16 +25,6 @@ export const GAMES: GameEntry[] = [
     seo: () => import("@/app/games/_games/click-speed/seo"),
   },
   {
-    slug: "capybara-sneak",
-    title: GAME_TITLES["capybara-sneak"],
-    description: "주인이 등을 돌린 사이에 화면을 꾹 눌러 수박을 다 먹어야 하는 카피바라 타이밍 게임",
-    tier: "A",
-    playDifficulty: "쉬움",
-    pageName: "sneak",
-    component: dynamic(() => import("@/app/games/_games/capybara-sneak")),
-    seo: () => import("@/app/games/_games/capybara-sneak/seo"),
-  },
-  {
     slug: "capybara-plane-shooter",
     title: GAME_TITLES["capybara-plane-shooter"],
     description: "카피바라 조종사가 풀잎탄을 쏘며 하피독수리·말벌·재규어를 격추하고, 간식 아이템으로 무기를 바꾸며 카이만 보스를 버티는 세로 슈팅 게임",
