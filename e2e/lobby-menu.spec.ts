@@ -1,9 +1,8 @@
 import { expect, test } from "./support";
 
-test("내 카피바라 메뉴가 화면 크기에 맞춰 열린다", async ({ page }, testInfo) => {
+test("내 카피바라 메뉴가 화면 크기에 맞춰 열린다", async ({ page }) => {
   await page.goto("/");
   const trigger = page.getByRole("button", { name: "내 카피바라 메뉴", exact: true });
-  await page.screenshot({ path: `artifacts/lobby-menu-${testInfo.project.name}-closed.png`, fullPage: true });
   await expect(trigger).toBeVisible();
 
   await trigger.click();
@@ -14,7 +13,6 @@ test("내 카피바라 메뉴가 화면 크기에 맞춰 열린다", async ({ pa
   await expect(menu.getByText("가방", { exact: true })).toBeVisible();
   await expect(menu.getByText("소리", { exact: true })).toBeVisible();
   await expect(menu.getByText("이름", { exact: true })).toBeVisible();
-  await page.screenshot({ path: `artifacts/lobby-menu-${testInfo.project.name}-open.png`, fullPage: true });
 
   await page.keyboard.press("Escape");
   await expect(trigger).toHaveAttribute("aria-expanded", "false");

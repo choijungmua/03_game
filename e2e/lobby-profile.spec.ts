@@ -31,12 +31,18 @@ function fakeLobby(received: PresenceRequest[]) {
 const nameButton = (page: import("@playwright/test").Page, name: string) =>
   page.getByRole("button", { name: `이름 바꾸기 (지금 이름: ${name})` });
 
+/** 이름 버튼은 오른쪽 위 "내 카피바라" 메뉴 안에 있다 */
+async function openNameEditor(page: import("@playwright/test").Page, name: string) {
+  await page.getByRole("button", { name: "내 카피바라 메뉴", exact: true }).click();
+  await nameButton(page, name).click();
+}
+
 test("이름을 바꾸면 서버에 프로필 id와 함께 보내고, 새로고침해도 유지된다", async ({ page }) => {
   const received: PresenceRequest[] = [];
   await page.routeWebSocket(/\/api\/lobby\/ws/, fakeLobby(received));
   await page.goto("/");
 
-  await nameButton(page, RANDOM_NAME).click();
+  await openNameEditor(page, RANDOM_NAME);
   const input = page.getByLabel(/머리 위에 보일 이름/);
   await expect(input).toHaveValue(RANDOM_NAME);
   await input.fill("  보리바라  ");
@@ -48,6 +54,7 @@ test("이름을 바꾸면 서버에 프로필 id와 함께 보내고, 새로고�
   expect(last?.profileId).toMatch(/^[0-9a-f-]{36}$/);
 
   await page.reload();
+  await page.getByRole("button", { name: "내 카피바라 메뉴", exact: true }).click();
   await expect(nameButton(page, "보리바라")).toBeVisible();
   // 같은 기기면 새로고침해도 같은 프로필 id로 이력이 묶인다
   expect(received.at(-1)?.profileId).toBe(last?.profileId);
@@ -57,7 +64,7 @@ test("접속 중인 다른 사람 이름이면 알려 주고 이름표를 그대
   await page.routeWebSocket(/\/api\/lobby\/ws/, fakeLobby([]));
   await page.goto("/");
 
-  await nameButton(page, RANDOM_NAME).click();
+  await openNameEditor(page, RANDOM_NAME);
   await page.getByLabel(/머리 위에 보일 이름/).fill(TAKEN_NAME);
   await page.getByRole("button", { name: "저장" }).click();
 
@@ -69,10 +76,10 @@ test("빈 이름은 저장하지 않고 입력창 옆에 알려 준다", async (
   await page.routeWebSocket(/\/api\/lobby\/ws/, fakeLobby([]));
   await page.goto("/");
 
-  await nameButton(page, RANDOM_NAME).click();
+  await openNameEditor(page, RANDOM_NAME);
   await page.getByLabel(/머리 위에 보일 이름/).fill("  [] ");
   await page.getByRole("button", { name: "저장" }).click();
 
   await expect(page.getByText("이름을 한 글자 이상 적어 주세요")).toBeVisible();
-  await expect(page.getByRole("dialog", { name: "이름 바꾸기" })).toBeVisible();
+  await expect(page.getByRole("region", { name: "이름 바꾸기" })).toBeVisible();
 });
