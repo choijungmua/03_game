@@ -30,7 +30,7 @@
 
 ### 남은 할 일 (TODO)
 
-- [ ] **사과 따는 애니메이션**: 지금은 제자리에서 폴짝 뛰기만 한다(`app/_lobby/lobby.tsx` `pickFromTree`). 나무를 올려다보며 앞발을 뻗어 사과를 따는 카피바라 스프라이트(`capybara-pick-*`)와, 딴 사과가 가지에서 떨어져 머리 위로 들려 오는 동작을 만든다
+- [ ] **사과 따는 애니메이션**: 지금은 따는 1.2초 동안 제자리에서 폴짝폴짝 뛰기만 한다(`app/_lobby/lobby.tsx` `startPick`·`finishPick`). 나무를 올려다보며 앞발을 뻗어 사과를 따는 카피바라 스프라이트(`capybara-pick-*`)와, 딴 사과가 가지에서 떨어져 머리 위로 들려 오는 동작을 만든다
 - [ ] **가방 사과 아이콘**: `public/assets/images/ui/lobby/fish-catches/{apple,green-apple,rotten-apple}.webp` 세 장 (원본 `assets-src/ui/lobby/fish-catches/<이름>.png`, 다른 낚은 것 그림과 같은 펠트 질감). 넣으면 가방 칸·나무에 달린 사과·먹는 사과가 자동으로 이 그림을 쓴다 (지금은 가방 칸이 깨진 그림, 나무·먹이는 빨간 원)
 
 레퍼런스: [Trafalgar Square — Parks & Gardens](https://www.parksandgardens.org/places/trafalgar-square-westminster), [Fountains and terrace walls — British Listed Buildings](https://britishlistedbuildings.co.uk/101066235-fountains-and-terrace-walls-with-lampstandards-steps-and-stone-bollards-enclosing-the-square-st-jamess-ward), [Den Den Town — Japan Nakama](https://www.japannakama.co.uk/travel/osaka-guides/nipponbashi-den-den-town/), [Osaka Arcade Guide — Playable Japan](https://www.playablejapan.com/en/articles/osaka-arcades-2026-guide), [MapleStory Worlds 포털 만들기 가이드](https://maplestoryworlds-creators.nexon.com/en/docs?postId=90)
