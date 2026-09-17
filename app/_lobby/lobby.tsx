@@ -12,6 +12,7 @@ import { Apple, Armchair, Bath, Fish, HandFist, NotebookPen } from "lucide-react
 import { API_URL } from "@/lib/api-url";
 
 import { Loading } from "@/components/feedback/loading";
+import { ButtonFocusGuard } from "@/app/games/[slug]/button-focus-guard";
 
 import { flashButton, isShortcutKey } from "./shortcut";
 
@@ -47,6 +48,7 @@ import {
   APPLE_REACH,
   FISHABLE,
   FISH_LOOKS,
+  FISH_MOTIONS,
   FISH_REACH,
   FISH_REEL_MS,
   FISH_SHOW_MS,
@@ -91,11 +93,13 @@ import {
   BUBBLE_DEPTH,
   BUBBLE_LINE,
   BUBBLE_TEXT_WIDTH,
+  BATH_BUTTON_SRC,
   EMOTE_BAKE_SCALE,
   EMOTE_OUTLINE,
   EMOTE_SIZE,
   FISH_BUTTON_SRC,
   FRAME_SRC,
+  GUESTBOOK_BUTTON_SRC,
   SITE_LINKS,
   SLEEP_AFTER_MS,
   SLEEP_FRAME_MS,
@@ -104,7 +108,9 @@ import { EmotePicker } from "./emote-picker";
 import { FishBag } from "./fish-bag";
 import { GuestbookPanel } from "./guestbook-panel";
 import { KeyboardGuide } from "./keyboard-guide";
-import { SoundToggle } from "./lobby-settings";
+import { LobbyMenu } from "./lobby-menu";
+import { SoundSettings } from "./lobby-settings";
+import { drawOutfit } from "./outfit-canvas";
 import { ProfileName } from "./profile-name";
 import {
   ATTACK_COOLDOWN_MS,
@@ -123,13 +129,14 @@ import {
   dressSprite,
   loadOutfit,
   type Outfit,
-  type OutfitPiece,
   outfitImageSrcs,
+  saveOutfit,
   spriteName,
   WARDROBE_SLOTS,
 } from "@/lib/lobby/wardrobe";
 import { SPRITE_FIT } from "@/lib/lobby/wardrobe-fit";
 import {
+  BATH_OFFSET_Y,
   BATH_RX,
   BATH_RY,
   type Building,
@@ -144,7 +151,6 @@ import {
   FACING_VECTORS,
   FACINGS,
   hash2,
-  isBlockingTile,
   LOBBY_SEED,
   nearestWater,
   SPRING_RX,
@@ -344,10 +350,18 @@ const mod = (value: number, size: number) => ((value % size) + size) % size;
 
 /** 발밑 접지 그림자. 캐릭터·오두막·나무·소품 모두 같은 색으로 깔아야 투명 배경 그림이 바닥에 떠 보이지 않는다 */
 function drawGroundShadow(ctx: CanvasRenderingContext2D, x: number, y: number, radiusX: number, radiusY = radiusX / 3) {
-  ctx.fillStyle = "rgba(30,40,10,0.25)";
+  const offsetX = Math.min(5, radiusX * 0.14);
+  const offsetY = Math.min(6, radiusY * 0.55);
+  ctx.save();
+  ctx.fillStyle = "rgba(30,40,10,0.12)";
   ctx.beginPath();
-  ctx.ellipse(x, y, radiusX, radiusY, 0, 0, Math.PI * 2);
+  ctx.ellipse(x + offsetX, y + offsetY, radiusX * 1.1, radiusY * 1.2, 0, 0, Math.PI * 2);
   ctx.fill();
+  ctx.fillStyle = "rgba(30,40,10,0.22)";
+  ctx.beginPath();
+  ctx.ellipse(x + offsetX * 0.55, y + offsetY * 0.45, radiusX * 0.82, radiusY * 0.74, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
 }
 
 /** 이미지를 가운데·바닥 기준으로 폭에 맞춰 그리고 그린 영역을 돌려준다 */
@@ -425,11 +439,27 @@ function drawChunk(
         gradient.addColorStop(0, `rgba(${rgb},${alpha})`);
         gradient.addColorStop(1, `rgba(${rgb},0)`);
         ctx.fillStyle = gradient;
-        ctx.fillRect(dx > 0 ? x + TILE - thick : x, dy > 0 ? y + TILE - thick : y, dx === 0 ? TILE : thick, dy === 0 ? TILE : thick);
+        const jitter = hash2(13, tx + dx, ty + dy) * 5 - 2.5;
+        ctx.beginPath();
+        if (dx !== 0) {
+          const inward = -dx * thick;
+          const edge = edgeX;
+          ctx.moveTo(edge, y);
+          ctx.bezierCurveTo(edge + inward * 0.48, y + TILE * 0.18 + jitter, edge + inward * 0.92, y + TILE * 0.34, edge + inward * 0.72, y + TILE * 0.52);
+          ctx.bezierCurveTo(edge + inward * 0.48, y + TILE * 0.72, edge + inward * 0.92, y + TILE * 0.86 + jitter, edge, y + TILE);
+        } else {
+          const inward = -dy * thick;
+          const edge = edgeY;
+          ctx.moveTo(x, edge);
+          ctx.bezierCurveTo(x + TILE * 0.18 + jitter, edge + inward * 0.48, x + TILE * 0.34, edge + inward * 0.92, x + TILE * 0.52, edge + inward * 0.72);
+          ctx.bezierCurveTo(x + TILE * 0.72, edge + inward * 0.48, x + TILE * 0.86 + jitter, edge + inward * 0.92, x + TILE, edge);
+        }
+        ctx.closePath();
+        ctx.fill();
       };
-      if (kind === "deck") softBand(10, "110,63,34", 0.5); // 데크 가장자리 그늘
-      else if (kind === "water") softBand(14, "138,86,52", 0.55); // 물가 진흙 둑
-      else if (kind === "mud" && other === "meadow") softBand(12, "70,110,30", 0.3);
+      if (kind === "deck") softBand(16, "110,63,34", 0.42); // 데크 가장자리 그늘
+      else if (kind === "water") softBand(18, "138,86,52", 0.42); // 물가 진흙 둑
+      else if (kind === "mud" && other === "meadow") softBand(14, "70,110,30", 0.24);
     }
   });
   return canvas;
@@ -689,56 +719,6 @@ interface OutfitDrawer {
   dressed: (base: HTMLImageElement, outfit: Outfit, size: number) => HTMLCanvasElement | null;
 }
 
-/**
- * 스프라이트만 그린 캔버스(left, top, 정사각형 size) 위에 옷을 전부 입힌다.
- * 자리는 그 스프라이트(이미지 이름)에서 잰 머리·몸통·눈 기준점에 옷마다 맞춘 상자 (lib/lobby/wardrobe.ts dressSprite).
- * 한벌옷의 채운 그림(clip)은 source-atop으로 스프라이트 윤곽 안에만 그리므로, 다른 그림이 깔린 캔버스에서는 쓰면 안 된다
- */
-function drawOutfit(
-  ctx: CanvasRenderingContext2D,
-  base: HTMLImageElement,
-  outfit: Outfit,
-  left: number,
-  top: number,
-  size: number,
-  outfitImage: (src: string) => HTMLImageElement,
-) {
-  const { under, redraw, over } = dressSprite(spriteName(base.src), outfit);
-  const put = (piece: OutfitPiece) => {
-    const item = outfitImage(piece.src);
-    if (!ready(item)) return;
-    const x = left + (size * piece.left) / 100;
-    const y = top + (size * piece.top) / 100;
-    const width = (size * piece.width) / 100;
-    const height = (size * piece.height) / 100;
-    if (!piece.mirror) {
-      ctx.drawImage(item, x, y, width, height);
-      return;
-    }
-    ctx.save();
-    ctx.translate(x + width, 0);
-    ctx.scale(-1, 1);
-    ctx.drawImage(item, 0, y, width, height);
-    ctx.restore();
-  };
-  ctx.save();
-  ctx.globalCompositeOperation = "source-atop";
-  under.filter((piece) => piece.clip).forEach(put);
-  ctx.restore();
-  // 원래 옷 그림은 자르지 않아 후드·꼬리·소매가 몸 밖으로 나온다
-  under.filter((piece) => !piece.clip).forEach(put);
-  // 발·머리를 한 번 더 그려 한벌옷이 턱 밑으로 들어가고 발은 옷 밖으로 나와 보이게 한다 (옷장 미리보기와 같은 방식)
-  for (const [cx, cy, rx, ry] of redraw) {
-    ctx.save();
-    ctx.beginPath();
-    ctx.ellipse(left + (size * cx) / 100, top + (size * cy) / 100, (size * rx) / 100, (size * ry) / 100, 0, 0, Math.PI * 2);
-    ctx.clip();
-    ctx.drawImage(base, left, top, size, size);
-    ctx.restore();
-  }
-  over.forEach(put);
-}
-
 function drawCapybara(
   ctx: CanvasRenderingContext2D,
   sprites: Map<SpriteKey, HTMLImageElement>,
@@ -951,10 +931,12 @@ function drawBobber(ctx: CanvasRenderingContext2D, x: number, y: number) {
 
 /** 낚은 것 펠트 그림 (가방 창과 같은 그림). 처음 그릴 때 한 번만 불러온다 */
 const catchImages = new Map<FishCatch, HTMLImageElement>();
+/** 그림이 아직 없는 것(사과 3종)은 요청하지 않고 undefined — drawCatch가 도형으로 그린다 */
 const catchImage = (name: FishCatch) => {
   let image = catchImages.get(name);
-  if (!image) {
-    image = loadImage(fishCatchSrc(name));
+  const src = fishCatchSrc(name);
+  if (!image && src) {
+    image = loadImage(src);
     catchImages.set(name, image);
   }
   return image;
@@ -1153,8 +1135,11 @@ function drawFishingRod(
       fy = lerp(line.y, holdY, u) - Math.sin(u * Math.PI) * 60;
       angle += u * Math.PI * 2;
     } else if (motion) {
-      fx += Math.sin(now / 250) * 3;
-      angle += Math.sin(now / 300) * 0.25;
+      // 종류마다 흔들리는 모양이 달라 무엇을 낚았는지 한눈에 보인다
+      const itemMotion = FISH_MOTIONS[name];
+      fx += Math.sin(now / itemMotion.period) * itemMotion.sway;
+      fy -= Math.abs(Math.sin(now / (itemMotion.period * 0.8))) * itemMotion.lift;
+      angle += Math.sin(now / (itemMotion.period * 1.2)) * itemMotion.rotate;
     }
     endX = fx + Math.cos(angle) * half * 0.8;
     endY = fy + Math.sin(angle) * half * 0.8;
@@ -1164,8 +1149,10 @@ function drawFishingRod(
       if (reel < 1) return;
       const sparkle = (now - line.reelAt - FISH_REEL_MS) / 600;
       if (motion && sparkle < 1) {
-        for (let i = 0; i < 4; i++) {
-          const around = (i * Math.PI) / 2 + sparkle;
+        // 황금 잉어는 대박이라 반짝임을 더 많이 두른다
+        const sparkleCount = name === "황금 잉어" ? 10 : 4;
+        for (let i = 0; i < sparkleCount; i++) {
+          const around = (i * Math.PI * 2) / sparkleCount + sparkle;
           drawStar(ctx, fx + Math.cos(around) * (half + 8 + sparkle * 10), fy + Math.sin(around) * (half + 8 + sparkle * 10), 5 * (1 - sparkle));
         }
       }
@@ -1263,6 +1250,8 @@ export function Lobby({ games, listGames }: { games: DoorGame[]; listGames: Door
   const [fishInventory, setFishInventory] = useState<FishInventory>({});
   /** 카피바라 포만감. 가방에서 먹이를 누르면 feedRequest에 넣고, 게임 루프가 먹이며 새 값을 넣는다 */
   const [satiety, setSatiety] = useState<Satiety>({ value: 0, at: 0 });
+  /** 옷장 탭에 보일 입은 옷. 게임 루프는 outfitRef를 읽는다 */
+  const [outfit, setOutfit] = useState<Outfit>({});
   const feedRequest = useRef<FishCatch | null>(null);
   const [stunned, setStunned] = useState(false);
   const [notice, setNotice] = useState("");
@@ -1283,6 +1272,7 @@ export function Lobby({ games, listGames }: { games: DoorGame[]; listGames: Door
 
     const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     outfitRef.current = loadOutfit();
+    setOutfit(outfitRef.current);
     profileRef.current = loadLobbyProfile();
     // 캔버스는 쓰는 굵기의 폰트를 스스로 내려받지 않아서, 안 받아 둔 굵기는 대체 폰트로 그려진다
     for (const weight of [500, 600, 700]) document.fonts.load(`${weight} 13px ${CANVAS_FONT}`, "가A").catch(() => {});
@@ -1350,15 +1340,15 @@ export function Lobby({ games, listGames }: { games: DoorGame[]; listGames: Door
         const cached = dressedCache.get(key);
         if (cached) return cached;
         // 옷 이미지를 다 불러온 뒤에만 굽는다 (덜 불러온 채 구우면 빠진 옷이 그대로 굳는다)
-        const { under, over } = dressSprite(spriteName(base.src), outfit);
-        if (![...under, ...over].every((piece) => ready(outfitImage(piece.src)))) return null;
+        const { silhouette, under, over } = dressSprite(spriteName(base.src), outfit);
+        if (![...silhouette, ...under, ...over].every((piece) => ready(outfitImage(piece.src)))) return null;
         const canvas = document.createElement("canvas");
         canvas.width = px;
         canvas.height = px;
         const bake = canvas.getContext("2d");
         if (!bake) return null;
         bake.drawImage(base, 0, 0, px, px);
-        drawOutfit(bake, base, outfit, 0, 0, px, outfitImage);
+        drawOutfit({ ctx: bake, base, outfit, left: 0, top: 0, size: px, imageFor: outfitImage });
         // ponytail: 넘치면 통째로 비운다 (청크 캐시와 같은 방식). 사람이 많아 자주 비워지면 LRU로
         if (dressedCache.size > 300) dressedCache.clear();
         dressedCache.set(key, canvas);
@@ -1390,16 +1380,12 @@ export function Lobby({ games, listGames }: { games: DoorGame[]; listGames: Door
       const cy = Math.floor(ty / CHUNK);
       return chunkAt(cx, cy).tiles[(ty - cy * CHUNK) * CHUNK + (tx - cx * CHUNK)];
     };
-    const blocked = (x: number, y: number) => {
-      const left = Math.floor((x - HIT.halfWidth) / TILE);
-      const right = Math.floor((x + HIT.halfWidth) / TILE);
-      const top = Math.floor((y - HIT.up) / TILE);
-      const bottom = Math.floor((y + HIT.down) / TILE);
-      for (let ty = top; ty <= bottom; ty++) {
-        for (let tx = left; tx <= right; tx++) if (isBlockingTile(tileAt(tx, ty))) return true;
-      }
-      return false;
-    };
+    /** 몸 네 모서리 중 하나라도 막히면 못 간다. 온천 돌 테두리·오두막 앞은 타일보다 그림에 맞춘 타원으로 막는다 (world.blockedAt) */
+    const blocked = (x: number, y: number) =>
+      world.blockedAt(x - HIT.halfWidth, y - HIT.up) ||
+      world.blockedAt(x + HIT.halfWidth, y - HIT.up) ||
+      world.blockedAt(x - HIT.halfWidth, y + HIT.down) ||
+      world.blockedAt(x + HIT.halfWidth, y + HIT.down);
 
     /** 온천이 여러 개라 목욕·둘레 판정은 (x, y)에서 가장 가까운 온천 기준 */
     const springNear = (x: number, y: number) =>
@@ -1408,10 +1394,12 @@ export function Lobby({ games, listGames }: { games: DoorGame[]; listGames: Door
           ? spring
           : best,
       );
+    /** 그림 속 물 타원 가운데. 온천 그림은 원근으로 물이 가운데보다 아래에 있다 */
+    const bathCenter = (spring: { x: number; y: number }) => ({ x: spring.x, y: spring.y + BATH_OFFSET_Y * TILE });
     /** 발 위치가 온천 물 안(목욕 중)인지. 목욕 상태를 따로 보내지 않고 위치로 판단해서 남의 카피바라도 똑같이 그린다 */
     const inBath = (x: number, y: number) => {
-      const spring = springNear(x, y);
-      return ellipseDistance(x - spring.x, y - spring.y, BATH_RX + 0.3, BATH_RY + 0.3) <= 1;
+      const water = bathCenter(springNear(x, y));
+      return ellipseDistance(x - water.x, y - water.y, BATH_RX + 0.3, BATH_RY + 0.3) <= 1;
     };
     const nearSpring = () => {
       const spring = springNear(me.x, me.y);
@@ -1517,10 +1505,11 @@ export function Lobby({ games, listGames }: { games: DoorGame[]; listGames: Door
     /** 선 자리에서 온천 가운데 쪽으로 폴짝 뛰어들어 물 안쪽 가장자리에 담근다 */
     const enterBath = () => {
       const spring = springNear(me.x, me.y);
-      const angle = Math.atan2((me.y - spring.y) / BATH_RY, (me.x - spring.x) / BATH_RX);
+      const water = bathCenter(spring);
+      const angle = Math.atan2((me.y - water.y) / BATH_RY, (me.x - water.x) / BATH_RX);
       startHop();
-      me.x = spring.x + Math.cos(angle) * BATH_RX * TILE * 0.8;
-      me.y = spring.y + Math.sin(angle) * BATH_RY * TILE * 0.8;
+      me.x = water.x + Math.cos(angle) * BATH_RX * TILE * 0.8;
+      me.y = water.y + Math.sin(angle) * BATH_RY * TILE * 0.8;
       me.facing = "down";
       playSound("bathIn", settingsRef.current);
       showNotice("아~ 따끈따끈해요 · Space로 나오기");
@@ -1728,6 +1717,15 @@ export function Lobby({ games, listGames }: { games: DoorGame[]; listGames: Door
       stick.dy = 0;
       renderStick();
     };
+    /** 우클릭: 메뉴·버튼에 포커스를 뺏기지 않고 누른 곳으로 걸어간다 (버튼 위에서 눌러도) */
+    const onRightPointerDown = (event: PointerEvent) => {
+      if (event.pointerType !== "mouse" || event.button !== 2) return;
+      event.preventDefault();
+      if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+      pointer.active = true;
+      aimAt(event);
+    };
+    const preventContextMenu = (event: MouseEvent) => event.preventDefault();
     const onPointerMove = (event: PointerEvent) => {
       if (event.pointerId === stick.id) {
         stick.dx = event.clientX - stick.originX;
@@ -2124,9 +2122,9 @@ export function Lobby({ games, listGames }: { games: DoorGame[]; listGames: Door
         const step = Math.min(WALK_SPEED * speed * (dt / 1000), distance);
         // 목욕 중엔 물 안쪽 타원 밖으로 못 걸어 나가고(나오기는 Space), 뭍에선 막히는 타일에 막힌다
         const bathing = inBath(me.x, me.y);
-        const bathSpring = springNear(me.x, me.y);
+        const bathWater = bathCenter(springNear(me.x, me.y));
         const stuck = (x: number, y: number) =>
-          bathing ? ellipseDistance(x - bathSpring.x, y - bathSpring.y, BATH_RX, BATH_RY) > 1 : blocked(x, y);
+          bathing ? ellipseDistance(x - bathWater.x, y - bathWater.y, BATH_RX, BATH_RY) > 1 : blocked(x, y);
         // x·y를 따로 검사해서 벽에 비스듬히 부딪히면 벽을 따라 미끄러진다
         const nextX = me.x + (dx / length) * step;
         if (!stuck(nextX, me.y)) {
@@ -2340,7 +2338,7 @@ export function Lobby({ games, listGames }: { games: DoorGame[]; listGames: Door
         // 온천은 납작해서 뒤(북쪽) 둘레에 선 캐릭터 말고는 먼저 그린다. 목욕 중인 캐릭터는 물 위에 그려지고,
         // 가운데보다 아래를 기준으로 두면 옆에 선 캐릭터가 둘레 돌 그림에 가려진다
         drawables.push({
-          y: spring.y - SPRING_RY * TILE,
+          y: spring.layerY,
           draw: () => {
             sprite("onsen", spring.x, spring.y + ONSEN_BOTTOM * TILE);
             drawSteam(ctx, spring.x, spring.y, now, !reducedMotion);
@@ -2539,6 +2537,8 @@ export function Lobby({ games, listGames }: { games: DoorGame[]; listGames: Door
       window.addEventListener("resize", resize);
       window.addEventListener("keydown", onKeyDown);
       window.addEventListener("keyup", onKeyUp);
+      window.addEventListener("pointerdown", onRightPointerDown, true);
+      window.addEventListener("contextmenu", preventContextMenu);
       canvas.addEventListener("pointerdown", onPointerDown);
       window.addEventListener("pointermove", onPointerMove);
       window.addEventListener("pointerup", onPointerUp);
@@ -2565,6 +2565,8 @@ export function Lobby({ games, listGames }: { games: DoorGame[]; listGames: Door
       window.removeEventListener("resize", resize);
       window.removeEventListener("keydown", onKeyDown);
       window.removeEventListener("keyup", onKeyUp);
+      window.removeEventListener("pointerdown", onRightPointerDown, true);
+      window.removeEventListener("contextmenu", preventContextMenu);
       canvas.removeEventListener("pointerdown", onPointerDown);
       window.removeEventListener("pointermove", onPointerMove);
       window.removeEventListener("pointerup", onPointerUp);
@@ -2626,6 +2628,7 @@ export function Lobby({ games, listGames }: { games: DoorGame[]; listGames: Door
 
   return (
     <>
+      <ButtonFocusGuard />
       <canvas
         ref={canvasRef}
         role="img"
@@ -2681,24 +2684,33 @@ export function Lobby({ games, listGames }: { games: DoorGame[]; listGames: Door
         </details>
       )}
 
-      {/* 오른쪽 위 세로 줄: 카피바라 옷장 → 낚시 가방 → 효과음 → 이름 바꾸기. 설정 버튼은 나중에 이 줄에 다시 넣는다 */}
-      {/* 효과음 버튼의 헤드폰이 원 밖으로 삐져나오는 만큼 위(옷장)·오른쪽(화면 끝)을 띄운다. 두 버튼은 앉기·때리기와 같은 크기(모바일 size-14, md 이상 size-18) */}
-      <div className="absolute right-[max(1.25rem,env(safe-area-inset-right))] top-[max(0.75rem,env(safe-area-inset-top))] flex flex-col items-center gap-6">
-        <Wardrobe
-          onChange={(outfit) => {
-            outfitRef.current = outfit;
-          }}
-        />
-        <FishBag
-          inventory={fishInventory}
-          satiety={satiety}
-          onFeed={(name) => {
-            feedRequest.current = name;
-          }}
-        />
-        <SoundToggle settings={settings} onChange={updateSettings} />
-        <ProfileName name={myName} onRename={rename} />
-      </div>
+      {/* 오른쪽 위 "내 카피바라" 메뉴: 버튼 하나로 열고 옷장·가방·소리·이름 탭을 오간다 */}
+      <LobbyMenu
+        name={myName}
+        panels={{
+          wardrobe: (
+            <Wardrobe
+              outfit={outfit}
+              onChange={(nextOutfit) => {
+                setOutfit(nextOutfit);
+                outfitRef.current = nextOutfit;
+                saveOutfit(nextOutfit);
+              }}
+            />
+          ),
+          fish: (
+            <FishBag
+              inventory={fishInventory}
+              satiety={satiety}
+              onFeed={(name) => {
+                feedRequest.current = name;
+              }}
+            />
+          ),
+          sound: <SoundSettings settings={settings} onChange={updateSettings} />,
+          profile: <ProfileName name={myName} onRename={rename} />,
+        }}
+      />
 
       {/* 왼쪽 아래 미니맵: 보기 전용이라 터치는 아래 로비 캔버스(조이스틱)로 지나간다 */}
       <canvas
@@ -2779,18 +2791,23 @@ export function Lobby({ games, listGames }: { games: DoorGame[]; listGames: Door
               aria-keyshortcuts="Space"
               className="group flex flex-col items-center gap-0.5 rounded-full focus-visible:outline-2 focus-visible:outline-primary"
             >
-              {/* 나무 테(방명록·옷장과 같은 그림) 안 펠트 판 위에 욕조 아이콘. 누르면 그림과 아이콘이 같이 줄어든다 */}
+              {/* 나무 테·펠트 판까지 그려진 온천 버튼 그림. 마우스를 올리거나 포커스면 욕조 아이콘. 누르면 같이 줄어든다 */}
               <span className="relative block size-14 transition-transform md:size-18 duration-100 motion-safe:group-active:scale-90">
+                <NextImage
+                  src={BATH_BUTTON_SRC}
+                  alt=""
+                  width={256}
+                  height={256}
+                  unoptimized
+                  draggable={false}
+                  className={cn("size-full drop-shadow-md", bath === "in" && "brightness-90")}
+                />
                 <span
                   aria-hidden
-                  className={cn(
-                    "absolute inset-[16%] flex items-center justify-center rounded-full bg-capybara-light text-capybara-dark",
-                    bath === "in" && "brightness-90",
-                  )}
+                  className="absolute inset-[16%] flex items-center justify-center rounded-full bg-overlay text-white opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-visible:opacity-100 group-data-flash:opacity-100 motion-reduce:transition-none"
                 >
                   <Bath className="size-6 md:size-7" />
                 </span>
-                <NextImage src={FRAME_SRC} alt="" fill unoptimized sizes="72px" draggable={false} className="drop-shadow-md" />
               </span>
               <span className="rounded-full bg-card/85 px-2 py-0.5 text-caption-3 font-semibold text-text-strong">{bath === "in" ? "나오기" : "목욕"}</span>
             </button>
@@ -2807,12 +2824,23 @@ export function Lobby({ games, listGames }: { games: DoorGame[]; listGames: Door
               aria-keyshortcuts="Space"
               className="group flex flex-col items-center gap-0.5 rounded-full focus-visible:outline-2 focus-visible:outline-primary"
             >
-              {/* 나무 테(옷장·효과음과 같은 그림) 안 펠트 판 위에 공책 아이콘 */}
+              {/* 나무 테·펠트 판까지 그려진 방명록 버튼 그림. 마우스를 올리거나 포커스면 공책 아이콘 */}
               <span className="relative block size-14 transition-transform md:size-18 duration-100 motion-safe:group-active:scale-90">
-                <span aria-hidden className="absolute inset-[16%] flex items-center justify-center rounded-full bg-capybara-light text-capybara-dark">
+                <NextImage
+                  src={GUESTBOOK_BUTTON_SRC}
+                  alt=""
+                  width={256}
+                  height={256}
+                  unoptimized
+                  draggable={false}
+                  className="size-full drop-shadow-md"
+                />
+                <span
+                  aria-hidden
+                  className="absolute inset-[16%] flex items-center justify-center rounded-full bg-overlay text-white opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-visible:opacity-100 group-data-flash:opacity-100 motion-reduce:transition-none"
+                >
                   <NotebookPen className="size-6 md:size-7" />
                 </span>
-                <NextImage src={FRAME_SRC} alt="" fill unoptimized sizes="72px" draggable={false} className="drop-shadow-md" />
               </span>
               <span className="rounded-full bg-card/85 px-2 py-0.5 text-caption-3 font-semibold text-text-strong">방명록</span>
             </button>

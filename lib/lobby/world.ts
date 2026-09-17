@@ -64,9 +64,13 @@ export const BUILDING_VARIANTS = BUILDING_ASSETS.length;
 /** 온천(돌 테두리까지) 가로·세로 반지름(타일). 그림이 원근으로 납작한 타원이라 막는 영역도 타원이다 */
 export const SPRING_RX = 4.6;
 export const SPRING_RY = 3.6;
+export const SPRING_COLLIDER_RY = 2.85;
+export const SPRING_COLLIDER_OFFSET_Y = 1.05;
 /** 목욕 중 발이 다닐 수 있는 물 안쪽 반지름(타일). 그림의 물 타원(3.2 × 1.8)보다 조금 안쪽 */
 export const BATH_RX = 2.9;
-export const BATH_RY = 1.5;
+export const BATH_RY = 0.95;
+/** 그림 속 물 타원은 온천 가운데보다 아래에 있다 (목욕 자리 보정, 타일) */
+export const BATH_OFFSET_Y = 1.45;
 /** 온천 가운데(타일): 마을 한가운데 큰 온천 + 남서·남동 노천탕. 모두 같은 그림·같은 목욕 규칙 */
 const SPRING_SPOTS: readonly (readonly [number, number])[] = [
   [0, 0],
@@ -158,14 +162,15 @@ export interface World {
   props: Prop[];
   /** 마을 안 사과나무 밑동 가운데(px). 나무 타일 한 칸은 막히고, 가까이서 Space로 사과를 딴다 */
   appleTrees: { x: number; y: number }[];
-  /** 온천 가운데들(px): 마을 한가운데 큰 온천 + 노천탕 */
-  springs: { x: number; y: number }[];
+  /** 온천들(px): 마을 한가운데 큰 온천 + 노천탕. layerY는 앞뒤 가림을 정하는 그리기 기준 */
+  springs: { x: number; y: number; layerY: number }[];
   /** 방명록 게시판 바로 앞 월드 좌표(px). 여기 가까이서 Space를 누르면 방명록이 열린다 */
   guestbook: { x: number; y: number };
   /** 마을 안쪽 경계(타일): x ∈ [-halfWidth, halfWidth-1], y ∈ [top, bottom] */
   village: { halfWidth: number; top: number; bottom: number };
   spawn: { x: number; y: number };
   tileAt(tx: number, ty: number): Tile;
+  blockedAt(x: number, y: number): boolean;
   /**
    * 울타리 칸의 그림 자리: 둥근 울타리 곡선 위의 점(px)과 바깥쪽 법선. 막히는 칸은 타일 그대로지만
    * 그림은 곡선을 따라 세워서 계단처럼 각져 보이지 않는다. 울타리 칸이 아니면 null
@@ -260,7 +265,7 @@ export function createWorld(seed: string, games: readonly DoorGame[]): World {
         ty < building.frontY / TILE,
     );
 
-  const springs = SPRING_SPOTS.map(([x, y]) => ({ x: x * TILE, y: y * TILE }));
+  const springs = SPRING_SPOTS.map(([x, y]) => ({ x: x * TILE, y: y * TILE, layerY: y * TILE }));
   /** 둘레길(가운데 줄에서 한 칸 안)·가로 데크(둘레길 옆부터 동·서문까지)·남문 데크 */
   const onLoop = (cx: number, cy: number) => Math.abs(roundedRectDistance(cx, cy, LOOP_RX, LOOP_RY, LOOP_CORNER)) < 1;
   const onMainDeck = (tx: number, ty: number) => {
@@ -464,6 +469,23 @@ export function createWorld(seed: string, games: readonly DoorGame[]): World {
     return "grass";
   }
 
+  function blockedAt(x: number, y: number) {
+    if (springs.some((spring) => ellipseDistance(x - spring.x, y - spring.y - SPRING_COLLIDER_OFFSET_Y * TILE, SPRING_RX, SPRING_COLLIDER_RY) < 1)) {
+      return true;
+    }
+    if (
+      buildings.some((building) => {
+        const asset = BUILDING_ASSETS[building.variant];
+        const centerX = (building.tx + BUILDING_WIDTH / 2) * TILE;
+        return ellipseDistance(x - centerX, y - (building.frontY - TILE / 2), asset.width * 0.45, 0.5) < 1;
+      })
+    )
+      return true;
+
+    const tile = tileAt(Math.floor(x / TILE), Math.floor(y / TILE));
+    return tile === "building" || tile === "spring" ? false : isBlockingTile(tile);
+  }
+
   return {
     seed,
     doors,
@@ -476,6 +498,7 @@ export function createWorld(seed: string, games: readonly DoorGame[]): World {
     village: { halfWidth: W, top: TOP + 1, bottom: BOTTOM - 1 },
     spawn: { x: 0, y: LOOP_RY * TILE },
     tileAt,
+    blockedAt,
     fenceSpot,
   };
 }

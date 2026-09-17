@@ -9,3 +9,9 @@
 *.pem
 # 로컬 도구 폴더로 가는 심볼릭 링크 — 업로드되면 Vercel 빌드가 ENOENT로 실패
 /.codegraph
+# 로컬 에이전트·검증 산출물 — 앱 배포와 무관
+/.claude
+/.agents
+/.omo
+/.mcp.json
+/scripts/__pycache__

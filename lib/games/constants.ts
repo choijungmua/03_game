@@ -4,7 +4,6 @@ import type { SoundLayer } from "@/lib/lobby/settings";
 export const GAME_TITLES = {
   "reaction-time": "반응속도 테스트",
   "click-speed": "클릭 스피드 테스트",
-  "capybara-sneak": "몰래 먹기",
   "capybara-plane-shooter": "비행기 슈팅",
   "capybara-baduk": "바둑",
   "capybara-gomoku": "오목",
@@ -15,7 +14,13 @@ export const GAME_TITLES = {
 } as const;
 
 /** 로비 맵에 오두막 없이 왼쪽 위 "게임 목록"에서만 고르는 게임 (마을 테마와 안 맞음). 게임 페이지·검색 노출은 그대로 */
-export const LIST_ONLY_GAMES: readonly string[] = ["reaction-time", "click-speed", "capybara-baduk"];
+export const LIST_ONLY_GAMES: readonly string[] = [
+  "reaction-time",
+  "click-speed",
+  "capybara-baduk",
+  // 오두막 간판 아이콘(icon.webp)이 아직 없어 목록에만 둔다. 아이콘을 만들면 빼서 오두막으로
+  "capybara-pang",
+];
 
 /**
  * 게임 배경을 화면 끝까지 까는 층. 게임 화면은 보이는 영역(dvh)에 맞춰 버튼·HUD를 두지만,

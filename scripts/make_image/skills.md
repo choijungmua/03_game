@@ -61,7 +61,7 @@ assets-src/lobby/<분류>/<id>/source.png            # 생성 원본
 - `props/fence-vertical`(세로 울타리: 기둥 + 한 칸 아래로 이어지는 엮은 판), `props/fence-post`(모서리 기둥): Codex 사용 한도로 새로 못 그려서 `props/fence/source.png`의 왼쪽 기둥과 판 무늬를 잘라 붙여 만들었다. 제대로 생성하면 같은 캔버스 비율(기둥 가운데, 세로 판은 기둥 바닥 아래로 한 타일 ≈ 233px 더)로 교체
 - `nature/tree-tropical`, `nature/palm`, `props/fence`(갈대 울타리), `nature/lotus`, `nature/banana-bush`: 자연 시트 1장에서 자름. 붙어 있는 소품은 알파 연결 요소(flood fill)로 나눈다
 - `buildings/hut-{1,2,3}`: 게임 오두막 3종 (1 초가 원두막+나무 아케이드 간판, 2 카피바라 귀 풀 굴집+나무 휴대용 게임기 간판, 3 바나나잎 대나무 원두막+나무 TV 간판). 간판 화면은 이미지에서 비워 두고, 화면 위치(이미지 대비 비율)를 정의의 `screen`에 적는다 — 로비가 그 자리에 게임 아이콘을 그린다
-- 게임 아이콘: `public/assets/images/games/<slug>/icon.webp` (원본 `assets-src/games/<slug>/icon.png`) — 오두막 간판 화면에 켜지는, 그 게임을 알리는 소품 하나. 로비에서 게임을 알리는 표시는 이것 하나뿐이다. 작은 화면에 들어가므로 굵고 단순한 실루엣, 생성 배경은 마젠타(#FF00FF) 단색(검은 조약돌·어두운 나무가 배경 제거에 안 먹히게). 마을 테마에 맞게 나무·잎사귀·조약돌·코코넛 같은 자연 소재 + 펠트 질감 (반응속도=나무 스톱워치, 클릭=나무·이끼 마우스, 몰래 먹기=잎 접시 위 수박, 슈팅=나무·대나무 비행기, 바둑=코코넛 그릇 조약돌, 오목=통나무 판 조약돌, 알까기=통나무 판 위 튕기는 조약돌). 투명 배경, 가장자리까지 자른 뒤 384px 이하. 없으면 아이콘 없이 오두막만 보인다
+- 게임 아이콘: `public/assets/images/games/<slug>/icon.webp` (원본 `assets-src/games/<slug>/icon.png`) — 오두막 간판 화면에 켜지는, 그 게임을 알리는 소품 하나. 로비에서 게임을 알리는 표시는 이것 하나뿐이다. 작은 화면에 들어가므로 굵고 단순한 실루엣, 생성 배경은 마젠타(#FF00FF) 단색(검은 조약돌·어두운 나무가 배경 제거에 안 먹히게). 마을 테마에 맞게 나무·잎사귀·조약돌·코코넛 같은 자연 소재 + 펠트 질감 (반응속도=나무 스톱워치, 클릭=나무·이끼 마우스, 몰래 먹기=잎 접시 위 수박, 슈팅=나무·대나무 비행기, 바둑=코코넛 그릇 조약돌, 오목=통나무 판 조약돌, 알까기=통나무 판 위 튕기는 조약돌, 수박 게임=몰래 먹기 아이콘(잎 접시 위 수박)을 복사해 임시로 씀 — Codex 한도가 풀리면 전용 아이콘(예: 나무 상자에 쌓인 펠트 과일)으로 교체). 투명 배경, 가장자리까지 자른 뒤 384px 이하. 없으면 아이콘 없이 오두막만 보인다
 - 이전 포털 에셋은 `assets-src/lobby/_archive-portal/`에 보관 (사용 안 함)
 - `ground/{meadow,mud,water,deck}`: 192×192 바닥 텍스처 (2×2 시트 1장 → 칸마다 반 칸 밀어 가장자리 블렌딩, 데크는 판자 줄이라 그대로). 월드 192px(4타일)마다 반복. 지금 게임용 이미지는 사진 같던 원본(`source.png`)을 `python scripts/feltify_ground.py`로 펠트 톤으로 보정한 것이다 — 아래 재생성으로 펠트 바닥을 새로 만들면 스크립트는 지운다
 - `props/yuzu`: 목욕하는 카피바라 머리에 얹는 유자. `props/onsen/source.png` 속 유자 윗부분을 타원으로 잘랐다
@@ -129,7 +129,7 @@ python -m make_image "정사각형 한 장을 2×2 네 칸으로 똑같이 나�
 ## 옷장 방향별 옷 그림
 
 - 옷장 정면 그림: `public/assets/images/characters/capybara/wardrobe/<slot>/<id>.webp` (시트 3칸 → `scripts/split_wardrobe.py`)
-- 한벌옷은 두 겹으로 입힌다: `wardrobe_fit.py`가 그림 속 몸통 상자(후드·칼라 아래 `COLLAR`, 소매·꼬리를 깎은 몸통 폭, 품 여유 `LOOSE`)를 카피바라 턱~발바닥·몸통 폭에 맞춰 놓는다. ① 빈틈을 옷 색으로 채운 `<id>-<view>-fill.webp`를 스프라이트 윤곽 안에만 깔아(로비 `source-atop`, 옷장 미리보기 CSS mask) 몸이 비치지 않게 하고 ② 원래 그림을 자르지 않고 그 위에 그려 공룡 후드·꼬리, 유카타 소매처럼 몸 밖으로 나오는 부분을 살린다. 그 위에 머리(발 없는 옷은 발도)를 다시 그린다. 발까지 달린 옷은 `wardrobe.ts`에 `coversFeet`. 몸통 상자는 `python scripts/wardrobe_fit.py boxes`로 확인하고, 틀리면 `COLLAR`·`ART_BODY_X`·`LOOSE`를 고친다
+- 한벌옷은 채움층과 원본 실루엣을 함께 쓴다: `wardrobe_fit.py`가 그림의 빈틈을 옷 색으로 채운 `<id>-<view>-fill.webp`(정면 포함)를 만들고, 로비는 이를 스프라이트 윤곽 안에만 그린다(`source-atop`). 원본 그림을 다시 겹쳐 소매·후드·꼬리처럼 몸 밖으로 나온 부분을 살리고, 옷 윤곽 밖으로 삐져나온 몸은 지운다(`app/_lobby/outfit-canvas.ts`, 옷장 미리보기도 같은 캔버스). 공룡·상어·우비는 후드와 몸통을 분리 배치해 후드만 머리를 덮고(`lib/lobby/onepiece-rig.ts`), 앞·옆 얼굴은 후드 구멍 안에 다시 그린다 — 옆모습 구멍은 옆모습 옷 그림에서 잰 후드 안쪽 좌표(`sideOpening`)라 그림을 바꾸면 다시 잰다. 멜빵·유카타·딸기는 카피바라 머리를 다시 그린다
 - 로비 옷장 칸은 모자·안경·한벌옷 3개만 쓴다 (상의·하의·신발·장갑은 보류 — 그림은 남아 있고 `WARDROBE_SLOTS`·`wardrobe_views.py SLOTS`에 다시 넣으면 된다)
 - 칸마다 로비 맵 방향별 그림을 쓴다: `<id>-{back,side,front3q,back3q}.webp`. 옆·대각선은 오른쪽을 향한 그림(왼쪽은 코드가 반전). 안경은 뒤에서 안 보여 `side`·`front3q`만 있다
 - 안경 옆·앞대각선은 별 선글라스만 codex로 만들었고, 나머지는 codex 한도로 `python scripts/wardrobe_views.py synth glasses/<id>`(정면 그림에서 먼 렌즈 좁히기·옆 렌즈+안경다리 합성)로 만들었다. codex로 다시 만들면 `gen` → `split`이 덮어쓴다
