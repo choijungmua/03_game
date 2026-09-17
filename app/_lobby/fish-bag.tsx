@@ -39,28 +39,35 @@ export function FishBag({
 
   return (
     <section aria-label="낚시 가방" className="flex w-full flex-col gap-3">
-      <div className="grid gap-2 rounded-2xl bg-muted/60 p-3">
-        <div className="flex items-center gap-2">
-          <span className="w-12 shrink-0 text-caption-1 font-semibold text-text-strong">포만감</span>
-          <Progress value={fullness} aria-label="카피바라 포만감" className="h-2 flex-1" />
-          <span className="w-10 shrink-0 text-right text-caption-1 tabular-nums text-text-caption">{fullness}%</span>
+      {/* 위: 포만감·애정 한 줄 + 안내. 목록을 내려도 붙어 있어 먹이면서 바로 차오르는 걸 본다 */}
+      <div className="sticky top-0 z-[1] flex flex-col gap-2 rounded-2xl bg-muted px-3 py-2.5">
+        <div className="grid grid-cols-2 gap-3">
+          <div className="flex min-w-0 flex-col gap-1">
+            <span className="flex justify-between text-caption-2 font-semibold text-text-strong">
+              포만감
+              <span className="tabular-nums text-text-caption">{fullness}%</span>
+            </span>
+            <Progress value={fullness} aria-label="카피바라 포만감" className="h-1.5 bg-card" />
+          </div>
+          <div className="flex min-w-0 flex-col gap-1">
+            <span className="flex justify-between text-caption-2 font-semibold text-text-strong">
+              <span className="flex items-center gap-1">
+                <Heart aria-hidden className="size-3 fill-primary text-primary" />
+                애정
+              </span>
+              <span className="tabular-nums text-text-caption">{affection}%</span>
+            </span>
+            <Progress value={affection} aria-label="카피바라 애정도" className="h-1.5 bg-card" />
+          </div>
         </div>
-        <div className="flex items-center gap-2">
-          <span className="flex w-12 shrink-0 items-center gap-1 text-caption-1 font-semibold text-text-strong">
-            <Heart aria-hidden className="size-3.5 fill-primary text-primary" />
-            애정
-          </span>
-          <Progress value={affection} aria-label="카피바라 애정도" className="h-2 flex-1" />
-          <span className="w-10 shrink-0 text-right text-caption-1 tabular-nums text-text-caption">{affection}%</span>
-        </div>
+        <p className="text-caption-2 text-text-caption" aria-live="polite">
+          {full
+            ? "배가 불러 지금은 더 먹을 수 없어요"
+            : total > 0
+            ? `${FISH_CATCHES.length}종 중 ${kinds}종 · 눌러서 카피바라에게 먹여 보세요`
+            : "아직 낚은 게 없어요. 물가에서 Space로 낚시해 보세요"}
+        </p>
       </div>
-      <p className="text-caption-1 text-text-caption" aria-live="polite">
-        {full
-          ? "배가 불러 지금은 더 먹을 수 없어요"
-          : total > 0
-          ? `${FISH_CATCHES.length}종 중 ${kinds}종 · 눌러서 카피바라에게 먹여 보세요`
-          : "아직 낚은 게 없어요. 물가에서 Space로 낚시해 보세요"}
-      </p>
       <ul className="grid grid-cols-3 gap-2">
         {FISH_CATCHES.map((name) => {
           const count = inventory[name] ?? 0;
@@ -73,11 +80,13 @@ export function FishBag({
                 width={128}
                 height={128}
                 unoptimized
-                className={cn("size-14 object-contain drop-shadow-sm", count === 0 && "opacity-35 brightness-0")}
+                className={cn("size-11 object-contain drop-shadow-sm", count === 0 && "opacity-35 brightness-0")}
               />
               <span className="w-full truncate text-center text-caption-2 font-semibold text-text-strong">
                 {count > 0 ? (
-                  name
+                  <>
+                    {name} <span className="font-normal tabular-nums text-text-caption">×{count}</span>
+                  </>
                 ) : (
                   <>
                     <span aria-hidden>???</span>
@@ -85,9 +94,8 @@ export function FishBag({
                   </>
                 )}
               </span>
-              <span className="text-caption-3 tabular-nums text-text-caption">{count > 0 ? `×${count}` : " "}</span>
               {count > 0 && FOOD_SATIETY[name] > 0 && (
-                <span className="text-caption-3 tabular-nums text-text-caption">포만 +{FOOD_SATIETY[name]} · 애정 +{FOOD_AFFECTION[name]}</span>
+                <span className="text-center text-caption-3 tabular-nums text-text-caption">포만 +{FOOD_SATIETY[name]} · 애정 +{FOOD_AFFECTION[name]}</span>
               )}
             </>
           );

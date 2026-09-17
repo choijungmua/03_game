@@ -65,9 +65,10 @@ export function Wardrobe({ outfit, onChange }: { outfit: Outfit; onChange: (outf
 
   return (
     <section aria-label="카피바라 옷 입히기" className="flex w-full flex-col gap-3">
-      {/* 키 큰 모자가 머리 위로 삐져나오는 만큼 받침 위쪽을 넉넉히 둔다 */}
-      <div className="rounded-2xl bg-muted/60 pb-2 pt-5">
-        <div className="relative mx-auto aspect-square w-full max-w-32 md:max-w-40">
+      {/* 위: 작은 미리보기 + 지금 입은 옷 + 부위 칩. 목록을 내려도 붙어 있어 부위를 바로 바꾼다 */}
+      <div className="sticky top-0 z-[1] flex items-center gap-3 rounded-2xl bg-muted p-2 pr-3">
+        {/* 키 큰 모자가 머리 위로 조금 나와도 잘리지 않게 overflow는 그대로 둔다 */}
+        <div className="relative size-20 shrink-0 md:size-24">
           <NextImage src={CAPYBARA_SRC} alt="" fill unoptimized sizes="224px" />
           {/* 채움층은 몸과 움직이는 팔을 옷감으로 덮고, 원본층은 그 위에서 소매·후드·꼬리처럼 몸 밖으로 나온 옷 윤곽을 보존한다 */}
           <div
@@ -112,28 +113,29 @@ export function Wardrobe({ outfit, onChange }: { outfit: Outfit; onChange: (outf
           ))}
           {layers(over)}
         </div>
-      </div>
-      <p className="sr-only" aria-live="polite">
-        {WARDROBE_SLOTS.flatMap((s) => SLOT_INFO[s].items.filter((item) => item.id === outfit[s]).map((item) => item.label)).join(", ") ||
-          "아무것도 안 입음"}
-      </p>
-
-      <div className="flex flex-wrap gap-1.5">
-        {WARDROBE_SLOTS.map((s) => (
-          <button
-            key={s}
-            type="button"
-            onClick={() => setSlot(s)}
-            aria-pressed={slot === s}
-            className={cn(
-              "min-h-10 rounded-full px-3 text-caption-1 font-semibold focus-visible:outline-2 focus-visible:outline-primary",
-              slot === s ? "bg-primary text-primary-foreground" : "bg-muted text-text-caption",
-              outfit[s] && slot !== s && "text-text-strong",
-            )}
-          >
-            {SLOT_INFO[s].label}
-          </button>
-        ))}
+        <div className="flex min-w-0 flex-1 flex-col gap-2">
+          <p aria-live="polite" className="truncate text-caption-1 text-text-caption">
+            {WARDROBE_SLOTS.flatMap((s) => SLOT_INFO[s].items.filter((item) => item.id === outfit[s]).map((item) => item.label)).join(" · ") ||
+              "아무것도 안 입음"}
+          </p>
+          <div className="flex gap-1.5">
+            {WARDROBE_SLOTS.map((s) => (
+              <button
+                key={s}
+                type="button"
+                onClick={() => setSlot(s)}
+                aria-pressed={slot === s}
+                className={cn(
+                  "min-h-10 shrink-0 rounded-full px-3 text-caption-1 font-semibold focus-visible:outline-2 focus-visible:outline-primary",
+                  slot === s ? "bg-primary text-primary-foreground" : "bg-card text-text-caption",
+                  outfit[s] && slot !== s && "text-text-strong",
+                )}
+              >
+                {SLOT_INFO[s].label}
+              </button>
+            ))}
+          </div>
+        </div>
       </div>
 
       <div className="grid grid-cols-4 gap-2">
