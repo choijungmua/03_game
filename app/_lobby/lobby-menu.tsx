@@ -198,7 +198,7 @@ export function LobbyMenu({ name, panels }: LobbyMenuProps) {
                 tabIndex={selected ? 0 : -1}
                 onClick={() => setActive(tab.id)}
                 className={cn(
-                  "group relative flex min-h-[4.25rem] min-w-0 touch-manipulation flex-col items-center justify-center gap-1 rounded-xl text-caption-2 font-semibold transition-[color,scale] duration-150 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-primary motion-safe:active:scale-95 motion-reduce:transition-none",
+                  "group relative flex min-h-[4.25rem] min-w-0 touch-manipulation flex-col items-center justify-center gap-0.5 rounded-xl py-2 text-caption-2 font-semibold transition-[color,scale] duration-150 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-primary motion-safe:active:scale-95 motion-reduce:transition-none",
                   selected ? "text-capybara-light" : "text-text-caption hover:text-text-strong",
                 )}
               >
@@ -210,7 +210,8 @@ export function LobbyMenu({ name, panels }: LobbyMenuProps) {
                   unoptimized
                   draggable={false}
                   className={cn(
-                    "size-10 drop-shadow-sm transition-[scale,opacity,filter] duration-200 motion-reduce:transition-none",
+                    // 선택되면 110%로 커지므로, 위아래 여백(py-2) 안에서 커지게 9(36px)로 둔다 — 10이면 선택 테두리 밖으로 튀어나왔다
+                    "size-9 drop-shadow-sm transition-[scale,opacity,filter] duration-200 motion-reduce:transition-none",
                     selected ? "scale-110" : "opacity-70 group-hover:opacity-100",
                   )}
                 />

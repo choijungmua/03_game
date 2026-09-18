@@ -71,9 +71,24 @@ export const FRUITS: readonly FruitKind[] = [
 export const FRUIT_IMAGE_BASE = "/assets/images/games/watermelon-game/fruits";
 /** 과일 그림은 꼭지·잎이 공 밖으로 조금 나와 있어, 반지름보다 이 배율만큼 크게 그린다 */
 export const FRUIT_IMAGE_SCALE = 1.16;
-/** 합쳐져 사라지는 두 과일이 눈물을 뿌리며 좌우로 튀어 오르다 사라지는 시간과 튀는 속도(px/s) */
-export const CRY_MS = 320;
-export const CRY_SPEED = 130;
+/** 과일 표정 그림 (파일 이름 뒤에 붙는 말). 평소 / 깜짝(빨리 떨어지거나 착지·위험할 때) / 우는 얼굴(합쳐질 때) */
+export const FRUIT_FACES = ["", "-surprise", "-cry"] as const;
+export type FruitFace = (typeof FRUIT_FACES)[number];
+
+/**
+ * 합체 연출 (그림만, 물리는 그대로). 두 과일이 우는 얼굴로 한가운데로 모여들며 찌그러지고(GATHER),
+ * 펑 터져 즙·눈물·별이 튀면서(POP) 새 과일이 통통 튀어나온다(APPEAR). 새 과일은 모여드는 동안 안 그린다
+ */
+export const MERGE_GATHER_MS = 260;
+export const MERGE_POP_MS = 320;
+export const APPEAR_MS = 340;
+/** 이 속도(px/s)보다 빨리 떨어지던 과일이 갑자기 멈추면 착지 — 납작하게 찌그러졌다 돌아온다 */
+export const IMPACT_SPEED = 260;
+export const SQUASH_MS = 220;
+/** 이 속도보다 빨리 떨어지는 과일은 깜짝 놀란 얼굴 */
+export const SURPRISE_SPEED = 340;
+/** 이 시간 안에 또 합치면 콤보 ("2콤보!") */
+export const MERGE_COMBO_MS = 1400;
 
 export const WATERMELON_LEVEL = FRUITS.length - 1;
 

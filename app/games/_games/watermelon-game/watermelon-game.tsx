@@ -1,6 +1,7 @@
 "use client";
 
 import { ChevronDown } from "lucide-react";
+import NextImage from "next/image";
 import { useEffect, useEffectEvent, useRef, useState } from "react";
 
 import { GameControls } from "@/components/games/game-controls";
@@ -15,24 +16,31 @@ import { playGameSound, type SoundLayer } from "@/lib/lobby/settings";
 
 import {
   AIM_KEY_SPEED,
-  CRY_MS,
-  CRY_SPEED,
+  APPEAR_MS,
   DEADLINE_Y,
   DROP_COOLDOWN_MS,
   DROP_SOUND,
   DROP_Y,
+  FRUIT_FACES,
   FRUIT_IMAGE_BASE,
   FRUIT_IMAGE_SCALE,
+  type FruitFace,
   FRUITS,
   GAME_HEIGHT,
   GAME_WIDTH,
+  IMPACT_SPEED,
+  MERGE_COMBO_MS,
+  MERGE_GATHER_MS,
   MERGE_PITCH_STEP,
+  MERGE_POP_MS,
   MERGE_SOUND,
+  SQUASH_MS,
+  SURPRISE_SPEED,
   WARNING_SOUND_MS,
   WATERMELON_LEVEL,
 } from "./constants";
 import { WatermelonLeaderboard } from "./leaderboard";
-import { canDrop, clampAim, createState, drop, type GameEvent, type GameState, isWarning, step } from "./logic";
+import { canDrop, clampAim, createState, drop, type GameEvent, type GameState, isWarning, type Point, step } from "./logic";
 import { getRank, insertRecord, saveRecords, useWatermelonRecords } from "./records";
 import { getWatermelonTier } from "./tiers";
 
@@ -63,6 +71,8 @@ interface Hud {
 }
 
 interface Particle {
+  /** 즙 방울(동그라미) / 눈물(파란 물방울 모양) / 별(천천히 떠오르며 돈다) / 먼지(착지할 때 옆으로 퍼짐) */
+  shape: "dot" | "tear" | "star" | "dust";
   x: number;
   y: number;
   vx: number;
@@ -78,6 +88,8 @@ interface Popup {
   y: number;
   text: string;
   ageMs: number;
+  /** 콤보 글씨처럼 크게·색 있게 튀어나오는 것 */
+  big?: boolean;
 }
 
 interface Ring {
@@ -87,23 +99,51 @@ interface Ring {
   ageMs: number;
 }
 
-/** 합쳐져 사라지는 과일. 우는 얼굴로 눈물을 뿌리며 좌우로 튀어 오르다 작아진다 */
-interface Cry {
+/** 합쳐지는 두 과일(level). 우는 얼굴로 from 두 자리에서 (x, y)로 모여들며 찌그러졌다가 펑 터진다 */
+interface Merging {
+  level: number;
+  from: readonly Point[];
   x: number;
   y: number;
-  vx: number;
-  vy: number;
-  level: number;
   ageMs: number;
+  /** 터지는 순간 즙·눈물·별을 한 번만 뿌리려고 */
+  burst: boolean;
+  /** 합쳐져 생긴 과일 단계 (수박 둘이면 사라짐 = null) */
+  bornLevel: number | null;
 }
 
 interface Effects {
   particles: Particle[];
   popups: Popup[];
   rings: Ring[];
-  cries: Cry[];
+  merging: Merging[];
+  /** 합쳐져 새로 생긴 과일 id → 모여드는 연출이 끝날 때까지 남은 시간(그동안 안 그린다) */
+  hidden: Map<number, number>;
+  /** 과일 id → 나타난 뒤 지난 시간 (통통 튀어나오기) */
+  appear: Map<number, number>;
+  /** 과일 id → 착지해서 찌그러진 뒤 지난 시간 */
+  squash: Map<number, number>;
+  /** 과일 id → 지난 프레임 세로 속도 (착지 판별용) */
+  lastVy: Map<number, number>;
+  combo: { count: number; atMs: number };
   shakeMs: number;
   shakePower: number;
+}
+
+function createEffects(): Effects {
+  return {
+    particles: [],
+    popups: [],
+    rings: [],
+    merging: [],
+    hidden: new Map(),
+    appear: new Map(),
+    squash: new Map(),
+    lastVy: new Map(),
+    combo: { count: 0, atMs: -Infinity },
+    shakeMs: 0,
+    shakePower: 0,
+  };
 }
 
 interface Palette {
@@ -126,23 +166,33 @@ function mergeSound(level: number): SoundLayer[] {
   return MERGE_SOUND.map((layer) => ({ ...layer, from: layer.from * ratio, to: layer.to * ratio }));
 }
 
-/** 펠트 과일 그림. 처음 그릴 때 한 번만 불러오고, 아직 안 왔으면 undefined (그동안은 원·줄무늬로 그린다) */
+/** 펠트 과일 그림 (과일 단계 × 표정) */
 const fruitImages = new Map<string, HTMLImageElement>();
-function fruitImage(level: number, crying: boolean) {
-  const slug = crying ? `${FRUITS[level].slug}-cry` : FRUITS[level].slug;
+function fruitImage(level: number, face: FruitFace) {
+  const slug = `${FRUITS[level].slug}${face}`;
   let image = fruitImages.get(slug);
   if (!image) {
     image = new Image();
+    image.decoding = "async";
     image.src = `${FRUIT_IMAGE_BASE}/${slug}.webp`;
     fruitImages.set(slug, image);
   }
-  return image.complete && image.naturalWidth > 0 ? image : undefined;
+  return image;
+}
+const loaded = (image: HTMLImageElement) => image.complete && image.naturalWidth > 0;
+
+/**
+ * 과일 그림을 전부 미리 불러온다. 처음 나오는 과일(합쳐져 처음 생긴 단계)을 그때 불러오면
+ * 받는 몇 프레임 동안 캔버스 원으로 그렸다가 펠트 그림으로 바뀌어 번쩍였다
+ */
+function preloadFruitImages() {
+  FRUITS.forEach((_, level) => FRUIT_FACES.forEach((face) => fruitImage(level, face)));
 }
 
-/** 과일 그림: 펠트 그림 한 장. 그림을 아직 못 받았으면 원·줄무늬·광택·얼굴로 대신 그린다 */
-function drawFruit(ctx: CanvasRenderingContext2D, level: number, x: number, y: number, r: number, blink: boolean, crying = false) {
+/** 과일 그림: 펠트 그림 한 장(표정 그림이 아직 없으면 평소 얼굴). 그림을 아직 못 받았으면 원·줄무늬·광택·얼굴로 대신 그린다 */
+function drawFruit(ctx: CanvasRenderingContext2D, level: number, x: number, y: number, r: number, blink: boolean, face: FruitFace = "") {
   const fruit = FRUITS[level];
-  const image = fruitImage(level, crying) ?? (crying ? fruitImage(level, false) : undefined);
+  const image = [fruitImage(level, face), fruitImage(level, "")].find(loaded);
   if (image) {
     const side = r * 2 * FRUIT_IMAGE_SCALE;
     ctx.drawImage(image, x - side / 2, y - side / 2, side, side);
@@ -229,62 +279,169 @@ function drawFruit(ctx: CanvasRenderingContext2D, level: number, x: number, y: n
   ctx.restore();
 }
 
-function addMergeEffects(effects: Effects, event: GameEvent, reducedMotion: boolean) {
+const COMBO_COLORS = ["#fde047", "#fb923c", "#f472b6", "#a78bfa", "#38bdf8"];
+
+function addMergeEffects(effects: Effects, event: GameEvent, reducedMotion: boolean, nowMs: number) {
   if (event.kind === "drop") return;
   const level = event.kind === "merge" ? event.level : WATERMELON_LEVEL;
   const radius = FRUITS[level].radius;
   effects.popups.push({ x: event.x, y: event.y - radius * 0.3, text: `+${event.points}`, ageMs: 0 });
+  // 짧은 시간 안에 연달아 합치면 콤보 글씨가 커지며 튀어나온다
+  effects.combo = { count: nowMs - effects.combo.atMs <= MERGE_COMBO_MS ? effects.combo.count + 1 : 1, atMs: nowMs };
+  if (effects.combo.count >= 2) {
+    effects.popups.push({ x: event.x, y: event.y - radius - 26, text: `${effects.combo.count}콤보!`, ageMs: 0, big: true });
+  }
   if (reducedMotion) return;
-  // 합쳐져 사라지는 두 과일이 "우엥" 하고 눈물을 뿌리며 좌우로 튀어 오른다
-  const cryLevel = event.kind === "merge" ? event.level - 1 : WATERMELON_LEVEL;
-  for (const side of [-1, 1]) {
-    effects.cries.push({ x: event.x, y: event.y, vx: side * CRY_SPEED, vy: -CRY_SPEED * 0.8, level: cryLevel, ageMs: 0 });
+  // 두 과일이 우는 얼굴로 모여들었다가 펑 — 새 과일은 모여드는 동안 숨겨 뒀다가 터질 때 튀어나오게 한다
+  effects.merging.push({
+    level: event.kind === "merge" ? event.level - 1 : WATERMELON_LEVEL,
+    from: event.from,
+    x: event.x,
+    y: event.y,
+    ageMs: 0,
+    burst: false,
+    bornLevel: event.kind === "merge" ? event.level : null,
+  });
+  if (event.kind === "merge") effects.hidden.set(event.id, MERGE_GATHER_MS);
+}
+
+/** 펑: 과일 색 즙 방울, 좌우로 튀는 눈물, 떠오르는 별, 퍼지는 고리. 큰 과일·수박이면 화면도 흔들린다 */
+function burst(effects: Effects, merging: Merging) {
+  const vanish = merging.bornLevel === null;
+  const level = merging.bornLevel ?? WATERMELON_LEVEL;
+  const radius = FRUITS[level].radius;
+  const juice = FRUITS[merging.level].color;
+  const spray = (shape: Particle["shape"], count: number, speed: number, color: (i: number) => string, size: () => number, lifeMs: number) => {
+    for (let i = 0; i < count; i += 1) {
+      const angle = shape === "tear" ? (i % 2 ? 0 : Math.PI) + (Math.random() - 0.5) * 1.1 - 0.5 * (i % 2 ? 1 : -1) : Math.random() * Math.PI * 2;
+      const v = speed * (0.55 + Math.random() * 0.7);
+      effects.particles.push({
+        shape,
+        x: merging.x + Math.cos(angle) * radius * 0.4,
+        y: merging.y + Math.sin(angle) * radius * 0.4,
+        vx: Math.cos(angle) * v,
+        vy: Math.sin(angle) * v - (shape === "star" ? 120 : 80),
+        size: size(),
+        color: color(i),
+        lifeMs: lifeMs * (0.8 + Math.random() * 0.4),
+        ageMs: 0,
+      });
+    }
+  };
+  spray("dot", vanish ? 36 : 10 + level * 2, vanish ? 420 : 200 + level * 18, (i) => (i % 3 === 2 ? "#ffffff" : juice), () => 2 + Math.random() * (3 + level * 0.35), 650);
+  spray("tear", vanish ? 10 : 4 + Math.min(4, level), 170 + level * 10, () => "#7cc4ff", () => 4 + Math.random() * 2 + level * 0.25, 720);
+  spray("star", vanish ? 10 : 3 + Math.floor(level / 3), 110, (i) => (vanish ? COMBO_COLORS[i % COMBO_COLORS.length] : "#fde047"), () => 5 + Math.random() * 4, 900);
+  effects.rings.push({ x: merging.x, y: merging.y, r: radius, ageMs: 0 });
+  if (vanish || level >= SHAKE_LEVEL) {
+    effects.shakeMs = vanish ? 450 : 260;
+    effects.shakePower = vanish ? 9 : 3 + (level - SHAKE_LEVEL) * 1.5;
   }
-  effects.rings.push({ x: event.x, y: event.y, r: radius, ageMs: 0 });
-  const count = event.kind === "vanish" ? 40 : 8 + level * 2;
-  const colors = event.kind === "vanish" ? [FRUITS[WATERMELON_LEVEL].color, "#ef4444", "#fef08a"] : [FRUITS[level].color, "#ffffff"];
-  for (let i = 0; i < count; i += 1) {
-    const angle = Math.random() * Math.PI * 2;
-    const speed = 80 + Math.random() * (event.kind === "vanish" ? 420 : 160 + level * 20);
-    effects.particles.push({
-      x: event.x + Math.cos(angle) * radius * 0.6,
-      y: event.y + Math.sin(angle) * radius * 0.6,
-      vx: Math.cos(angle) * speed,
-      vy: Math.sin(angle) * speed - 60,
-      size: 2 + Math.random() * (3 + level * 0.4),
-      color: colors[i % colors.length],
-      lifeMs: 450 + Math.random() * 350,
-      ageMs: 0,
-    });
+}
+
+/** 빨리 떨어지던 과일이 갑자기 멈추면 착지: 납작하게 찌그러지고 양옆으로 먼지가 살짝 퍼진다 */
+function detectLandings(effects: Effects, state: GameState, reducedMotion: boolean) {
+  const next = new Map<number, number>();
+  for (const fruit of state.fruits) {
+    const before = effects.lastVy.get(fruit.id) ?? 0;
+    if (!reducedMotion && before > IMPACT_SPEED && fruit.vy < before * 0.35) {
+      effects.squash.set(fruit.id, 0);
+      for (const side of [-1, 1]) {
+        effects.particles.push({
+          shape: "dust",
+          x: fruit.x + side * fruit.r * 0.7,
+          y: fruit.y + fruit.r * 0.85,
+          vx: side * (50 + Math.random() * 40),
+          vy: -30 - Math.random() * 30,
+          size: 3 + fruit.r * 0.06,
+          color: "rgba(255,255,255,0.7)",
+          lifeMs: 380,
+          ageMs: 0,
+        });
+      }
+    }
+    next.set(fruit.id, fruit.vy);
   }
-  if (event.kind === "vanish" || level >= SHAKE_LEVEL) {
-    effects.shakeMs = event.kind === "vanish" ? 450 : 260;
-    effects.shakePower = event.kind === "vanish" ? 9 : 3 + (level - SHAKE_LEVEL) * 1.5;
-  }
+  effects.lastVy = next;
 }
 
 function updateEffects(effects: Effects, ms: number) {
   const dt = ms / 1000;
   for (const particle of effects.particles) {
     particle.ageMs += ms;
-    particle.vy += 900 * dt;
+    // 별은 둥실 떠오르고, 먼지는 공기에 금방 멈춘다
+    particle.vy += (particle.shape === "star" ? 260 : particle.shape === "dust" ? 0 : 900) * dt;
+    if (particle.shape === "dust") particle.vx *= 1 - Math.min(1, dt * 4);
     particle.x += particle.vx * dt;
     particle.y += particle.vy * dt;
   }
   effects.particles = effects.particles.filter((particle) => particle.ageMs < particle.lifeMs);
-  for (const cry of effects.cries) {
-    cry.ageMs += ms;
-    cry.vy += 900 * dt;
-    cry.x += cry.vx * dt;
-    cry.y += cry.vy * dt;
+  for (const merging of effects.merging) {
+    merging.ageMs += ms;
+    if (!merging.burst && merging.ageMs >= MERGE_GATHER_MS) {
+      merging.burst = true;
+      burst(effects, merging);
+    }
   }
-  effects.cries = effects.cries.filter((cry) => cry.ageMs < CRY_MS);
+  effects.merging = effects.merging.filter((merging) => merging.ageMs < MERGE_GATHER_MS + MERGE_POP_MS);
+  for (const [id, left] of effects.hidden) {
+    if (left - ms > 0) effects.hidden.set(id, left - ms);
+    else {
+      effects.hidden.delete(id);
+      effects.appear.set(id, 0);
+    }
+  }
+  for (const [id, age] of effects.appear) {
+    if (age + ms < APPEAR_MS) effects.appear.set(id, age + ms);
+    else effects.appear.delete(id);
+  }
+  for (const [id, age] of effects.squash) {
+    if (age + ms < SQUASH_MS) effects.squash.set(id, age + ms);
+    else effects.squash.delete(id);
+  }
   for (const popup of effects.popups) popup.ageMs += ms;
   effects.popups = effects.popups.filter((popup) => popup.ageMs < POPUP_MS);
   for (const ring of effects.rings) ring.ageMs += ms;
   effects.rings = effects.rings.filter((ring) => ring.ageMs < RING_MS);
   effects.shakeMs = Math.max(0, effects.shakeMs - ms);
 }
+
+/** 네 갈래 반짝이 별 (angle만큼 돌려서) */
+function drawSparkle(ctx: CanvasRenderingContext2D, x: number, y: number, r: number, angle: number) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(angle);
+  ctx.beginPath();
+  for (let i = 0; i < 8; i += 1) {
+    const reach = i % 2 === 0 ? r : r * 0.38;
+    const a = (i * Math.PI) / 4;
+    if (i === 0) ctx.moveTo(Math.cos(a) * reach, Math.sin(a) * reach);
+    else ctx.lineTo(Math.cos(a) * reach, Math.sin(a) * reach);
+  }
+  ctx.closePath();
+  ctx.fill();
+  ctx.restore();
+}
+
+/** 눈물 방울: 날아가는 쪽이 둥글고 뒤가 뾰족한 물방울 + 작은 반짝임 */
+function drawTear(ctx: CanvasRenderingContext2D, x: number, y: number, r: number, heading: number) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(heading - Math.PI / 2);
+  ctx.beginPath();
+  ctx.moveTo(0, -r * 1.9);
+  ctx.quadraticCurveTo(r * 1.1, -r * 0.3, r, r * 0.25);
+  ctx.arc(0, r * 0.25, r, 0, Math.PI);
+  ctx.quadraticCurveTo(-r * 1.1, -r * 0.3, 0, -r * 1.9);
+  ctx.fill();
+  ctx.fillStyle = "rgba(255,255,255,0.75)";
+  ctx.beginPath();
+  ctx.arc(-r * 0.35, 0, r * 0.28, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+}
+
+/** 0→1 진행도를 살짝 넘쳤다 돌아오게 (통통 튀어나오기) */
+const easeOutBack = (t: number) => 1 + 2.4 * (t - 1) ** 3 + 1.4 * (t - 1) ** 2;
 
 function draw(
   ctx: CanvasRenderingContext2D,
@@ -333,34 +490,65 @@ function draw(
     ctx.setLineDash([]);
     ctx.globalAlpha = appear;
     const bob = reducedMotion ? 0 : Math.sin(clockMs / 320) * 2.5;
-    // 떨어뜨린 직후엔 작게 나타나 커진다
-    const scale = reducedMotion ? 1 : 0.55 + 0.45 * appear;
-    drawFruit(ctx, state.held, aimX, DROP_Y + bob, heldR * scale, false);
+    // 떨어뜨린 직후엔 작게 나타나 통통 커지고, 매달린 동안 대롱대롱 좌우로 흔들린다
+    const scale = reducedMotion ? 1 : 0.4 + 0.6 * easeOutBack(appear);
+    ctx.save();
+    ctx.translate(aimX, DROP_Y + bob);
+    if (!reducedMotion) ctx.rotate(Math.sin(clockMs / 480) * 0.07);
+    drawFruit(ctx, state.held, 0, 0, heldR * scale, false);
+    ctx.restore();
     ctx.globalAlpha = 1;
   }
   ctx.setLineDash([]);
 
+  const danger = state.dangerMs > 0;
   for (const fruit of state.fruits) {
+    // 합쳐져 막 생긴 과일은 두 과일이 모여드는 동안 숨겼다가, 터질 때 통통 튀어나온다
+    if (effects.hidden.has(fruit.id)) continue;
+    const appearAge = effects.appear.get(fruit.id);
+    const pop = appearAge === undefined ? 1 : Math.max(0, easeOutBack(appearAge / APPEAR_MS));
     const age = state.elapsedMs - fruit.bornAt;
-    // 생긴 직후 말랑하게 한 번 출렁
-    const wobble = reducedMotion || age > 400 ? 0 : Math.sin(age / 40) * 0.08 * (1 - age / 400);
+    // 떨어뜨린 직후 말랑하게 한 번 출렁 (합쳐져 생긴 과일은 튀어나오기가 대신한다)
+    const wobble = reducedMotion || age > 400 || appearAge !== undefined ? 0 : Math.sin(age / 40) * 0.08 * (1 - age / 400);
+    // 착지하면 납작하게 눌렸다가 돌아오고, 가만히 있을 땐 숨 쉬듯 살짝 부풀었다 가라앉는다
+    const squashAge = effects.squash.get(fruit.id);
+    const squash = squashAge === undefined ? 0 : Math.sin((squashAge / SQUASH_MS) * Math.PI) * 0.16;
+    const breathe = reducedMotion ? 0 : Math.sin(clockMs / 620 + fruit.id * 1.7) * 0.018;
+    // 빨리 떨어지거나, 막 착지했거나, 선을 넘어 위험하면 깜짝 놀란 얼굴
+    const scared = fruit.vy > SURPRISE_SPEED || squashAge !== undefined || (danger && fruit.y - fruit.r < DEADLINE_Y);
     const blink = !reducedMotion && (clockMs + fruit.id * 977) % 3400 < 130;
     ctx.save();
-    ctx.translate(fruit.x, fruit.y);
-    ctx.scale(1 + wobble, 1 - wobble);
-    drawFruit(ctx, fruit.level, 0, 0, fruit.r, blink);
+    // 찌그러질 땐 바닥에 붙은 채 눌리게 발 쪽(과일 아래)을 기준으로
+    ctx.translate(fruit.x, fruit.y + fruit.r);
+    ctx.scale(pop * (1 + wobble + squash + breathe), pop * (1 - wobble - squash + breathe));
+    drawFruit(ctx, fruit.level, 0, -fruit.r, fruit.r, blink, scared ? "-surprise" : "");
     ctx.restore();
   }
 
-  // 합쳐져 사라진 과일: 우는 얼굴로 빙글 돌며 튀어 오르다 작아진다
-  for (const cry of effects.cries) {
-    const t = cry.ageMs / CRY_MS;
-    ctx.save();
-    ctx.globalAlpha = 1 - t * t;
-    ctx.translate(cry.x, cry.y);
-    ctx.rotate(Math.sign(cry.vx) * t * 0.7);
-    drawFruit(ctx, cry.level, 0, 0, FRUITS[cry.level].radius * (1 - t * 0.45), false, true);
-    ctx.restore();
+  // 합쳐지는 두 과일: 우는 얼굴로 흔들리며 한가운데로 모여 찌그러졌다가(GATHER), 부풀어 펑 사라진다(POP)
+  for (const merging of effects.merging) {
+    const radius = FRUITS[merging.level].radius;
+    if (merging.ageMs < MERGE_GATHER_MS) {
+      const t = merging.ageMs / MERGE_GATHER_MS;
+      const pull = t * t;
+      const jiggle = Math.sin(merging.ageMs / 22) * 0.1 * (1 - t * 0.5);
+      for (const point of merging.from) {
+        ctx.save();
+        ctx.translate(point.x + (merging.x - point.x) * pull, point.y + (merging.y - point.y) * pull);
+        ctx.rotate(jiggle);
+        ctx.scale(1 + 0.22 * t, 1 - 0.18 * t);
+        drawFruit(ctx, merging.level, 0, 0, radius, false, "-cry");
+        ctx.restore();
+      }
+    } else {
+      const u = (merging.ageMs - MERGE_GATHER_MS) / MERGE_POP_MS;
+      ctx.save();
+      ctx.globalAlpha = (1 - u) ** 2;
+      ctx.translate(merging.x, merging.y);
+      ctx.scale(1 + 0.5 * u, 1 + 0.5 * u);
+      drawFruit(ctx, merging.level, 0, 0, radius * 1.1, false, "-cry");
+      ctx.restore();
+    }
   }
   ctx.globalAlpha = 1;
 
@@ -374,22 +562,29 @@ function draw(
     ctx.stroke();
   }
   for (const particle of effects.particles) {
-    ctx.globalAlpha = 1 - particle.ageMs / particle.lifeMs;
+    const t = particle.ageMs / particle.lifeMs;
+    ctx.globalAlpha = 1 - t;
     ctx.fillStyle = particle.color;
-    ctx.beginPath();
-    ctx.arc(particle.x, particle.y, particle.size, 0, Math.PI * 2);
-    ctx.fill();
+    if (particle.shape === "star") drawSparkle(ctx, particle.x, particle.y, particle.size * (1 - t * 0.4), particle.ageMs / 160);
+    else if (particle.shape === "tear") drawTear(ctx, particle.x, particle.y, particle.size, Math.atan2(particle.vy, particle.vx));
+    else {
+      ctx.beginPath();
+      ctx.arc(particle.x, particle.y, particle.size * (particle.shape === "dust" ? 1 + t : 1), 0, Math.PI * 2);
+      ctx.fill();
+    }
   }
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
-  ctx.font = "900 26px system-ui, sans-serif";
   ctx.lineWidth = 5;
   ctx.strokeStyle = "rgba(0,0,0,0.55)";
-  ctx.fillStyle = "#ffffff";
   for (const popup of effects.popups) {
     const t = popup.ageMs / POPUP_MS;
     const y = popup.y - (reducedMotion ? 0 : t * 50);
     ctx.globalAlpha = t < 0.6 ? 1 : 1 - (t - 0.6) / 0.4;
+    // 콤보 글씨는 크게 튀어나왔다(1.4배→1배) 떠오르며, 콤보가 쌓일수록 색이 바뀐다
+    const size = popup.big ? 30 * (reducedMotion ? 1 : 1 + 0.4 * Math.max(0, 1 - t * 5)) : 26;
+    ctx.font = `900 ${Math.round(size)}px system-ui, sans-serif`;
+    ctx.fillStyle = popup.big ? COMBO_COLORS[Number.parseInt(popup.text, 10) % COMBO_COLORS.length] : "#ffffff";
     ctx.strokeText(popup.text, popup.x, y);
     ctx.fillText(popup.text, popup.x, y);
   }
@@ -404,27 +599,28 @@ function draw(
   ctx.restore();
 }
 
-/** 과일 색 동그라미 (HUD 다음 과일·시작 화면 순서·결과 최대 과일) */
+/** 과일 펠트 그림 (HUD 다음 과일·시작 화면 순서·결과 최대 과일). size는 과일 공 지름 — 판 위 그림과 같은 배율로 그린다 */
 function FruitDot({ level, size, className }: { level: number; size: number; className?: string }) {
-  const fruit = FRUITS[level];
+  const side = Math.round(size * FRUIT_IMAGE_SCALE);
   return (
-    <span
+    <NextImage
+      src={`${FRUIT_IMAGE_BASE}/${FRUITS[level].slug}.webp`}
+      alt=""
       aria-hidden="true"
-      className={cn("inline-block shrink-0 rounded-full shadow-[inset_-3px_-4px_0_rgba(0,0,0,0.18)]", className)}
-      style={{
-        width: size,
-        height: size,
-        backgroundColor: fruit.color,
-        backgroundImage: fruit.stripe
-          ? `repeating-linear-gradient(90deg, transparent 0 ${size / 6}px, ${fruit.stripe} ${size / 6}px ${size / 4}px)`
-          : undefined,
-      }}
+      width={side}
+      height={side}
+      unoptimized
+      draggable={false}
+      className={cn("inline-block shrink-0 select-none", className)}
+      style={{ width: side, height: side }}
     />
   );
 }
 
 export function WatermelonGame() {
   const records = useWatermelonRecords();
+  // 판에 처음 나오는 과일을 그때 불러오면 캔버스 원 → 그림으로 바뀌며 번쩍이니 들어오자마자 전부 받아 둔다
+  useEffect(preloadFruitImages, []);
   const [phase, setPhase] = useState<Phase>("idle");
   const [countdownIndex, setCountdownIndex] = useState(0);
   const [result, setResult] = useState<RoundResult | null>(null);
@@ -515,7 +711,7 @@ export function WatermelonGame() {
 
     const state = createState(Math.random);
     stateRef.current = state;
-    const effects: Effects = { particles: [], popups: [], rings: [], cries: [], shakeMs: 0, shakePower: 0 };
+    const effects = createEffects();
     clearInput();
     resize();
     window.addEventListener("resize", resize);
@@ -547,12 +743,13 @@ export function WatermelonGame() {
 
       const events = step(state, deltaMs);
       for (const event of events) {
-        addMergeEffects(effects, event, reducedMotion);
+        addMergeEffects(effects, event, reducedMotion, now);
         if (event.kind === "vanish") playGameSound([...GAME_SOUNDS.explosion, ...GAME_SOUNDS.record]);
         else if (event.kind === "merge") {
           playGameSound(event.level === WATERMELON_LEVEL ? GAME_SOUNDS.success : mergeSound(event.level));
         }
       }
+      detectLandings(effects, state, reducedMotion);
       updateEffects(effects, Math.min(deltaMs, 50));
       if (state.dangerMs > 0 && now - lastWarnSoundAt >= WARNING_SOUND_MS) {
         lastWarnSoundAt = now;

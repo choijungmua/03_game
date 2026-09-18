@@ -2,8 +2,8 @@
 
 python scripts/cut_emoji_sheets.py [시트이름 …]   → scripts/make_image/assets/<시트>.png 중 있는 것만 처리
 
-시트는 `python -m make_image ... --keep-background -m gpt-5.6-luna` 로 만든다 (프롬프트는 docs/EMOJI-ASSETS.md).
-같은 세로줄에 평소 얼굴·우는 얼굴을 쌓은 시트는 두 프레임이 어긋나지 않게 **같은 잘라내기 상자**를 쓴다.
+시트는 `python -m make_image ... --keep-background -m gpt-5.6-luna` 로 만든다 (시트 목록·규칙은 scripts/make_image/skills.md "카피바라 테마 시트").
+같은 세로줄에 표정(평소·깜짝/눈웃음·우는 얼굴)을 쌓은 시트는 프레임이 어긋나지 않게 **같은 잘라내기 상자**를 쓴다.
 """
 
 import sys
@@ -90,14 +90,23 @@ def save(image: Image.Image, png: Path, webp: Path) -> None:
     print(f"  {webp.relative_to(ROOT)} ({image.width}×{image.height})")
 
 
-def cut_pairs(sheet: Image.Image, slugs: list[str], png_dir: Path, webp_dir: Path, size: int) -> None:
-    """윗줄 평소 얼굴 / 아랫줄 우는 얼굴 시트. 세로줄마다 같은 상자로 잘라 두 프레임을 겹치게 맞춘다"""
-    grid = cells(sheet, len(slugs), 2)
+def cut_rows(sheet: Image.Image, slugs: list[str], suffixes: list[str], png_dir: Path, webp_dir: Path, size: int) -> None:
+    """줄마다 표정이 다른 시트(윗줄 평소 얼굴 …). 세로줄마다 같은 상자로 잘라 프레임을 바꿔 끼워도 겹치게 맞춘다"""
+    grid = cells(sheet, len(slugs), len(suffixes))
     for index, slug in enumerate(slugs):
-        calm, cry = grid[index], grid[index + len(slugs)]
-        box = content_box(calm)  # 눈물이 튀어 넓어진 우는 얼굴이 아니라 평소 얼굴 기준으로 맞춘다
-        save(squared(calm, box, size), png_dir / f"{slug}.png", webp_dir / f"{slug}.webp")
-        save(squared(cry, box, size), png_dir / f"{slug}-cry.png", webp_dir / f"{slug}-cry.webp")
+        box = content_box(grid[index])  # 눈물이 튀어 넓어진 우는 얼굴이 아니라 윗줄 평소 얼굴 기준으로 맞춘다
+        for row, suffix in enumerate(suffixes):
+            frame = grid[index + row * len(slugs)]
+            save(squared(frame, box, size), png_dir / f"{slug}{suffix}.png", webp_dir / f"{slug}{suffix}.webp")
+
+
+def square_button(image: Image.Image, size: int) -> Image.Image:
+    """로비 버튼: 나무 테가 정사각형 가장자리까지 차게 (fish·bag 버튼과 같은 규격)"""
+    image = image.crop(content_box(image))
+    side = max(image.width, image.height)
+    canvas = Image.new("RGBA", (side, side), (0, 0, 0, 0))
+    canvas.alpha_composite(image, ((side - image.width) // 2, (side - image.height) // 2))
+    return canvas.resize((size, size), Image.LANCZOS)
 
 
 def cut_props(sheet: Image.Image, names: list[str], out: list[tuple[Path, Path]], long_side: int) -> None:
@@ -128,6 +137,10 @@ def cut_character(sheet: Image.Image, rows: list[str], frames: int, out_png: Pat
 FISH_CATCHES = (ROOT / "assets-src/ui/lobby/fish-catches", ROOT / "public/assets/images/ui/lobby/fish-catches")
 WATERMELON = (ROOT / "assets-src/games/watermelon-game/fruits", ROOT / "public/assets/images/games/watermelon-game/fruits")
 PANG = (ROOT / "assets-src/games/capybara-pang/animals", ROOT / "public/assets/images/games/capybara-pang/animals")
+#: 시트 줄 순서 = 표정. 과일은 평소 / 깜짝(빨리 떨어지거나 선 위에서 위험할 때) / 우는 얼굴(합쳐져 사라질 때)
+FRUIT_FACES = ["", "-surprise", "-cry"]
+#: 동물은 평소 / 눈웃음(깜빡임·고를 때) / 우는 얼굴(터질 때)
+ANIMAL_FACES = ["", "-happy", "-cry"]
 
 
 def lobby_prop(asset_id: str) -> tuple[Path, Path]:
@@ -142,13 +155,15 @@ def game_icon(slug: str) -> tuple[Path, Path]:
 
 
 def run(name: str, sheet: Image.Image) -> None:
-    if name == "emoji-apples-v2":
+    if name == "cute-apples":
         cut_props(
             sheet,
             ["사과", "초록 사과", "썩은 사과"],
             [(FISH_CATCHES[0] / f"{s}.png", FISH_CATCHES[1] / f"{s}.webp") for s in ("apple", "green-apple", "rotten-apple")],
             512,
         )
+    elif name == "cute-apple-button":
+        save(square_button(sheet, 256), ROOT / "assets-src/ui/lobby/apple.png", ROOT / "public/assets/images/ui/lobby/apple.webp")
     elif name == "emoji-fence-vertical":
         rails, post = cut_rails(sheet)
         print("  [세로 울타리]")
@@ -161,16 +176,16 @@ def run(name: str, sheet: Image.Image) -> None:
         save(trimmed(cells(sheet, 2, 1)[0], 384), *game_icon("watermelon-game"))
     elif name == "emoji-pang-icon":
         save(trimmed(sheet, 384), *game_icon("capybara-pang"))
-    elif name == "emoji-fruit-1":
-        cut_pairs(sheet, ["cherry", "strawberry", "grape", "hallabong"], *WATERMELON, 256)
-    elif name == "emoji-fruit-2":
-        cut_pairs(sheet, ["persimmon", "apple", "pear", "peach"], *WATERMELON, 256)
-    elif name == "emoji-fruit-3":
-        cut_pairs(sheet, ["pineapple", "melon", "watermelon"], *WATERMELON, 256)
-    elif name == "emoji-pang-1-v2":
-        cut_pairs(sheet, ["capybara", "otter", "frog", "duckling"], *PANG, 192)
-    elif name == "emoji-pang-2-v2":
-        cut_pairs(sheet, ["macaw", "dolphin", "sloth"], *PANG, 192)
+    elif name == "cute-fruit-1":
+        cut_rows(sheet, ["cherry", "strawberry", "grape", "hallabong"], FRUIT_FACES, *WATERMELON, 256)
+    elif name == "cute-fruit-2":
+        cut_rows(sheet, ["persimmon", "apple", "pear", "peach"], FRUIT_FACES, *WATERMELON, 256)
+    elif name == "cute-fruit-3":
+        cut_rows(sheet, ["pineapple", "melon", "watermelon"], FRUIT_FACES, *WATERMELON, 256)
+    elif name == "cute-pang-1":
+        cut_rows(sheet, ["capybara", "otter", "frog", "duckling"], ANIMAL_FACES, *PANG, 192)
+    elif name == "cute-pang-2":
+        cut_rows(sheet, ["macaw", "dolphin", "sloth"], ANIMAL_FACES, *PANG, 192)
     elif name == "emoji-pick":
         cut_character(
             sheet,
@@ -185,15 +200,16 @@ def run(name: str, sheet: Image.Image) -> None:
 
 
 SHEET_NAMES = [
-    "emoji-apples-v2",
+    "cute-apples",
+    "cute-apple-button",
     "emoji-fence-vertical",
     "emoji-game-icons",
     "emoji-pang-icon",
-    "emoji-fruit-1",
-    "emoji-fruit-2",
-    "emoji-fruit-3",
-    "emoji-pang-1-v2",
-    "emoji-pang-2-v2",
+    "cute-fruit-1",
+    "cute-fruit-2",
+    "cute-fruit-3",
+    "cute-pang-1",
+    "cute-pang-2",
     "emoji-pick",
 ]
 

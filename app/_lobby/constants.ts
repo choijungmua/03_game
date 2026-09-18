@@ -14,8 +14,6 @@ export const EMOTE_BAKE_SCALE = 3;
 export const EMOTE_PICKER_ICON = 3;
 /** 이모티콘 창 한 쪽에 보이는 개수 (4×2). 세로로 넘기면 다음 쪽 */
 export const EMOTES_PER_PAGE = 8;
-/** 앉기·때리기 버튼과 같은 나무 테두리 (punch.webp에서 테두리만 오려낸 그림) */
-export const FRAME_SRC = "/assets/images/ui/lobby/frame.webp";
 /** 오른쪽 옷장 버튼 그림 (나무 테·펠트 판 위 나무 옷걸이에 걸린 펠트 셔츠) */
 export const WARDROBE_BUTTON_SRC = "/assets/images/ui/lobby/wardrobe.webp";
 /** 오른쪽 효과음 버튼 그림 (나무 테·펠트 판 위 눈 감고 음악 듣는 카피바라 + 잎 음표). 헤드폰은 코드가 위에 씌운다 */
@@ -26,6 +24,8 @@ export const PROFILE_BUTTON_SRC = "/assets/images/ui/lobby/profile.webp";
 export const FISH_BUTTON_SRC = "/assets/images/ui/lobby/fish.webp";
 export const BATH_BUTTON_SRC = "/assets/images/ui/lobby/bath.webp";
 export const GUESTBOOK_BUTTON_SRC = "/assets/images/ui/lobby/guestbook.webp";
+/** 사과나무 밑에서 뜨는 "사과 따기" 버튼 그림 (낚시 버튼과 같은 나무 테·펠트 판 위, 카피바라 얼굴 사과를 번쩍 든 카피바라) */
+export const APPLE_BUTTON_SRC = "/assets/images/ui/lobby/apple.webp";
 /** 오른쪽 위 낚시 가방 버튼 그림 (나무 테·펠트 판 위 카피바라 얼굴 백팩) */
 export const FISH_BAG_SRC = "/assets/images/ui/lobby/bag.webp";
 

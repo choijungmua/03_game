@@ -54,8 +54,15 @@
     --animate-munch: munch 0.18s ease-in-out infinite;
     --animate-plate-shake: plate-shake 0.14s linear infinite;
     --animate-munch-pop: munch-pop 0.6s ease-out infinite;
-    --animate-pang-drop: pang-drop 0.22s ease-in;
+    --animate-pang-drop: pang-drop 0.3s ease-in;
     --animate-pang-time: pang-time 60s linear forwards;
+    --animate-pang-pop: pang-pop 0.46s ease-out forwards;
+    --animate-pang-idle: pang-idle 2.4s ease-in-out infinite;
+    --animate-pang-hop: pang-hop 0.6s ease-in-out infinite;
+    --animate-pang-wiggle: pang-wiggle 0.5s ease-in-out infinite;
+    --animate-pang-blink: pang-blink 4s linear infinite;
+    --animate-pang-spark: pang-spark 0.34s ease-out both;
+    --animate-pang-combo: pang-combo 0.45s cubic-bezier(0.34, 1.56, 0.64, 1);
     --z-sticky: 50;
     --z-max: 9999;
     --color-sidebar-ring: var(--sidebar-ring);
@@ -256,9 +263,63 @@ html:has([data-hide-page-scrollbar="true"]) body::-webkit-scrollbar {
   75% { transform: translate(2%, -1%) rotate(2deg); }
 }
 
-/* 매치3: 새 블록이 --drop칸 위에서 떨어짐 / 남은 시간 막대가 줄어듦 */
+/* 매치3: 새 블록이 --drop칸 위에서 떨어져 바닥에 닿으면 말랑하게 눌렸다 돌아옴 / 남은 시간 막대가 줄어듦 */
 @keyframes pang-drop {
-  from { transform: translateY(calc(var(--drop) * -100%)); }
+  0% { transform: translateY(calc(var(--drop) * -100%)); }
+  72% { transform: translateY(0) scale(1, 1); }
+  84% { transform: translateY(0) scale(1.14, 0.84); }
+  100% { transform: translateY(0) scale(1, 1); }
+}
+
+/* 매치3 터지기: 우는 얼굴로 좌우로 흔들며 버티다가(0~48%) 풍선처럼 부풀어 펑 사라진다(48~100%) */
+@keyframes pang-pop {
+  0% { scale: 1; rotate: 0deg; }
+  12% { scale: 1.12 0.9; rotate: -9deg; }
+  24% { scale: 0.92 1.1; rotate: 8deg; }
+  36% { scale: 1.1 0.92; rotate: -6deg; }
+  48% { scale: 1; rotate: 0deg; opacity: 1; }
+  72% { scale: 1.32; opacity: 1; }
+  100% { scale: 1.7; opacity: 0; }
+}
+
+/* 가만히 있는 블록: 숨 쉬듯 살짝 오르내림 (블록마다 시작을 어긋나게) */
+@keyframes pang-idle {
+  0%, 100% { translate: 0 0; scale: 1; }
+  50% { translate: 0 -3%; scale: 1.02 0.98; }
+}
+
+/* 고른 블록: 신나서 콩콩 뜀 */
+@keyframes pang-hop {
+  0%, 100% { translate: 0 0; scale: 1.1 1.1; }
+  30% { translate: 0 -12%; scale: 1.05 1.16; }
+  60% { translate: 0 0; scale: 1.18 1.02; }
+}
+
+/* 힌트 블록: 여기 봐 달라고 도리도리 */
+@keyframes pang-wiggle {
+  0%, 100% { rotate: 0deg; }
+  25% { rotate: -10deg; }
+  75% { rotate: 10deg; }
+}
+
+/* 눈웃음 얼굴을 잠깐 덮었다 걷기 (깜빡임). 블록마다 주기·시작을 다르게 줘서 제각각 깜빡인다 */
+@keyframes pang-blink {
+  0%, 90% { opacity: 0; }
+  92%, 97% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+/* 터지는 블록에서 튀어나가는 눈물·반짝이 (--dx, --dy 방향으로) */
+@keyframes pang-spark {
+  0% { translate: 0 0; scale: 0.4; opacity: 0; }
+  20% { opacity: 1; }
+  100% { translate: var(--dx) var(--dy); scale: 1; opacity: 0; }
+}
+
+/* 콤보 글씨가 크게 튀어나왔다 자리 잡음 */
+@keyframes pang-combo {
+  0% { scale: 1.8; rotate: -12deg; opacity: 0; }
+  100% { scale: 1; rotate: 0deg; opacity: 1; }
 }
 
 @keyframes pang-time {

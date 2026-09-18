@@ -58,10 +58,15 @@ export interface GameState {
 
 export type GameEvent =
   | { kind: "drop"; level: number }
-  /** 같은 과일 두 개가 level 과일 하나가 됨 */
-  | { kind: "merge"; level: number; x: number; y: number; points: number }
+  /** 같은 과일 두 개가 level 과일 하나(id)가 됨. from은 합쳐진 두 과일의 자리 (우는 얼굴로 모여드는 연출용) */
+  | { kind: "merge"; level: number; x: number; y: number; points: number; id: number; from: readonly Point[] }
   /** 수박 두 개가 합쳐져 사라짐 */
-  | { kind: "vanish"; x: number; y: number; points: number };
+  | { kind: "vanish"; x: number; y: number; points: number; from: readonly Point[] };
+
+export interface Point {
+  x: number;
+  y: number;
+}
 
 export type Random = () => number;
 
@@ -191,17 +196,22 @@ function mergeTouching(state: GameState, events: GameEvent[]) {
       merged.add(b.id);
       const x = (a.x + b.x) / 2;
       const y = (a.y + b.y) / 2;
+      const from = [
+        { x: a.x, y: a.y },
+        { x: b.x, y: b.y },
+      ];
       if (a.level === WATERMELON_LEVEL) {
         state.score += WATERMELON_BONUS;
-        events.push({ kind: "vanish", x, y, points: WATERMELON_BONUS });
+        events.push({ kind: "vanish", x, y, points: WATERMELON_BONUS, from });
         break;
       }
       const level = a.level + 1;
       const points = FRUITS[level].score;
       state.score += points;
       state.maxLevel = Math.max(state.maxLevel, level);
+      const id = state.nextId++;
       born.push({
-        id: state.nextId++,
+        id,
         level,
         x,
         y,
@@ -211,7 +221,7 @@ function mergeTouching(state: GameState, events: GameEvent[]) {
         r: a.r,
         bornAt: state.elapsedMs,
       });
-      events.push({ kind: "merge", level, x, y, points });
+      events.push({ kind: "merge", level, x, y, points, id, from });
       break;
     }
   }
