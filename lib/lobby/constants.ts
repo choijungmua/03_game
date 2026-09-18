@@ -88,18 +88,15 @@ export const FISH_LOOKS: Record<(typeof FISH_CATCHES)[number], { color: string; 
 };
 /** 낚시로 낚이는 것들 (남미 습지 테마). 똑같은 확률로 하나 */
 export const FISHABLE = ["송사리", "붕어", "메기", "피라냐", "아로와나", "황금 잉어", "낡은 장화"] as const;
-/** 사과나무에서 따는 것들. 어떤 게 나올지는 딸 때 APPLE_ODDS로 정한다 */
+/** 사과나무에서 따는 것들. 어떤 게 나올지는 딸 때 서버가 정한다 (04_game_b g_sync_fishing의 pick) */
 export const APPLE_KINDS = ["사과", "초록 사과", "썩은 사과"] as const;
 /** 가방에 들어가는 것들 */
 export const FISH_CATCHES = [...FISHABLE, ...APPLE_KINDS] as const;
-/**
- * 사과를 딸 때 나올 확률(합 1). 대부분은 보통 사과라 따는 맛이 있고, 네 번에 한 번꼴 꽝(썩은 사과)으로 긴장감을,
- * 열 번에 한 번꼴 대박(초록 사과, 포만감 2.5배)으로 계속 따고 싶게 만든다
- */
-export const APPLE_ODDS: Record<(typeof APPLE_KINDS)[number], number> = {
-  사과: 0.65,
-  "초록 사과": 0.1,
-  "썩은 사과": 0.25,
+/** 사과를 땄을 때 띄우는 안내 글 */
+export const APPLE_FOUND_LINES: Record<(typeof APPLE_KINDS)[number], string> = {
+  사과: "사과 땄어요!",
+  "초록 사과": "와, 귀한 초록 사과예요!",
+  "썩은 사과": "으악, 썩은 사과예요…",
 };
 /** 낚아 올린 것이 줄 끝에서 흔들리는 모양(주기 ms, 좌우·위아래 px, 기울기 rad). 종류마다 달라 무엇을 낚았는지 한눈에 보인다 */
 export const FISH_MOTIONS = {

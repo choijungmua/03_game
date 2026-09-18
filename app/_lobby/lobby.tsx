@@ -9,7 +9,7 @@ import { type FormEvent, useEffect, useEffectEvent, useRef, useState } from "rea
 import { pretendard } from "@/config";
 import { cn } from "@/lib";
 import { Apple, Armchair, Bath, Fish, HandFist, NotebookPen } from "lucide-react";
-import { API_URL } from "@/lib/api-url";
+import { type ApiError, API_URL } from "@/lib/api-url";
 
 import { Loading } from "@/components/feedback/loading";
 import { ButtonFocusGuard } from "@/app/games/[slug]/button-focus-guard";
@@ -37,8 +37,7 @@ import {
   EAT_BITE_MS,
   EAT_MS,
   HEART_LINGER_MS,
-  FISH_BITE_MAX_MS,
-  FISH_BITE_MIN_MS,
+  APPLE_FOUND_LINES,
   FISH_AUTO_RECAST_MS,
   FISH_AUTO_REEL_MS,
   FISH_BITE_WINDOW_MS,
@@ -46,7 +45,6 @@ import {
   APPLE_KINDS,
   APPLE_PICK_MS,
   APPLE_REACH,
-  FISHABLE,
   FISH_LOOKS,
   FISH_MOTIONS,
   FISH_REACH,
@@ -68,20 +66,17 @@ import {
   type FishingLine,
   type FishInventory,
   fishChat,
-  loadFishInventory,
   parseFishChat,
-  recordCatch,
 } from "@/lib/lobby/fishing";
 import {
-  feedCapybara,
   feedChat,
-  loadSatiety,
   type Meal,
   mealDone,
   parseFeedChat,
   type Satiety,
 } from "@/lib/lobby/feeding";
-import { applesLeft, nearestTree, pickApple, rollApple } from "@/lib/lobby/apples";
+import { applesLeft, nearestTree, pickApple } from "@/lib/lobby/apples";
+import { type FishingState, syncFishing } from "@/lib/lobby/server-fishing";
 import { pushSnapshot, sampleSnapshots, type Snapshot } from "@/lib/lobby/interpolation";
 import { loadLobbyProfile, type LobbyProfile, saveLobbyProfile } from "@/lib/lobby/profile";
 import { type LobbySettings, playSound, saveLobbySettings, useLobbySettings } from "@/lib/lobby/settings";
@@ -1235,7 +1230,7 @@ export function Lobby({ games, listGames }: { games: DoorGame[]; listGames: Door
   /** 입은 옷. 게임 루프가 매 프레임 읽어서 그리고 서버에 보낸다 */
   const outfitRef = useRef<Outfit>({});
   /** 기기별 프로필 id·내가 정한 이름표. 게임 루프가 서버에 보내고, 이름 바꾸기 창이 고친다 */
-  const profileRef = useRef<LobbyProfile>({ id: "", name: "" });
+  const profileRef = useRef<LobbyProfile>({ id: "", token: "", name: "" });
   /** 이름 바꾸기 버튼에 보일 지금 이름표 (서버가 받아들인 값) */
   const [myName, setMyName] = useState("");
   /** 보낼 채팅. 게임 루프가 가져가 말풍선을 띄우고 다음 동기화에 실어 보낸다 */
@@ -1277,6 +1272,8 @@ export function Lobby({ games, listGames }: { games: DoorGame[]; listGames: Door
   const [fishInventory, setFishInventory] = useState<FishInventory>({});
   /** 카피바라 포만감. 가방에서 먹이를 누르면 feedRequest에 넣고, 게임 루프가 먹이며 새 값을 넣는다 */
   const [satiety, setSatiety] = useState<Satiety>({ value: 0, at: 0 });
+  /** 카피바라 애정도(0~100). 사과를 먹일 때마다 오른다 */
+  const [affection, setAffection] = useState(0);
   /** 옷장 탭에 보일 입은 옷. 게임 루프는 outfitRef를 읽는다 */
   const [outfit, setOutfit] = useState<Outfit>({});
   const feedRequest = useRef<FishCatch | null>(null);
@@ -1303,8 +1300,25 @@ export function Lobby({ games, listGames }: { games: DoorGame[]; listGames: Door
     profileRef.current = loadLobbyProfile();
     // 캔버스는 쓰는 굵기의 폰트를 스스로 내려받지 않아서, 안 받아 둔 굵기는 대체 폰트로 그려진다
     for (const weight of [500, 600, 700]) document.fonts.load(`${weight} 13px ${CANVAS_FONT}`, "가A").catch(() => {});
-    setFishInventory(loadFishInventory());
-    setSatiety(loadSatiety());
+    /** 서버가 준 가방·포만감·애정도·옷·낚시 상태를 화면에 반영한다 */
+    const applyFishingState = (state: FishingState) => {
+      setFishInventory(state.inventory);
+      setSatiety({ value: state.satiety, at: Date.now() });
+      setAffection(state.affection);
+      // 옷은 서버 값이 먼저다 (다른 기기에서 갈아입었을 수 있다). 옷장 창은 저장값을 읽으므로 같이 저장해 둔다
+      outfitRef.current = state.outfit;
+      saveOutfit(state.outfit);
+      fishingNextAt = state.nextCatchAt === null ? null : Date.parse(state.nextCatchAt);
+      autoFishingRef.current = state.active;
+      setAutoFishing(state.active);
+    };
+    /** 서버 호출이 실패하면 한국어 안내만 띄우고 로비는 계속 걷게 둔다 */
+    const fishingFailed = (caught: Error | ApiError) => showNotice(caught.message);
+    /** 서버가 알려 준 다음 입질 시각(Date.now 기준). 없으면 null */
+    let fishingNextAt: number | null = null;
+    const askFishing = (command: Parameters<typeof syncFishing>[2], name?: FishCatch, outfit?: Outfit) =>
+      syncFishing(profileRef.current.id, profileRef.current.token, command, name, outfit);
+    void askFishing("sync").then(applyFishingState).catch(fishingFailed);
 
     const sprites = new Map<SpriteKey, HTMLImageElement>();
     for (const facing of FACINGS) {
@@ -1499,20 +1513,24 @@ export function Lobby({ games, listGames }: { games: DoorGame[]; listGames: Door
       startHop();
       showNotice("영차영차, 사과 따는 중…", APPLE_PICK_MS);
     };
-    /** 다 땄으면 확률대로 사과 종류를 정해 가방에 넣는다 */
+    /** 다 땄으면 서버가 사과 종류를 정해 가방에 넣어 준다 */
     const finishPick = (now: number) => {
       const picking = me.picking;
       if (!picking || now < picking.at + APPLE_PICK_MS) return;
       me.picking = null;
       if (!pickApple(applePicks[picking.tree], now)) return;
-      const kind = rollApple(Math.random());
       startHop();
-      me.picked = { name: kind, at: now };
-      setFishInventory(recordCatch(kind));
       playSound("applePick", settingsRef.current);
       const left = `남은 사과 ${applesLeft(applePicks[picking.tree], now)}개`;
-      const found = { 사과: "사과 땄어요!", "초록 사과": "와, 귀한 초록 사과예요!", "썩은 사과": "으악, 썩은 사과예요…" };
-      showNotice(`${found[kind]} ${left}`, 2000);
+      void askFishing("pick")
+        .then((state) => {
+          applyFishingState(state);
+          const kind = APPLE_KINDS.find((apple) => apple === state.lastCatch);
+          if (!kind) return;
+          me.picked = { name: kind, at: performance.now() };
+          showNotice(`${APPLE_FOUND_LINES[kind]} ${left}`, 2000);
+        })
+        .catch(fishingFailed);
     };
     /** 통나무 두 자리 중 비어 있는 나와 가까운 자리의 x. 둘 다 찼으면 null */
     const freeSpot = (index: number) => {
@@ -1603,30 +1621,49 @@ export function Lobby({ games, listGames }: { games: DoorGame[]; listGames: Door
       fishQueued = fishChat(fishSeq, event);
     };
     const castLine = (water: { x: number; y: number }, now: number) => {
-      const wait = FISH_BITE_MIN_MS + Math.random() * (FISH_BITE_MAX_MS - FISH_BITE_MIN_MS);
-      me.fishing = { x: water.x, y: water.y, castAt: now, biteAt: now + FISH_CAST_MS + wait, reelAt: Infinity, catch: null };
+      // 입질 시각은 서버가 정한다 (창을 닫아 둔 동안에도 서버에서 낚인다)
+      me.fishing = { x: water.x, y: water.y, castAt: now, biteAt: Infinity, reelAt: Infinity, catch: null };
+      const line = me.fishing;
+      void askFishing("start")
+        .then((state) => {
+          applyFishingState(state);
+          if (line !== me.fishing) return;
+          const wait = fishingNextAt === null ? FISH_CAST_MS : Math.max(FISH_CAST_MS, fishingNextAt - Date.now());
+          line.biteAt = performance.now() + wait;
+        })
+        .catch(fishingFailed);
       biteAnnounced = false;
       me.facing = facingOf(water.x - me.x, water.y - me.y);
       queueFish({ kind: "cast", x: water.x, y: water.y });
       playSound("fishCast", settingsRef.current);
     };
-    /** 당기기. caught면 무작위 하나를 낚아 가방에 넣고, 아니면 빈 찌를 감아 온다. 이미 당겼으면 무시 */
+    /** 당기기. caught면 서버에 물어 무엇이 낚였는지 받고, 아니면 빈 찌를 감아 온다. 이미 당겼으면 무시 */
     const reelLine = (now: number, caught: boolean) => {
       const line = me.fishing;
       if (!line || line.reelAt !== Infinity) return;
-      const name = caught ? FISHABLE[Math.floor(Math.random() * FISHABLE.length)] : null;
-      line.reelAt = now;
-      line.catch = name;
-      queueFish({ kind: "reel", catch: name });
-      if (!name) return;
-      showNotice(`${name} 낚았어요!`);
-      setFishInventory(recordCatch(name));
-      playSound("fishCatch", settingsRef.current);
+      if (!caught) {
+        line.reelAt = now;
+        queueFish({ kind: "reel", catch: null });
+        return;
+      }
+      void askFishing("sync")
+        .then((state) => {
+          applyFishingState(state);
+          const name = state.caughtCount > 0 ? state.lastCatch : null;
+          line.reelAt = performance.now();
+          line.catch = name;
+          queueFish({ kind: "reel", catch: name });
+          if (!name) return;
+          showNotice(state.caughtCount > 1 ? `${name} 외 ${state.caughtCount - 1}개 낚았어요!` : `${name} 낚았어요!`);
+          playSound("fishCatch", settingsRef.current);
+        })
+        .catch(fishingFailed);
     };
     const stopAuto = () => {
       if (!autoFishingRef.current) return;
       autoFishingRef.current = false;
       setAutoFishing(false);
+      void askFishing("stop").then(applyFishingState).catch(fishingFailed);
     };
 
     // --- 먹이 주기 ---
@@ -1635,26 +1672,36 @@ export function Lobby({ games, listGames }: { games: DoorGame[]; listGames: Door
     let feedSeq = 0;
     /** 마지막으로 쩝 소리를 낸 한 입 번호 */
     let soundBite = -1;
+    /** 서버에 먹이를 물어보는 동안 또 누르지 않게 */
+    let feedPending = false;
     const feed = (name: FishCatch, now: number, isStunned: boolean) => {
       if (isStunned) return showNotice("기절해서 못 먹어요");
       if (eatingMs(me.meal, now) >= 0) return showNotice("아직 먹는 중이에요");
-      const result = feedCapybara(name, Date.now());
-      if (!result.ok) {
-        const reason = { full: "배불러서 더 못 먹어요", inedible: "카피바라는 풀과 과일만 먹어요", none: "가방에 없어요" };
-        return showNotice(reason[result.reason]);
-      }
-      if (me.sitting) standUp();
-      reelLine(now, false);
-      stopAuto();
-      me.picking = null;
-      me.meal = { name, at: now };
-      me.facing = "down";
-      soundBite = -1;
-      feedSeq += 1;
-      feedQueued = feedChat(feedSeq, name);
-      setFishInventory(result.inventory);
-      setSatiety(result.satiety);
-      showNotice(`${name} 냠냠! 포만감 ${Math.round(result.satiety.value)}%`);
+      if (feedPending) return showNotice("먹이를 확인하고 있어요");
+      feedPending = true;
+      void askFishing("consume", name)
+        .then((state) => {
+          feedPending = false;
+          applyFishingState(state);
+          if (!state.consumed) {
+            const reason = { full: "배불러서 더 못 먹어요", inedible: "카피바라는 풀과 과일만 먹어요", none: "가방에 없어요", fed: "" };
+            return showNotice(reason[state.feedStatus ?? "none"]);
+          }
+          if (me.sitting) standUp();
+          reelLine(performance.now(), false);
+          stopAuto();
+          me.picking = null;
+          me.meal = { name, at: performance.now() };
+          me.facing = "down";
+          soundBite = -1;
+          feedSeq += 1;
+          feedQueued = feedChat(feedSeq, name);
+          showNotice(`${name} 냠냠! 포만감 ${Math.round(state.satiety)}% · 애정도 ${state.affection}%`);
+        })
+        .catch((caught: Error | ApiError) => {
+          feedPending = false;
+          fishingFailed(caught);
+        });
     };
 
     const enter = (door: Door) => {
@@ -2731,6 +2778,10 @@ export function Lobby({ games, listGames }: { games: DoorGame[]; listGames: Door
                 setOutfit(nextOutfit);
                 outfitRef.current = nextOutfit;
                 saveOutfit(nextOutfit);
+                // 서버에도 남겨 다른 기기에서 들어와도 같은 옷을 입고 있다
+                void syncFishing(profileRef.current.id, profileRef.current.token, "outfit", undefined, nextOutfit).catch((caught: Error) => {
+                  setNotice(caught.message);
+                });
               }}
             />
           ),
@@ -2738,6 +2789,7 @@ export function Lobby({ games, listGames }: { games: DoorGame[]; listGames: Door
             <FishBag
               inventory={fishInventory}
               satiety={satiety}
+              affection={affection}
               onFeed={(name) => {
                 feedRequest.current = name;
               }}

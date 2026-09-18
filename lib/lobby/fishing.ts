@@ -1,47 +1,13 @@
-import { FISH_CATCH_SLUGS, FISH_CATCHES, FISH_INVENTORY_STORAGE_KEY } from "./constants";
+import { FISH_CATCH_SLUGS, FISH_CATCHES } from "./constants";
 
 export type FishCatch = (typeof FISH_CATCHES)[number];
-/** 낚은 것별 횟수. 한 번도 안 낚은 건 비어 있다. 이 기기(localStorage)에만 저장한다 */
+/** 낚은 것별 횟수. 한 번도 안 낚은 건 비어 있다. 서버(g_fishing)에 저장한다 — lib/lobby/server-fishing.ts */
 export type FishInventory = Partial<Record<FishCatch, number>>;
 
 /** 낚은 것의 펠트 그림 경로. 아직 그림이 없으면 null */
 export function fishCatchSrc(name: FishCatch) {
   const slug: string | null = FISH_CATCH_SLUGS[name];
   return slug ? `/assets/images/ui/lobby/fish-catches/${slug}.webp` : null;
-}
-
-/** 저장된 글 → 낚시 가방. 모르는 이름·0 이하·소수는 버린다 */
-export function parseFishInventory(raw: string | null): FishInventory {
-  const inventory: FishInventory = {};
-  try {
-    const parsed: Partial<Record<string, number>> | null = JSON.parse(raw ?? "null");
-    if (typeof parsed !== "object" || parsed === null) return inventory;
-    for (const name of FISH_CATCHES) {
-      const count = parsed[name];
-      if (typeof count === "number" && Number.isInteger(count) && count > 0) inventory[name] = count;
-    }
-  } catch {}
-  return inventory;
-}
-
-export function loadFishInventory(): FishInventory {
-  try {
-    return parseFishInventory(localStorage.getItem(FISH_INVENTORY_STORAGE_KEY));
-  } catch {
-    return {};
-  }
-}
-
-/** 한 번 더 낚은 것으로 저장하고 새 가방을 돌려준다 */
-export function recordCatch(name: FishCatch, delta = 1): FishInventory {
-  const next = loadFishInventory();
-  const count = (next[name] ?? 0) + delta;
-  if (count > 0) next[name] = count;
-  else delete next[name];
-  try {
-    localStorage.setItem(FISH_INVENTORY_STORAGE_KEY, JSON.stringify(next));
-  } catch {}
-  return next;
 }
 
 /** 던지기(찌가 떨어질 물 위치) → 입질 → 당기기(낚은 것, 놓쳤으면 null) */
