@@ -5,11 +5,10 @@ import NextImage from "next/image";
 import { useEffect, useRef, useState } from "react";
 
 import { cn } from "@/lib";
-import { dressSprite, type Outfit, SLOT_INFO, spriteName, WARDROBE_SLOTS, type WardrobeSlot, wardrobeSrc, wear } from "@/lib/lobby/wardrobe";
+import { CHARACTER_3D, drawDressed, type Outfit, outfitSheets, SLOT_INFO, WARDROBE_SLOTS, type WardrobeSlot, wardrobeIconSrc, wear } from "@/lib/lobby/wardrobe";
 
-import { drawOutfit } from "./outfit-canvas";
-
-export const CAPYBARA_SRC = "/assets/images/characters/capybara/capybara-idle-down.webp";
+/** 옷장 미리보기: 정면 대각선으로 서 있는 모습 (옷 모양이 가장 잘 보인다) */
+export const CAPYBARA_SRC = `${CHARACTER_3D}/capybara-stand-down-right.webp`;
 
 /** 내 카피바라 메뉴의 옷장 탭: 입힌 모습 미리보기 + 부위별 옷 고르기 */
 export function Wardrobe({ outfit, onChange }: { outfit: Outfit; onChange: (outfit: Outfit) => void }) {
@@ -76,7 +75,7 @@ export function Wardrobe({ outfit, onChange }: { outfit: Outfit; onChange: (outf
               outfit[slot] === item.id ? "bg-capybara/15 text-text-strong ring-2 ring-primary" : "bg-muted/50 ring-border-default hover:bg-muted",
             )}
           >
-            <NextImage src={wardrobeSrc(slot, item.id)} alt="" width={96} height={96} unoptimized className="min-h-0 flex-1 object-contain" />
+            <NextImage src={wardrobeIconSrc(slot, item.id)} alt="" width={96} height={96} unoptimized className="min-h-0 flex-1 object-contain" />
             {/* 긴 이름(유자 온천 수건)도 잘리지 않게 두 줄까지 */}
             <span className="line-clamp-2 w-full break-keep text-center leading-tight">{item.label}</span>
             {item.special && (
@@ -102,23 +101,20 @@ const previewImage = (src: string) => {
   return image;
 };
 
-/** 로비 맵과 같은 스프라이트 자리·같은 합성(outfit-canvas.ts drawOutfit)으로 그린 옷장 미리보기 */
+/** 로비 맵과 같은 합성(lib/lobby/wardrobe.ts drawDressed)으로 그린 옷장 미리보기 */
 function OutfitPreview({ outfit }: { outfit: Outfit }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   useEffect(() => {
     const canvas = canvasRef.current;
     const ctx = canvas?.getContext("2d");
     if (!canvas || !ctx) return;
-    const { silhouette, under, over } = dressSprite(spriteName(CAPYBARA_SRC), outfit);
-    const images = [CAPYBARA_SRC, ...[...silhouette, ...under, ...over].map((piece) => piece.src)].map(previewImage);
+    const images = [CAPYBARA_SRC, ...outfitSheets(outfit)].map(previewImage);
     let cancelled = false;
-    // 이미지를 다 불러온 뒤에 그린다 (덜 불러온 옷은 drawOutfit이 건너뛴다)
+    // 이미지를 다 불러온 뒤에 그린다 (덜 불러온 옷은 drawDressed가 건너뛴다)
     Promise.all(images.map((image) => image.decode().catch(() => undefined))).then(() => {
       if (cancelled) return;
-      const [base] = images;
       ctx.clearRect(0, 0, canvas.width, canvas.height);
-      ctx.drawImage(base, 0, 0, canvas.width, canvas.height);
-      drawOutfit({ ctx, base, outfit, left: 0, top: 0, size: canvas.width, imageFor: previewImage });
+      drawDressed(ctx, images[0], outfit, [0, 0, canvas.width], previewImage);
     });
     return () => {
       cancelled = true;

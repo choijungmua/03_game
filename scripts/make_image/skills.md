@@ -124,19 +124,19 @@ python -m make_image "정사각형 한 장을 2×2 네 칸으로 똑같이 나�
 ## 통나무에서 잠든 이미지
 
 - `capybara-sleep-{1,2}`: 정면으로 앉아 잠든 모습. 1 눈 감고 새근새근 → 2 콧방울. 로비는 통나무에 30분(`SLEEP_AFTER_MS`) 넘게 앉아 있으면 1.4초마다 번갈아 그리고, 숨쉬기(세로로 살짝 부풀기)와 머리 옆 z는 코드로 그린다
-- 앉은 정면(`capybara-idle-down`)과 같은 자세·크기·정렬이다. 옷 자리는 스프라이트마다 따로 재니(아래 옷장 참고) 새 그림을 넣으면 `scripts/wardrobe_fit.py`를 다시 돌린다. 원본 시트 `assets-src/characters/capybara/sheets/capybara-sleep-sheet.png`(마젠타 배경, 2칸)에서 두 칸을 같은 배율로 잘라 idle-down 캐릭터 상자에 맞췄다
+- 앉은 정면(`capybara-idle-down`)과 같은 자세·크기·정렬이다 (게임용 AI 그림. 로비는 3D로 구운 그림을 쓴다 — 아래 옷장 참고). 원본 시트 `assets-src/characters/capybara/sheets/capybara-sleep-sheet.png`(마젠타 배경, 2칸)에서 두 칸을 같은 배율로 잘라 idle-down 캐릭터 상자에 맞췄다
 
-## 옷장 방향별 옷 그림
+## 로비 카피바라 + 옷장 (3D로 굽는다)
 
-- 옷장 정면 그림: `public/assets/images/characters/capybara/wardrobe/<slot>/<id>.webp` (시트 3칸 → `scripts/split_wardrobe.py`)
-- 한벌옷은 채움층과 원본 실루엣을 함께 쓴다: `wardrobe_fit.py`가 그림의 빈틈을 옷 색으로 채운 `<id>-<view>-fill.webp`(정면 포함)를 만들고, 로비는 이를 스프라이트 윤곽 안에만 그린다(`source-atop`). 원본 그림을 다시 겹쳐 소매·후드·꼬리처럼 몸 밖으로 나온 부분을 살리고, 옷 윤곽 밖으로 삐져나온 몸은 지운다(`app/_lobby/outfit-canvas.ts`, 옷장 미리보기도 같은 캔버스). 공룡·상어·우비는 후드와 몸통을 분리 배치해 후드만 머리를 덮고(`lib/lobby/onepiece-rig.ts`), 앞·옆 얼굴은 후드 구멍 안에 다시 그린다 — 옆모습 구멍은 옆모습 옷 그림에서 잰 후드 안쪽 좌표(`sideOpening`)라 그림을 바꾸면 다시 잰다. 멜빵·유카타·딸기는 카피바라 머리를 다시 그린다
-- 로비 옷장 칸은 모자·안경·한벌옷 3개만 쓴다 (상의·하의·신발·장갑은 보류 — 그림은 남아 있고 `WARDROBE_SLOTS`·`wardrobe_views.py SLOTS`에 다시 넣으면 된다)
-- 칸마다 로비 맵 방향별 그림을 쓴다: `<id>-{back,side,front3q,back3q}.webp`. 옆·대각선은 오른쪽을 향한 그림(왼쪽은 코드가 반전). 안경은 뒤에서 안 보여 `side`·`front3q`만 있다
-- 안경 옆·앞대각선은 별 선글라스만 codex로 만들었고, 나머지는 codex 한도로 `python scripts/wardrobe_views.py synth glasses/<id>`(정면 그림에서 먼 렌즈 좁히기·옆 렌즈+안경다리 합성)로 만들었다. codex로 다시 만들면 `gen` → `split`이 덮어쓴다
-- 새 옷을 추가하면 `python scripts/wardrobe_views.py gen slot/id` (정면 그림 + 서기 스프라이트 4방향을 참고로 가로 4칸 시트 생성) → `python scripts/wardrobe_views.py split` → `python scripts/wardrobe_fit.py`. 원본 시트는 `assets-src/characters/capybara/wardrobe/views/`
-- 자리는 손으로 재지 않는다. `python scripts/wardrobe_fit.py`가 스프라이트마다 머리 타원·몸통·발·앞발·눈을 재고, 방향 묶음(서기 5방향·앉기 앞·옆·뒤)의 대표 스프라이트에서 옷마다 몸을 덮고 덜 삐져나오는 상자를 찾아 `lib/lobby/wardrobe-fit.ts`(생성 파일)에 기준점 상대값으로 쓴다. 걷기·때리기·하품처럼 발·앞발이 움직이는 동작은 그 스프라이트 기준점을 따라간다
-- 새 캐릭터 동작 그림을 넣거나 옷을 바꾸면 `wardrobe_fit.py`를 다시 돌리고 `python scripts/wardrobe_fit.py sheet`(확인 시트 `scripts/make_image/assets/wardrobe-fit-sheet.png`)로 눈으로 확인한다. 자동으로 잘못 잰 스프라이트는 스크립트의 `OVERRIDES`로 고친다. `lib/lobby/wardrobe.test.ts`가 방향별 그림·맞춘 상자 누락을 잡는다
-- 동시 생성은 2개까지 (많이 돌리면 PC 메모리 부족으로 죽는다). Codex 사용량 한도에 걸리면 안내된 시각 이후 `gen`을 다시 돌리면 이미 만든 시트는 건너뛴다
+로비의 카피바라와 옷은 AI 그림이 아니라 **3D 봉제인형 모델을 구운 스프라이트**다 (`assets-src/characters/capybara-3d/`). 옷이 몸과 같은 뼈에 붙어 있어 어떤 방향·동작에서도 몸을 그대로 따라가고, 몸에 가려지는 부분은 구울 때 이미 지워져 있다. 그래서 로비는 몸 그림 위에 같은 프레임의 옷 칸을 겹치기만 한다 (`lib/lobby/wardrobe.ts` `drawDressed`)
+
+- `rig.js`: 몸(부위 = 뼈에 붙은 덩어리)·얼굴 표정·자세. `frames.js`: 프레임 이름(= 로비 스프라이트 이름) → 방향·자세. `items.js`: 옷 (뼈에 붙는 메시 몇 개. 몸 치수 `BODY`를 부풀린 껍데기·`onHead`로 머리 겉면에 붙이기). `stage.js`: 조명·카메라
+- 굽기: `node assets-src/characters/capybara-3d/bake.mjs` (헤드리스 크로미움 + three.js, 약 1분 반) → `public/assets/images/characters/capybara-3d/capybara-<프레임>.webp`(몸 384px) + `wardrobe/<칸>/<id>.webp`(프레임 순서대로 192px 칸을 늘어놓은 시트) + `<id>-icon.webp`(옷장 칸 그림) + `lib/lobby/capybara-3d.ts`(프레임 목록·칸 배치·머리 기준점, 생성 파일)
+- 확인: `node assets-src/characters/capybara-3d/bake.mjs preview out.jpg stand-down,stand-right,walk1-left --item onepiece/dino,hat/crown` — 로비와 같은 방식으로 겹친 시트
+- 새 옷: `items.js`에 한 항목 + `lib/lobby/wardrobe.ts` `SLOT_INFO`에 이름 → 굽기. 새 동작: `frames.js`에 한 줄 → 굽기 (모든 옷이 같이 구워진다). 새 칸(상의·신발…): `WARDROBE_SLOTS`·`LAYER_ORDER`에 넣는다
+- 후드처럼 몸 일부(귀)를 덮는 옷은 `hides: ["ear"]`로 그 부위를 가림막에서 빼고, 귀 주머니를 달아 귀가 옷을 뚫고 나오지 않게 한다
+- 겹치는 순서는 한벌옷 → 안경 → 모자. 칸끼리는 서로 가리지 않는다 (옷마다 몸만 가림막으로 구웠기 때문)
+- 게임(통나무 피하기 등)은 아직 예전 AI 스프라이트(`characters/capybara/`)를 쓴다
 
 ## 먹이 먹기 이미지
 
@@ -228,5 +228,5 @@ canvas.resize((512, 512), Image.LANCZOS).save('public/assets/images/characters/c
 
 - 우는 얼굴은 **눈을 질끈 감은 꺾인 선 + 좌우로 튀는 굵은 파란 펠트 눈물 + 네모나게 벌린 입**으로 통일한다. 게임 코드가 터지는 순간에만 이 그림으로 바꿔 그린다
 - 과일·동물은 정사각형 canvas 가운데에 실루엣이 `PAD`(1.16) 여백으로 들어간다. 이 값은 `watermelon-game/constants.ts`의 `FRUIT_IMAGE_SCALE`과 짝이라 한쪽만 바꾸면 크기가 어긋난다
-- 사과 따기 3프레임은 한 배율로 줄여 발바닥 높이를 맞춘다 (뜨는 높이는 로비의 폴짝 코드가 준다). 새 캐릭터 그림이라 넣은 뒤 `python scripts/wardrobe_fit.py`를 다시 돌린다
+- 사과 따기 3프레임은 한 배율로 줄여 발바닥 높이를 맞춘다 (뜨는 높이는 로비의 폴짝 코드가 준다).
 - 모델은 `-m gpt-5.6-luna` (빠르고 사용량이 적다). Codex가 파일 복사에 실패해도 `make_image`가 `~/.codex/generated_images`에서 방금 만든 그림을 찾아 가져온다

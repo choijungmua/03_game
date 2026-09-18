@@ -105,7 +105,6 @@ import { GuestbookPanel } from "./guestbook-panel";
 import { KeyboardGuide } from "./keyboard-guide";
 import { LobbyMenu } from "./lobby-menu";
 import { SoundSettings } from "./lobby-settings";
-import { drawOutfit } from "./outfit-canvas";
 import { ProfileName } from "./profile-name";
 import {
   ATTACK_COOLDOWN_MS,
@@ -120,16 +119,8 @@ import {
   type LobbyMessage,
   type PresenceRequest,
 } from "@/lib/lobby/presence";
-import {
-  dressSprite,
-  loadOutfit,
-  type Outfit,
-  outfitImageSrcs,
-  saveOutfit,
-  spriteName,
-  WARDROBE_SLOTS,
-} from "@/lib/lobby/wardrobe";
-import { SPRITE_FIT } from "@/lib/lobby/wardrobe-fit";
+import { HEAD_ANCHORS } from "@/lib/lobby/capybara-3d";
+import { CHARACTER_3D, drawDressed, loadOutfit, type Outfit, outfitSheets, saveOutfit, WARDROBE_SLOTS } from "@/lib/lobby/wardrobe";
 import {
   BATH_OFFSET_Y,
   BATH_RX,
@@ -253,11 +244,12 @@ const IDLE_ACTIONS: readonly { action: "scratch" | "yawn" | "doze"; ms: number }
 const IDLE_CYCLE_MS = IDLE_ACTIONS.reduce((sum, { ms }) => sum + IDLE_WAIT_MS + ms, 0);
 /** 누른 곳까지 이만큼 가까워지면 멈춘다(제자리 떨림 방지) */
 const ARRIVE_PX = 6;
+/** 카피바라 스프라이트를 그리는 크기. 3D로 구운 프레임은 서든 앉든 같은 틀·같은 축척이다 */
 const STAND_SIZE = 76;
+/** 앉으면 머리가 낮아 이름표를 이만큼 높이에 단다 */
 const SIT_SIZE = 64;
-/** 스프라이트 이미지 높이 중 발바닥 위치 비율 (서기·걷기·때리기·기절·긁기 1000/1024, 앉기 972/1024) */
+/** 스프라이트 이미지 높이 중 발바닥 위치 비율 (assets-src/characters/capybara-3d/frames.js VIEW.foot) */
 const STAND_FOOT = 1000 / 1024;
-const SIT_FOOT = 972 / 1024;
 /** 먹는 스프라이트에서 앞발(먹이를 드는 자리)의 발바닥 위 높이 비율 */
 const FOOD_Y = 0.42;
 /** 발 기준 충돌 상자 */
@@ -289,7 +281,7 @@ const RECONNECT_MAX_MS = 8000;
 const MAX_BUFFERED_BYTES = 64 * 1024;
 /** 텍스처 한 장이 덮는 월드 크기(px) — 타일의 배수여야 칸마다 이어진다 */
 const TEXTURE_SIZE = 192;
-const CHARACTER_BASE = "/assets/images/characters/capybara";
+const CHARACTER_BASE = CHARACTER_3D;
 
 const KEY_VECTORS: Partial<Record<string, [number, number]>> = {
   ArrowUp: [0, -1],
@@ -558,11 +550,11 @@ function drawBathing(
   ctx.ellipse(x, y, 26, 7, 0, 0, Math.PI * 2);
   ctx.fill();
   if (animate) for (const offset of [0, 900]) drawRipple(ctx, x, y - 3, ((now + offset) % 1800) / 1800);
-  // 바라보는 방향 서기 스프라이트에서 잰 머리 타원 꼭대기. 머리 타원은 귀 끝까지 잡혀 있어서
-  // YUZU_SINK만큼 내려 털에 살짝 묻히게 얹고, 물속을 걸을 때 몸이 들썩이는 만큼(drawCapybara와 같은 식) 같이 올린다
-  const [headCx, headCy, , headRy] = SPRITE_FIT[`stand-${facing}`].head;
-  const headX = x - STAND_SIZE / 2 + (STAND_SIZE * headCx) / 100;
-  const headTop = y + BATH_SINK - STAND_SIZE * STAND_FOOT + (STAND_SIZE * (headCy - headRy)) / 100;
+  // 바라보는 방향 서기 프레임의 머리 꼭대기(3D 모델에서 잰 자리). YUZU_SINK만큼 내려 털에 살짝 묻히게 얹고,
+  // 물속을 걸을 때 몸이 들썩이는 만큼(drawCapybara와 같은 식) 같이 올린다
+  const [topX, topY] = HEAD_ANCHORS[`stand-${facing}`].headTop;
+  const headX = x - STAND_SIZE / 2 + (STAND_SIZE * topX) / 100;
+  const headTop = y + BATH_SINK - STAND_SIZE * STAND_FOOT + (STAND_SIZE * topY) / 100;
   const lift = stride > 0 && animate ? Math.abs(Math.sin((stride / (STRIDE_PX * 2)) * Math.PI)) * 3 : 0;
   drawYuzu(ctx, yuzu, headX, headTop + YUZU_SINK - lift);
 }
@@ -791,8 +783,8 @@ function drawCapybara(
             : `${look.pose}-${direction}`; // 대각선 걷기 이미지가 아직 없으면 옆모습
   const image = sprites.get(key);
   if (!ready(image)) return;
-  const size = look.sitting ? SIT_SIZE : STAND_SIZE;
-  const foot = look.sitting ? SIT_FOOT : STAND_FOOT;
+  const size = STAND_SIZE;
+  const foot = STAND_FOOT;
   if (key.startsWith("sleep")) {
     // 자는 동안 숨 쉬듯 몸이 발바닥 기준으로 천천히 부풀었다 가라앉고, 머리 옆으로 z가 떠오른다
     ctx.save();
@@ -1383,16 +1375,13 @@ export function Lobby({ games, listGames }: { games: DoorGame[]; listGames: Door
         const key = `${base.src}|${px}|${worn.join(",")}`;
         const cached = dressedCache.get(key);
         if (cached) return cached;
-        // 옷 이미지를 다 불러온 뒤에만 굽는다 (덜 불러온 채 구우면 빠진 옷이 그대로 굳는다)
-        const { silhouette, under, over } = dressSprite(spriteName(base.src), outfit);
-        if (![...silhouette, ...under, ...over].every((piece) => ready(outfitImage(piece.src)))) return null;
         const canvas = document.createElement("canvas");
         canvas.width = px;
         canvas.height = px;
         const bake = canvas.getContext("2d");
         if (!bake) return null;
-        bake.drawImage(base, 0, 0, px, px);
-        drawOutfit({ ctx: bake, base, outfit, left: 0, top: 0, size: px, imageFor: outfitImage });
+        // 옷 시트를 다 받은 뒤에만 캐시에 넣는다 (덜 받은 채 구우면 빠진 옷이 그대로 굳는다)
+        if (!drawDressed(bake, base, outfit, [0, 0, px], outfitImage)) return null;
         // ponytail: 넘치면 통째로 비운다 (청크 캐시와 같은 방식). 사람이 많아 자주 비워지면 LRU로
         if (dressedCache.size > 300) dressedCache.clear();
         dressedCache.set(key, canvas);
@@ -2606,11 +2595,8 @@ export function Lobby({ games, listGames }: { games: DoorGame[]; listGames: Door
       ...textures.values(),
       ...buildingImages,
       ...icons.values(),
-      ...WARDROBE_SLOTS.flatMap((slot) => {
-        const id = outfitRef.current[slot];
-        // 정면 + 뒤·옆·대각선 그림까지 받아 둬야 방향을 틀 때 옷이 늦게 나타나지 않는다
-        return id ? outfitImageSrcs(slot, id).map(outfitImage) : [];
-      }),
+      // 옷 시트 한 장에 모든 방향·동작이 들어 있다
+      ...outfitSheets(outfitRef.current).map(outfitImage),
     ];
     let loadedCount = 0;
     let sendId = 0;
