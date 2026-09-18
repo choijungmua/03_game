@@ -1,5 +1,6 @@
 "use client";
 
+import { Ban } from "lucide-react";
 import NextImage from "next/image";
 import { useEffect, useRef, useState } from "react";
 
@@ -40,7 +41,7 @@ export function Wardrobe({ outfit, onChange }: { outfit: Outfit; onChange: (outf
                 aria-pressed={slot === s}
                 className={cn(
                   "min-h-10 shrink-0 touch-manipulation rounded-full px-3.5 text-caption-1 font-semibold transition-[background-color,color,scale] duration-150 focus-visible:outline-2 focus-visible:outline-primary motion-safe:active:scale-95 motion-reduce:transition-none",
-                  slot === s ? "bg-primary text-primary-foreground shadow-sm" : "bg-card text-text-caption hover:text-text-strong",
+                  slot === s ? "bg-primary text-primary-foreground shadow-sm" : "text-text-caption ring-1 ring-inset ring-border-default hover:bg-card hover:text-text-strong",
                   outfit[s] && slot !== s && "text-text-strong",
                 )}
               >
@@ -57,10 +58,11 @@ export function Wardrobe({ outfit, onChange }: { outfit: Outfit; onChange: (outf
           onClick={() => choose(null)}
           aria-pressed={!outfit[slot]}
           className={cn(
-            "flex aspect-square touch-manipulation flex-col items-center justify-center rounded-2xl bg-muted/50 text-caption-2 font-semibold text-text-caption ring-1 transition-[background-color,color,scale] duration-150 focus-visible:outline-2 focus-visible:outline-primary motion-safe:active:scale-95 motion-reduce:transition-none",
-            !outfit[slot] ? "text-text-strong ring-2 ring-primary" : "ring-border-default hover:bg-muted",
+            "flex aspect-square touch-manipulation flex-col items-center justify-center gap-1 rounded-2xl text-caption-2 font-semibold text-text-caption ring-1 transition-[background-color,color,scale] duration-150 focus-visible:outline-2 focus-visible:outline-primary motion-safe:active:scale-95 motion-reduce:transition-none",
+            !outfit[slot] ? "bg-capybara/15 text-text-strong ring-2 ring-primary" : "bg-muted/50 ring-border-default hover:bg-muted",
           )}
         >
+          <Ban aria-hidden className="size-6 opacity-70" />
           없음
         </button>
         {SLOT_INFO[slot].items.map((item) => (
@@ -70,12 +72,13 @@ export function Wardrobe({ outfit, onChange }: { outfit: Outfit; onChange: (outf
             onClick={() => choose(item.id)}
             aria-pressed={outfit[slot] === item.id}
             className={cn(
-              "relative flex aspect-square touch-manipulation flex-col items-center justify-center gap-0.5 rounded-2xl bg-muted/50 p-1 text-caption-3 text-text-caption ring-1 transition-[background-color,color,scale] duration-150 focus-visible:outline-2 focus-visible:outline-primary motion-safe:active:scale-95 motion-reduce:transition-none",
-              outfit[slot] === item.id ? "text-text-strong ring-2 ring-primary" : "ring-border-default hover:bg-muted",
+              "relative flex aspect-square touch-manipulation flex-col items-center justify-center gap-0.5 rounded-2xl p-1.5 text-caption-3 text-text-caption ring-1 transition-[background-color,color,scale] duration-150 focus-visible:outline-2 focus-visible:outline-primary motion-safe:active:scale-95 motion-reduce:transition-none",
+              outfit[slot] === item.id ? "bg-capybara/15 text-text-strong ring-2 ring-primary" : "bg-muted/50 ring-border-default hover:bg-muted",
             )}
           >
             <NextImage src={wardrobeSrc(slot, item.id)} alt="" width={96} height={96} unoptimized className="min-h-0 flex-1 object-contain" />
-            <span className="w-full truncate text-center">{item.label}</span>
+            {/* 긴 이름(유자 온천 수건)도 잘리지 않게 두 줄까지 */}
+            <span className="line-clamp-2 w-full break-keep text-center leading-tight">{item.label}</span>
             {item.special && (
               <span className="absolute right-1 top-0.5 text-caption-3">
                 <span aria-hidden>✨</span>

@@ -68,16 +68,16 @@ export function FishBag({
                   width={128}
                   height={128}
                   unoptimized
-                  className={cn("size-11 object-contain drop-shadow-sm", count === 0 && "opacity-35 brightness-0")}
+                  className={cn("size-11 object-contain drop-shadow-sm", count === 0 && "opacity-20 brightness-0 invert")}
                 />
               ) : (
                 <Apple
                   aria-hidden
                   style={{ color: FISH_LOOKS[name].color }}
-                  className={cn("size-11 p-1.5 drop-shadow-sm", count === 0 && "opacity-35 brightness-0")}
+                  className={cn("size-11 p-1.5 drop-shadow-sm", count === 0 && "opacity-20 brightness-0 invert")}
                 />
               )}
-              <span className="w-full truncate text-center text-caption-2 font-semibold text-text-strong">
+              <span className={cn("w-full truncate text-center text-caption-2 font-semibold", count > 0 ? "text-text-strong" : "text-text-caption")}>
                 {count > 0 ? (
                   <>
                     {name} <span className="font-normal tabular-nums text-text-caption">×{count}</span>
