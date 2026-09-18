@@ -16,9 +16,11 @@ import { useLockPageScroll } from "@/lib/games/use-lock-page-scroll";
 import { playGameSound, type SoundLayer } from "@/lib/lobby/settings";
 
 import {
+  ANIMAL_FACES,
   ANIMAL_IMAGE_BASE,
   ANIMALS,
   BOARD_SIZE,
+  BURST_AT_MS,
   COMBO_WINDOW_MS,
   DRAG_THRESHOLD,
   FAIL_TIER_INDEX,
@@ -28,9 +30,11 @@ import {
   HINT_DELAY_MS,
   PANG_SOUNDS,
   POP_MS,
+  POP_SPARKS,
   RESULT_SOUND_DELAY_MS,
   RESULT_TAP_GUARD_MS,
   ROUND_SECONDS,
+  SHAKE_CLEAR_COUNT,
   SWAP_MS,
 } from "./constants";
 import { PangLeaderboard } from "./leaderboard";
@@ -114,7 +118,21 @@ function PlayTimer({ startAt }: { startAt: number }) {
   );
 }
 
-/** 판의 블록 하나. 색 원 위에 동물 펠트 얼굴을 얹고, 터질 때만 우는 얼굴로 바꾼다 (constants.ts ANIMALS 참고) */
+/** 터질 때 튀어나가는 조각 하나의 방향·기울기·시작 시각. 조각 크기가 블록의 25%라 이동 거리(블록 %)에 4를 곱한다 */
+function sparkStyle(spark: (typeof POP_SPARKS)[number]): React.CSSProperties & { "--dx": string; "--dy": string } {
+  return {
+    "--dx": `${spark.dx * 4}%`,
+    "--dy": `${spark.dy * 4}%`,
+    // 눈물은 뾰족한 꼬리가 날아온 쪽(블록 가운데)을 향하게
+    rotate: spark.kind === "tear" ? `${spark.dx < 0 ? 45 : -135}deg` : undefined,
+    animationDelay: `${BURST_AT_MS}ms`,
+  };
+}
+
+/**
+ * 판의 블록 하나. 색 원 위에 동물 펠트 얼굴. 가만히 있을 땐 숨 쉬듯 오르내리며 가끔 눈웃음으로 깜빡이고,
+ * 고르면 콩콩 뛰고, 힌트면 도리도리, 터질 땐 우는 얼굴로 흔들다 펑 — 눈물·반짝이가 튀어나간다 (constants.ts ANIMALS 참고)
+ */
 function PangTile({
   tile,
   index,
@@ -133,11 +151,14 @@ function PangTile({
   focused: boolean;
 }) {
   const animal = ANIMALS[tile.kind];
+  const face = (suffix: string) => `${ANIMAL_IMAGE_BASE}/${animal.key}${suffix}.webp`;
+  // 블록마다 숨 쉬기·깜빡임 박자를 어긋나게 (id로 정해서 다시 그려도 박자가 안 튄다)
+  const beat = ((tile.id * 7919) % 1000) / 1000;
+  const resting = !popping && !selected && !hinted;
   const style: React.CSSProperties & { "--drop": number } = {
     width: `${100 / BOARD_SIZE}%`,
     height: `${100 / BOARD_SIZE}%`,
     translate: `${colOf(index) * 100}% ${rowOf(index) * 100}%`,
-    transitionDuration: `${popping ? POP_MS : FALL_MS}ms`,
     "--drop": dropRows ?? 0,
   };
   return (
@@ -147,48 +168,96 @@ function PangTile({
       data-kind={tile.kind}
       data-special={tile.special}
       className={cn(
-        "absolute top-0 left-0 flex items-center justify-center transition-[translate,scale,opacity,rotate] ease-out motion-reduce:transition-none",
-        dropRows !== undefined && "animate-pang-drop motion-reduce:animate-none",
-        // 터질 땐 우는 얼굴로 바뀌면서 펑 부풀어 올랐다 사라진다 (쪼그라들면 눈물이 안 보인다)
-        popping && "scale-125 rotate-12 opacity-0 motion-reduce:scale-0 motion-reduce:rotate-0",
+        // 자리 옮기기(바꾸기·아래로 채우기)만 transition, 새로 떨어지는 블록은 pang-drop(바닥에서 말랑하게 눌림)
+        "absolute top-0 left-0 flex items-center justify-center transition-[translate] duration-200 ease-out motion-reduce:transition-none",
+        dropRows !== undefined && "origin-bottom animate-pang-drop motion-reduce:animate-none",
       )}
       style={style}
     >
       <div
         className={cn(
-          "flex size-[88%] items-center justify-center rounded-full text-[clamp(0.75rem,4vmin,1.5rem)] font-black shadow-[inset_0_-4px_0_rgb(0_0_0/0.18)] transition-transform duration-100",
+          "relative flex size-[88%] items-center justify-center rounded-full shadow-[inset_0_-4px_0_rgb(0_0_0/0.18)]",
           tile.special === "rainbow"
             ? "bg-linear-to-br from-pink-400 via-yellow-300 to-sky-400 text-neutral-950"
             : animal.colorClass,
           tile.special === "bomb" && "ring-4 ring-white ring-inset",
-          selected && "scale-110 outline-4 outline-white",
+          selected && "outline-4 outline-white",
           focused && !selected && "outline-2 outline-offset-1 outline-primary",
-          hinted && "animate-pulse",
+          // 터질 땐 우는 얼굴로 흔들며 버티다 풍선처럼 펑 / 고르면 콩콩 / 힌트면 도리도리 / 평소엔 숨 쉬듯 오르내림
+          popping
+            ? "animate-pang-pop motion-reduce:animate-none motion-reduce:opacity-0"
+            : selected
+              ? "animate-pang-hop motion-reduce:animate-none motion-reduce:scale-110"
+              : hinted
+                ? "animate-pang-wiggle motion-reduce:animate-none motion-reduce:ring-4 motion-reduce:ring-white"
+                : "animate-pang-idle motion-reduce:animate-none",
         )}
+        style={resting ? { animationDelay: `${-beat * 2.4}s` } : undefined}
       >
         {tile.special === "bomb" ? (
           <Bomb aria-hidden="true" className="size-1/2" />
         ) : tile.special === "rainbow" ? (
           <Sparkles aria-hidden="true" className="size-1/2" />
         ) : (
-          <Image
-            // 터지는 순간만 우는 얼굴 — 눈물이 튀면서 블록이 쪼그라든다
-            src={`${ANIMAL_IMAGE_BASE}/${animal.key}${popping ? "-cry" : ""}.webp`}
-            alt={animal.name}
-            width={128}
-            height={128}
-            unoptimized
-            draggable={false}
-            className="size-[86%] select-none"
-          />
+          <>
+            <Image
+              src={face(popping ? ANIMAL_FACES.cry : ANIMAL_FACES.calm)}
+              alt={animal.name}
+              width={128}
+              height={128}
+              unoptimized
+              draggable={false}
+              className="size-[86%] select-none"
+            />
+            {/* 눈웃음 얼굴을 위에 겹쳐 두고, 평소엔 가끔 깜빡이듯 잠깐 보이고 고르면 계속 보인다 */}
+            {!popping && (
+              <Image
+                src={face(ANIMAL_FACES.happy)}
+                alt=""
+                aria-hidden="true"
+                width={128}
+                height={128}
+                unoptimized
+                draggable={false}
+                className={cn(
+                  "absolute size-[86%] select-none",
+                  selected ? "opacity-100" : "opacity-0 motion-safe:animate-pang-blink",
+                )}
+                style={selected ? undefined : { animationDuration: `${3.2 + beat * 3}s`, animationDelay: `${-beat * 6}s` }}
+              />
+            )}
+          </>
         )}
       </div>
+      {/* 펑 하는 순간 눈물 둘은 좌우로, 반짝이 넷은 사방으로 튀어나간다 (조각 크기 25% → 이동 거리 ×4) */}
+      {popping &&
+        POP_SPARKS.map((spark, sparkIndex) => (
+          <span
+            key={sparkIndex}
+            aria-hidden="true"
+            className={cn(
+              "pointer-events-none absolute flex size-[25%] items-center justify-center animate-pang-spark motion-reduce:hidden",
+              spark.kind === "tear"
+                ? "rounded-[50%_50%_50%_0] bg-sky-300 shadow-[inset_-2px_-2px_0_rgb(0_0_0/0.12)]"
+                : "text-[min(6.5vmin,2.2rem)] leading-none text-yellow-200 drop-shadow",
+            )}
+            style={sparkStyle(spark)}
+          >
+            {spark.kind === "star" && "✦"}
+          </span>
+        ))}
     </div>
   );
 }
 
 export function CapybaraPang() {
   const records = usePangRecords();
+  // 표정 그림(특히 터질 때만 쓰는 우는 얼굴)을 그때 받으면 한순간 빈칸이 보이니 들어오자마자 전부 받아 둔다
+  useEffect(() => {
+    for (const animal of ANIMALS) {
+      for (const suffix of Object.values(ANIMAL_FACES)) new window.Image().src = `${ANIMAL_IMAGE_BASE}/${animal.key}${suffix}.webp`;
+    }
+  }, []);
   const [phase, setPhase] = useState<Phase>("idle");
   const locked = phase === "countdown" || phase === "playing";
   useLockPageScroll(locked);
@@ -340,8 +409,15 @@ export function CapybaraPang() {
         : planClear(current, runs, [], [], idsRef.current);
 
       registerClear(plan.cleared.size + plan.created.size);
-      playGameSound(plan.cleared.size > 5 ? GAME_SOUNDS.explosion : PANG_SOUNDS.pop);
+      playGameSound(plan.cleared.size > SHAKE_CLEAR_COUNT ? GAME_SOUNDS.explosion : PANG_SOUNDS.pop);
       setPopping(plan.cleared);
+      // 폭탄·무지개처럼 한꺼번에 많이 터지면 펑 하는 순간 판이 쿵 흔들린다 (jsdom엔 animate가 없어 선택 호출)
+      if (plan.cleared.size > SHAKE_CLEAR_COUNT && !window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) {
+        boardElRef.current?.animate?.(
+          [{ translate: "0 0" }, { translate: "-7px 4px" }, { translate: "6px -4px" }, { translate: "-3px 2px" }, { translate: "0 0" }],
+          { duration: 320, delay: BURST_AT_MS, easing: "ease-out" },
+        );
+      }
       await wait(POP_MS);
       if (round !== roundRef.current) return;
 
@@ -610,8 +686,14 @@ export function CapybaraPang() {
                 </span>
               )}
               <span
+                // 콤보가 오를 때마다 새로 붙여 글씨가 크게 튀어나왔다 자리 잡게 한다
+                key={combo.count}
                 data-testid="play-combo"
-                className={cn("text-title-3 font-bold tabular-nums", combo.count < 2 && "invisible")}
+                className={cn(
+                  "text-title-3 font-bold tabular-nums motion-safe:animate-pang-combo",
+                  combo.count >= FEVER_COMBO / 2 && "text-yellow-300",
+                  combo.count < 2 && "invisible",
+                )}
               >
                 {combo.count}콤보
               </span>
@@ -629,7 +711,11 @@ export function CapybaraPang() {
             onPointerCancel={() => {
               dragRef.current = null;
             }}
-            className="relative aspect-square w-[min(100%,calc(100dvh-14rem))] touch-none overflow-hidden rounded-2xl bg-black/15"
+            className={cn(
+              "relative aspect-square w-[min(100%,calc(100dvh-14rem))] touch-none overflow-hidden rounded-2xl bg-black/15 transition-shadow duration-300",
+              // 피버 동안은 판 둘레가 노랗게 빛난다
+              fever && "shadow-[0_0_0_4px_rgb(253_224_71/0.85),0_0_32px_rgb(253_224_71/0.55)] motion-safe:animate-pulse",
+            )}
           >
             {board.map((tile, index) => (
               <PangTile
