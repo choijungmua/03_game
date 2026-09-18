@@ -19,6 +19,7 @@ import {
   ANIMAL_FACES,
   ANIMAL_IMAGE_BASE,
   ANIMALS,
+  BIG_COUNT_SECONDS,
   BOARD_SIZE,
   BURST_AT_MS,
   COMBO_WINDOW_MS,
@@ -28,6 +29,9 @@ import {
   FEVER_COMBO,
   FEVER_MS,
   HINT_DELAY_MS,
+  HURRY_SECONDS,
+  LAST_PANG_INTRO_MS,
+  LAST_PANG_OUTRO_MS,
   PANG_SOUNDS,
   POP_MS,
   POP_SPARKS,
@@ -36,9 +40,12 @@ import {
   ROUND_SECONDS,
   SHAKE_CLEAR_COUNT,
   SWAP_MS,
+  TIME_OVER_MS,
 } from "./constants";
 import { PangLeaderboard } from "./leaderboard";
 import {
+  type Blast,
+  blastsIn,
   type Board,
   collapse,
   colOf,
@@ -50,6 +57,7 @@ import {
   isValidSwap,
   mostCommonKind,
   neighbor,
+  nextSpecial,
   planClear,
   rowOf,
   scoreFor,
@@ -65,7 +73,8 @@ export const COUNTDOWN_STEP_MS = 800;
 
 const TITLE = GAME_TITLES["capybara-pang"];
 
-type Phase = "idle" | "countdown" | "playing" | "result";
+/** lastpang: 시간이 끝난 뒤 "타임 오버!" → 남은 폭탄·무지개를 터뜨리는 라스트 팡 (입력은 안 받는다) */
+type Phase = "idle" | "countdown" | "playing" | "lastpang" | "result";
 
 interface RoundResult {
   score: number;
@@ -73,6 +82,8 @@ interface RoundResult {
   recordId: string | null;
   /** 한 번도 터뜨리지 못해 기록이 없으면 null */
   rank: number | null;
+  /** 라스트 팡으로 더해진 점수 (score에 이미 들어 있다) */
+  lastBonus: number;
 }
 
 const EMPTY_CELLS: ReadonlySet<number> = new Set();
@@ -97,8 +108,8 @@ function delayLayers(layers: readonly SoundLayer[], ms: number): SoundLayer[] {
   return layers.map((layer) => ({ ...layer, at: (layer.at ?? 0) + ms }));
 }
 
-/** 남은 시간 글자 + 줄어드는 막대 */
-function PlayTimer({ startAt }: { startAt: number }) {
+/** 남은 시간 글자 + 줄어드는 막대. 마지막 HURRY_SECONDS초엔 빨갛게 두근거린다 */
+function PlayTimer({ startAt, hurry }: { startAt: number; hurry: boolean }) {
   const valueRef = useRef<HTMLSpanElement>(null);
   const remaining = (elapsedMs: number) => Math.max(0, ROUND_SECONDS - elapsedMs / 1000).toFixed(1);
   useFrameText(valueRef, () => remaining(Date.now() - startAt));
@@ -107,14 +118,79 @@ function PlayTimer({ startAt }: { startAt: number }) {
     <div className="flex w-full items-center gap-3">
       <div className="h-3 flex-1 overflow-hidden rounded-full bg-black/20">
         <div
-          className="h-full origin-left animate-pang-time rounded-full bg-success"
+          className={cn(
+            "h-full origin-left animate-pang-time rounded-full transition-colors duration-300",
+            hurry ? "bg-red-500" : "bg-success",
+          )}
           style={{ animationDuration: `${ROUND_SECONDS}s` }}
         />
       </div>
-      <p data-testid="play-timer" className="w-16 text-right text-title-3 font-bold tabular-nums">
+      <p
+        data-testid="play-timer"
+        data-hurry={hurry || undefined}
+        className={cn(
+          "w-16 text-right text-title-3 font-bold tabular-nums transition-colors",
+          hurry && "text-red-400 motion-safe:animate-pulse",
+        )}
+      >
         <span ref={valueRef}>{remaining(0)}</span>초
       </p>
     </div>
+  );
+}
+
+/** 마지막 BIG_COUNT_SECONDS초: 판 위에 5·4·3·2·1이 초마다 크게 튀어나왔다 옅어진다 (판은 그대로 누를 수 있다) */
+function FinalCountdown({ startAt }: { startAt: number }) {
+  const [left, setLeft] = useState<number | null>(null);
+  useEffect(() => {
+    const timers = Array.from({ length: BIG_COUNT_SECONDS }, (_, i) => {
+      const value = BIG_COUNT_SECONDS - i;
+      return setTimeout(() => setLeft(value), startAt + (ROUND_SECONDS - value) * 1000 - Date.now());
+    });
+    timers.push(setTimeout(() => setLeft(null), startAt + ROUND_SECONDS * 1000 - Date.now()));
+    return () => timers.forEach(clearTimeout);
+  }, [startAt]);
+  if (left === null) return null;
+  return (
+    <span
+      key={left}
+      aria-hidden="true"
+      className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center text-[min(40vmin,12rem)] font-black leading-none text-white [text-shadow:0_4px_24px_rgb(0_0_0/0.45)] animate-pang-count motion-reduce:animate-none motion-reduce:opacity-50"
+    >
+      {left}
+    </span>
+  );
+}
+
+/** 폭탄은 자기 줄·칸을 따라 가로·세로 광선이 쓸고, 무지개는 고리가 퍼진다 (펑 하는 순간에 맞춰) */
+function BlastEffects({ blasts }: { blasts: readonly Blast[] }) {
+  const cell = 100 / BOARD_SIZE;
+  return blasts.map(({ index, special }) =>
+    special === "bomb" ? (
+      <span key={`bomb-${index}`} aria-hidden="true" className="pointer-events-none absolute inset-0 z-10 motion-reduce:hidden">
+        <span
+          className="absolute left-0 w-full rounded-full bg-linear-to-r from-transparent via-yellow-100 to-transparent shadow-[0_0_18px_rgb(253_224_71/0.9)] animate-pang-beam-x"
+          style={{ top: `${rowOf(index) * cell + cell * 0.3}%`, height: `${cell * 0.4}%`, animationDelay: `${BURST_AT_MS}ms` }}
+        />
+        <span
+          className="absolute top-0 h-full rounded-full bg-linear-to-b from-transparent via-yellow-100 to-transparent shadow-[0_0_18px_rgb(253_224_71/0.9)] animate-pang-beam-y"
+          style={{ left: `${colOf(index) * cell + cell * 0.3}%`, width: `${cell * 0.4}%`, animationDelay: `${BURST_AT_MS}ms` }}
+        />
+      </span>
+    ) : (
+      <span
+        key={`rainbow-${index}`}
+        aria-hidden="true"
+        className="pointer-events-none absolute z-10 rounded-full border-4 border-white/90 shadow-[0_0_20px_rgb(255_255_255/0.8)] animate-pang-ring motion-reduce:hidden"
+        style={{
+          left: `${colOf(index) * cell}%`,
+          top: `${rowOf(index) * cell}%`,
+          width: `${cell}%`,
+          height: `${cell}%`,
+          animationDelay: `${BURST_AT_MS}ms`,
+        }}
+      />
+    ),
   );
 }
 
@@ -177,9 +253,8 @@ function PangTile({
       <div
         className={cn(
           "relative flex size-[88%] items-center justify-center rounded-full shadow-[inset_0_-4px_0_rgb(0_0_0/0.18)]",
-          tile.special === "rainbow"
-            ? "bg-linear-to-br from-pink-400 via-yellow-300 to-sky-400 text-neutral-950"
-            : animal.colorClass,
+          // 무지개는 색이 도는 층(아래 span)을 따로 깐다 — 이 칸엔 이미 숨 쉬기·터지기 애니메이션이 있어서
+          tile.special === "rainbow" ? "text-neutral-950" : animal.colorClass,
           tile.special === "bomb" && "ring-4 ring-white ring-inset",
           selected && "outline-4 outline-white",
           focused && !selected && "outline-2 outline-offset-1 outline-primary",
@@ -195,9 +270,22 @@ function PangTile({
         style={resting ? { animationDelay: `${-beat * 2.4}s` } : undefined}
       >
         {tile.special === "bomb" ? (
-          <Bomb aria-hidden="true" className="size-1/2" />
+          <>
+            <Bomb aria-hidden="true" className="size-1/2" />
+            {/* 도화선 불꽃이 타닥타닥 — 곧 터질 것 같은 폭탄 */}
+            <span
+              aria-hidden="true"
+              className="absolute top-[4%] right-[10%] size-[24%] rounded-full bg-radial from-yellow-200 via-orange-400 to-red-500/0 motion-safe:animate-pang-fuse"
+            />
+          </>
         ) : tile.special === "rainbow" ? (
-          <Sparkles aria-hidden="true" className="size-1/2" />
+          <>
+            <span
+              aria-hidden="true"
+              className="absolute inset-0 rounded-full bg-linear-to-br from-pink-400 via-yellow-300 to-sky-400 motion-safe:animate-pang-rainbow"
+            />
+            <Sparkles aria-hidden="true" className="relative size-1/2" />
+          </>
         ) : (
           <>
             <Image
@@ -259,7 +347,7 @@ export function CapybaraPang() {
     }
   }, []);
   const [phase, setPhase] = useState<Phase>("idle");
-  const locked = phase === "countdown" || phase === "playing";
+  const locked = phase === "countdown" || phase === "playing" || phase === "lastpang";
   useLockPageScroll(locked);
   const [countdownIndex, setCountdownIndex] = useState(0);
   const [playStartAt, setPlayStartAt] = useState(0);
@@ -278,6 +366,13 @@ export function CapybaraPang() {
   const [score, setScore] = useState(0);
   const [combo, setCombo] = useState({ count: 0, at: 0 });
   const [feverUntil, setFeverUntil] = useState(0);
+  /** 지금 터지는 폭탄·무지개 (가로·세로 광선, 퍼지는 고리) */
+  const [blasts, setBlasts] = useState<readonly Blast[]>([]);
+  /** 마지막 HURRY_SECONDS초: 시간 막대가 빨개지고 판 둘레가 두근거린다 */
+  const [hurry, setHurry] = useState(false);
+  /** 판 위에 크게 박히는 글씨 */
+  const [banner, setBanner] = useState<"timeover" | "lastpang" | null>(null);
+  const [lastBonus, setLastBonus] = useState(0);
 
   const idsRef = useRef<IdSource>({ next: 0 });
   const boardRef = useRef<Board>([]);
@@ -290,6 +385,7 @@ export function CapybaraPang() {
   const maxComboRef = useRef(0);
   const lastClearAtRef = useRef(0);
   const feverUntilRef = useRef(0);
+  const lastBonusRef = useRef(0);
   const dragRef = useRef<{ index: number; x: number; y: number; moved: boolean } | null>(null);
   const boardElRef = useRef<HTMLDivElement>(null);
   const resultAtRef = useRef(0);
@@ -318,13 +414,16 @@ export function CapybaraPang() {
     dragRef.current = null;
     resultAtRef.current = Date.now();
     setPopping(EMPTY_CELLS);
+    setBlasts([]);
+    setBanner(null);
+    setHurry(false);
     setSelected(null);
     setPhase("result");
 
     const finalScore = scoreRef.current;
     if (finalScore === 0) {
       playGameSound([...PANG_SOUNDS.timeUp, ...delayLayers(GAME_SOUNDS.fail, RESULT_SOUND_DELAY_MS)]);
-      setResult({ score: 0, maxCombo: 0, recordId: null, rank: null });
+      setResult({ score: 0, maxCombo: 0, recordId: null, rank: null, lastBonus: 0 });
       return;
     }
 
@@ -339,18 +438,94 @@ export function CapybaraPang() {
     ]);
     saveRecords(insertRecord(records, record));
     void submitGameRecord("capybara-pang", record.score, record);
-    setResult({ score: finalScore, maxCombo: record.maxCombo, recordId: record.id, rank });
+    setResult({ score: finalScore, maxCombo: record.maxCombo, recordId: record.id, rank, lastBonus: lastBonusRef.current });
+  });
+
+  /**
+   * 시간 끝: "타임 오버!" → (진행 중이던 연쇄는 끝까지 보여 주고) 남은 폭탄·무지개가 있으면 "라스트 팡!"
+   * 하나씩 터뜨려 점수를 더한다 → 결과. 도중에 그만두면(roundRef가 바뀌면) 멈춘다
+   */
+  const timeUp = useEffectEvent(async () => {
+    const round = roundRef.current;
+    dragRef.current = null;
+    setSelected(null);
+    setCursor(null);
+    setHint(null);
+    setPhase("lastpang");
+    setBanner("timeover");
+    playGameSound(PANG_SOUNDS.timeUp);
+    await wait(TIME_OVER_MS);
+    while (busyRef.current) {
+      await wait(50);
+      if (round !== roundRef.current) return;
+    }
+    if (round !== roundRef.current) return;
+    busyRef.current = true;
+
+    if (nextSpecial(boardRef.current) >= 0) {
+      setBanner("lastpang");
+      playGameSound(GAME_SOUNDS.record);
+      await wait(LAST_PANG_INTRO_MS);
+      // 터지는 동안엔 판이 보여야 하니 글씨는 걷고, 보너스는 점수 옆 배지가 올라가며 보여 준다
+      setBanner(null);
+      for (let guard = 0; guard < BOARD_SIZE * BOARD_SIZE; guard += 1) {
+        if (round !== roundRef.current) return;
+        const current = boardRef.current;
+        const index = nextSpecial(current);
+        if (index < 0) break;
+        // 연쇄로 같이 터지는 특수 블록까지 planClear가 범위를 넓힌다. 보너스는 콤보·피버 없이 블록 수대로
+        const plan = planClear(current, [], [index], [], idsRef.current);
+        const points = scoreFor(plan.cleared.size, 1, false);
+        lastBonusRef.current += points;
+        scoreRef.current += points;
+        setLastBonus(lastBonusRef.current);
+        setScore(scoreRef.current);
+        playGameSound(PANG_SOUNDS.lastPang);
+        setBlasts(blastsIn(current, plan.cleared));
+        setPopping(plan.cleared);
+        shakeBoard();
+        await wait(POP_MS);
+        if (round !== roundRef.current) return;
+        const next = collapse(
+          current.map((tile, cell) => (plan.cleared.has(cell) ? null : tile)),
+          Math.random,
+          idsRef.current,
+        );
+        setPopping(EMPTY_CELLS);
+        setBlasts([]);
+        setSpawned(next.spawned);
+        commit(next.board);
+        await wait(FALL_MS);
+      }
+    }
+    setBanner(null);
+    await wait(LAST_PANG_OUTRO_MS);
+    if (round !== roundRef.current) return;
+    finishRound();
   });
 
   useEffect(() => {
     if (phase !== "playing") return;
-    const timers = [setTimeout(finishRound, ROUND_SECONDS * 1000)];
-    // 끝나기 3·2·1초 전마다 삐
-    for (const left of COUNTDOWN_VALUES) {
-      timers.push(setTimeout(() => playGameSound(GAME_SOUNDS.countdown), (ROUND_SECONDS - left) * 1000));
+    const timers = [
+      setTimeout(() => void timeUp(), ROUND_SECONDS * 1000),
+      setTimeout(() => setHurry(true), (ROUND_SECONDS - HURRY_SECONDS) * 1000),
+    ];
+    // 마지막 10초는 초마다 째깍, 3·2·1초 전은 카운트다운 삐
+    for (let left = HURRY_SECONDS; left >= 1; left -= 1) {
+      const sound = left <= COUNTDOWN_VALUES.length ? GAME_SOUNDS.countdown : PANG_SOUNDS.tick;
+      timers.push(setTimeout(() => playGameSound(sound), (ROUND_SECONDS - left) * 1000));
     }
     return () => timers.forEach(clearTimeout);
   }, [phase]);
+
+  /** 폭탄·무지개처럼 한꺼번에 많이 터지면 펑 하는 순간 판이 쿵 흔들린다 (jsdom엔 animate가 없어 선택 호출) */
+  function shakeBoard() {
+    if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;
+    boardElRef.current?.animate?.(
+      [{ translate: "0 0" }, { translate: "-7px 4px" }, { translate: "6px -4px" }, { translate: "-3px 2px" }, { translate: "0 0" }],
+      { duration: 320, delay: BURST_AT_MS, easing: "ease-out" },
+    );
+  }
 
   // 콤보 시간이 지나면 콤보 표시를 지운다
   useEffect(() => {
@@ -411,19 +586,15 @@ export function CapybaraPang() {
       registerClear(plan.cleared.size + plan.created.size);
       playGameSound(plan.cleared.size > SHAKE_CLEAR_COUNT ? GAME_SOUNDS.explosion : PANG_SOUNDS.pop);
       setPopping(plan.cleared);
-      // 폭탄·무지개처럼 한꺼번에 많이 터지면 펑 하는 순간 판이 쿵 흔들린다 (jsdom엔 animate가 없어 선택 호출)
-      if (plan.cleared.size > SHAKE_CLEAR_COUNT && !window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) {
-        boardElRef.current?.animate?.(
-          [{ translate: "0 0" }, { translate: "-7px 4px" }, { translate: "6px -4px" }, { translate: "-3px 2px" }, { translate: "0 0" }],
-          { duration: 320, delay: BURST_AT_MS, easing: "ease-out" },
-        );
-      }
+      setBlasts(blastsIn(current, plan.cleared));
+      if (plan.cleared.size > SHAKE_CLEAR_COUNT) shakeBoard();
       await wait(POP_MS);
       if (round !== roundRef.current) return;
 
       const holes = current.map((tile, index) => plan.created.get(index) ?? (plan.cleared.has(index) ? null : tile));
       const next = collapse(holes, Math.random, idsRef.current);
       setPopping(EMPTY_CELLS);
+      setBlasts([]);
       setSpawned(next.spawned);
       commit(next.board);
       await wait(FALL_MS);
@@ -520,9 +691,14 @@ export function CapybaraPang() {
     maxComboRef.current = 0;
     lastClearAtRef.current = 0;
     feverUntilRef.current = 0;
+    lastBonusRef.current = 0;
     setScore(0);
     setCombo({ count: 0, at: 0 });
     setFeverUntil(0);
+    setLastBonus(0);
+    setHurry(false);
+    setBanner(null);
+    setBlasts([]);
     setSelected(null);
     setCursor(null);
     setSpawned(new Map());
@@ -536,6 +712,8 @@ export function CapybaraPang() {
     roundRef.current += 1;
     busyRef.current = false;
     playGameSound(GAME_SOUNDS.pause);
+    setBanner(null);
+    setHurry(false);
     setPhase("idle");
   }
 
@@ -583,7 +761,7 @@ export function CapybaraPang() {
   const screenClass =
     phase === "countdown"
       ? "bg-success text-neutral-950"
-      : phase === "playing"
+      : phase === "playing" || phase === "lastpang"
         ? fever
           ? "bg-violet-950 text-white"
           : "bg-background text-foreground"
@@ -603,6 +781,10 @@ export function CapybaraPang() {
       ? `${COUNTDOWN_VALUES[countdownIndex]}`
       : phase === "playing"
         ? `${ROUND_SECONDS}초 동안 같은 동물 3개를 이어 터뜨리세요. 방향키로 칸을 옮기고 Enter로 고르세요`
+        : phase === "lastpang"
+          ? banner === "lastpang"
+            ? "라스트 팡! 남은 폭탄과 무지개가 터지며 점수가 더해져요"
+            : "타임 오버!"
         : phase === "result" && result && tier
           ? `${rankLabel}, ${result.score}점, 최대 ${result.maxCombo}콤보, ${tier.label} 등급`
           : "";
@@ -667,7 +849,7 @@ export function CapybaraPang() {
         </div>
       )}
 
-      {phase === "playing" && (
+      {(phase === "playing" || phase === "lastpang") && (
         <div className="flex w-full max-w-xl flex-col items-center gap-4 pt-8">
           <div className="flex w-full items-end justify-between gap-4">
             <p className="flex flex-col">
@@ -677,6 +859,15 @@ export function CapybaraPang() {
               </span>
             </p>
             <div className="flex flex-col items-end gap-1">
+              {lastBonus > 0 && (
+                <span
+                  key={lastBonus}
+                  data-testid="last-pang-bonus"
+                  className="rounded-full bg-orange-400 px-3 py-0.5 text-caption-1 font-black tabular-nums text-neutral-950 motion-safe:animate-pang-combo"
+                >
+                  라스트 팡 +{lastBonus.toLocaleString("ko-KR")}
+                </span>
+              )}
               {fever && (
                 <span
                   data-testid="fever"
@@ -713,8 +904,10 @@ export function CapybaraPang() {
             }}
             className={cn(
               "relative aspect-square w-[min(100%,calc(100dvh-14rem))] touch-none overflow-hidden rounded-2xl bg-black/15 transition-shadow duration-300",
-              // 피버 동안은 판 둘레가 노랗게 빛난다
-              fever && "shadow-[0_0_0_4px_rgb(253_224_71/0.85),0_0_32px_rgb(253_224_71/0.55)] motion-safe:animate-pulse",
+              // 피버 동안은 판 둘레가 노랗게 빛나고, 마지막 10초엔 붉게 두근거린다
+              fever
+                ? "shadow-[0_0_0_4px_rgb(253_224_71/0.85),0_0_32px_rgb(253_224_71/0.55)] motion-safe:animate-pulse"
+                : hurry && phase === "playing" && "shadow-[0_0_0_4px_rgb(248_113_113/0.8)] motion-safe:animate-pang-hurry",
             )}
           >
             {board.map((tile, index) => (
@@ -729,9 +922,27 @@ export function CapybaraPang() {
                 focused={cursor === index}
               />
             ))}
+            <BlastEffects blasts={blasts} />
+            {phase === "playing" && <FinalCountdown startAt={playStartAt} />}
+            {banner && (
+              <span
+                key={banner}
+                data-testid="pang-banner"
+                className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center bg-black/25 motion-reduce:bg-black/40"
+              >
+                <span
+                  className={cn(
+                    "rounded-3xl px-6 py-3 text-[min(12vmin,3.5rem)] font-black leading-none text-white [text-shadow:0_4px_0_rgb(0_0_0/0.35)] animate-pang-banner motion-reduce:animate-none",
+                    banner === "lastpang" ? "bg-orange-500" : "bg-red-500",
+                  )}
+                >
+                  {banner === "lastpang" ? "라스트 팡!" : "타임 오버!"}
+                </span>
+              </span>
+            )}
           </div>
 
-          <PlayTimer startAt={playStartAt} />
+          <PlayTimer startAt={playStartAt} hurry={hurry} />
         </div>
       )}
 
@@ -759,6 +970,11 @@ export function CapybaraPang() {
             <p data-testid="result-summary" className="text-title-3 font-semibold text-balance">
               {tier.label} <span data-testid="result-combo">최대 {result.maxCombo}콤보</span>, {tier.description}
             </p>
+            {result.lastBonus > 0 && (
+              <p data-testid="result-last-pang" className="-mt-3 text-caption-1 font-bold opacity-80">
+                라스트 팡 보너스 +{result.lastBonus.toLocaleString("ko-KR")}점 포함
+              </p>
+            )}
 
             <div
               className="flex cursor-default items-center gap-3 rounded-full bg-black/10 py-1.5 pr-1.5 pl-5"

@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { mockIntersectionObserver } from "@/lib/games/testing/mock-intersection-observer";
 
 import { CapybaraPang, COUNTDOWN_STEP_MS, COUNTDOWN_VALUES } from "./capybara-pang";
-import { ROUND_SECONDS } from "./constants";
+import { HURRY_SECONDS, ROUND_SECONDS } from "./constants";
 import { type Board, findMove, isValidSwap } from "./logic";
 
 async function advance(ms: number) {
@@ -85,7 +85,16 @@ describe("CapybaraPang", () => {
     expect(screen.getByTestId("play-score")).toHaveTextContent("0");
   });
 
-  it("60초가 지나면 결과 화면에 점수·등급이 나오고 기록이 저장된다", async () => {
+  it("마지막 10초엔 시간 막대가 서두르기 모드가 된다", async () => {
+    render(<CapybaraPang />);
+    await startPlaying();
+
+    expect(screen.getByTestId("play-timer")).not.toHaveAttribute("data-hurry");
+    await advance((ROUND_SECONDS - HURRY_SECONDS) * 1000 + 50);
+    expect(screen.getByTestId("play-timer")).toHaveAttribute("data-hurry", "true");
+  });
+
+  it("60초가 지나면 타임 오버 → 라스트 팡을 거쳐 결과 화면에 점수·등급이 나오고 기록이 저장된다", async () => {
     render(<CapybaraPang />);
     await startPlaying();
 
@@ -94,6 +103,11 @@ describe("CapybaraPang", () => {
     tap(elements[a]);
     tap(elements[b]);
     await advance(ROUND_SECONDS * 1000);
+
+    // 곧바로 결과가 아니라 "타임 오버!"부터 (판에 남은 폭탄·무지개가 있으면 이어서 라스트 팡)
+    expect(getScreenEl()).toHaveAttribute("data-phase", "lastpang");
+    expect(screen.getByTestId("pang-banner")).toHaveTextContent("타임 오버!");
+    await advance(30_000);
 
     expect(getScreenEl()).toHaveAttribute("data-phase", "result");
     expect(screen.getByTestId("result-tier")).not.toBeEmptyDOMElement();
