@@ -45,7 +45,7 @@ export function SoundSettings({ settings, onChange }: SettingsProps) {
         aria-label="효과음"
         aria-keyshortcuts="M"
         onClick={() => onChange(toggledSound(settings))}
-        className="flex min-h-16 w-full touch-manipulation items-center gap-3 rounded-2xl bg-muted/60 px-4 text-left transition-colors hover:bg-muted focus-visible:outline-2 focus-visible:outline-primary"
+        className="flex min-h-16 w-full touch-manipulation items-center gap-3 rounded-2xl bg-muted/50 px-4 text-left ring-1 ring-border-default transition-[background-color,scale] duration-150 hover:bg-muted focus-visible:outline-2 focus-visible:outline-primary motion-safe:active:scale-[0.98] motion-reduce:transition-none"
       >
         {on ? <Volume2 aria-hidden className="size-6 shrink-0 text-text-strong" /> : <VolumeX aria-hidden className="size-6 shrink-0 text-text-caption" />}
         <span className="min-w-0 flex-1">
@@ -62,7 +62,7 @@ export function SoundSettings({ settings, onChange }: SettingsProps) {
           />
         </span>
       </button>
-      <label className="flex min-h-14 w-full min-w-0 items-center gap-3 rounded-2xl bg-muted/60 px-4">
+      <label className="flex min-h-14 w-full min-w-0 items-center gap-3 rounded-2xl bg-muted/50 px-4 ring-1 ring-border-default">
         <span className="shrink-0 text-caption-1 font-semibold text-text-strong">크기</span>
         <input
           type="range"

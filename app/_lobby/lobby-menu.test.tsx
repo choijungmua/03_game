@@ -80,12 +80,20 @@ describe("로비 메뉴", () => {
     const dialog = screen.getByRole("dialog", { name: "내 카피바라" });
     const closeButton = screen.getByRole("button", { name: "닫기" });
     const hat = screen.getByRole("button", { name: "밀짚모자" });
+    // 순서: 닫기 → 보이는 패널 → 맨 아래 탭 줄(선택된 탭 하나). 숨은 패널·선택 안 된 탭은 건너뛴다
+    const wardrobeTab = screen.getByRole("tab", { name: "카피바라 옷 입히기" });
 
-    hat.focus();
+    // 맨 끝(탭 줄)에서 Tab을 누르면 처음(닫기)으로, 처음에서 Shift+Tab이면 다시 맨 끝으로 돈다
+    wardrobeTab.focus();
     fireEvent.keyDown(dialog, { key: "Tab" });
     expect(closeButton).toHaveFocus();
 
     fireEvent.keyDown(dialog, { key: "Tab", shiftKey: true });
+    expect(wardrobeTab).toHaveFocus();
+
+    // 가운데 컨트롤(옷 고르기)은 가두기가 끼어들지 않고 브라우저 기본 이동에 맡긴다
+    hat.focus();
+    fireEvent.keyDown(dialog, { key: "Tab" });
     expect(hat).toHaveFocus();
   });
 });
