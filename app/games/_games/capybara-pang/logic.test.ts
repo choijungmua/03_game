@@ -2,12 +2,14 @@ import { describe, expect, it } from "vitest";
 
 import { BOARD_SIZE, TILE_POINTS } from "./constants";
 import {
+  blastsIn,
   type Board,
   collapse,
   createBoard,
   findMove,
   findRuns,
   isValidSwap,
+  nextSpecial,
   planClear,
   scoreFor,
   shuffleBoard,
@@ -112,5 +114,37 @@ describe("capybara-pang 로직", () => {
     expect(scoreFor(3, 5, false)).toBeGreaterThan(scoreFor(3, 1, false));
     expect(scoreFor(3, 99, false)).toBe(scoreFor(3, 50, false));
     expect(scoreFor(3, 5, true)).toBe(scoreFor(3, 5, false) * 2);
+  });
+  it("라스트 팡: 남은 폭탄·무지개를 하나씩 터뜨리면 연쇄까지 다 터지고 특수 블록이 하나도 안 남는다", () => {
+    // 3행 양 끝 폭탄 두 개(서로 연쇄) + 5행 가운데 무지개
+    let board = boardFrom(withRow(5, "012R456").map((line, i) => (i === 3 ? "B12345B" : line)));
+    const ids = { next: 100 };
+    const random = () => 0.5;
+    const detonated: number[] = [];
+    let cleared = 0;
+    for (let guard = 0; guard < BOARD_SIZE * BOARD_SIZE; guard += 1) {
+      const index = nextSpecial(board);
+      if (index < 0) break;
+      const plan = planClear(board, [], [index], [], ids);
+      detonated.push(...blastsIn(board, plan.cleared).map((blast) => blast.index));
+      cleared += plan.cleared.size;
+      board = collapse(
+        board.map((tile, i) => (plan.cleared.has(i) ? null : tile)),
+        random,
+        ids,
+      ).board;
+    }
+    expect(nextSpecial(board)).toBe(-1);
+    // 첫 폭탄이 같은 줄의 다른 폭탄까지 연쇄로 터뜨려서, 특수 블록 세 개가 모두 터진 블록 목록에 있다
+    expect(detonated).toEqual(expect.arrayContaining([3 * BOARD_SIZE, 3 * BOARD_SIZE + 6, 5 * BOARD_SIZE + 3]));
+    expect(cleared).toBeGreaterThan(BOARD_SIZE * 3);
+  });
+
+  it("터지는 칸 중 특수 블록만 골라 광선·고리 연출에 쓴다", () => {
+    const board = boardFrom(withRow(3, "B12345R"));
+    expect(blastsIn(board, [3 * BOARD_SIZE, 3 * BOARD_SIZE + 1, 3 * BOARD_SIZE + 6])).toEqual([
+      { index: 3 * BOARD_SIZE, special: "bomb" },
+      { index: 3 * BOARD_SIZE + 6, special: "rainbow" },
+    ]);
   });
 });

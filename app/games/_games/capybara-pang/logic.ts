@@ -143,6 +143,25 @@ export function blastArea(board: Board, index: number, targetKind: number): numb
   return [index];
 }
 
+/** 라스트 팡으로 다음에 터뜨릴 특수 블록 칸 (왼쪽 위부터). 남은 게 없으면 -1 */
+export function nextSpecial(board: Board) {
+  return board.findIndex((tile) => tile.special !== "none");
+}
+
+/** 터지면서 광선(폭탄: 가로·세로 줄)이나 고리(무지개)를 내는 칸 */
+export interface Blast {
+  index: number;
+  special: Exclude<TileSpecial, "none">;
+}
+
+/** 이번에 터지는 칸들 중 특수 블록만 — 터지는 연출용 */
+export function blastsIn(board: Board, cells: Iterable<number>): Blast[] {
+  return [...cells].flatMap((index) => {
+    const special = board[index].special;
+    return special === "none" ? [] : [{ index, special }];
+  });
+}
+
 /** 판에 가장 많은 동물 — 무지개를 그냥 눌렀거나 연쇄로 터질 때 고르는 대상 */
 export function mostCommonKind(board: Board): number {
   const counts = Array.from({ length: KIND_COUNT }, () => 0);

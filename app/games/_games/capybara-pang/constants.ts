@@ -59,6 +59,18 @@ export const POP_SPARKS = [
 /** 한 번에 이만큼 넘게 터지면 판이 흔들린다 */
 export const SHAKE_CLEAR_COUNT = 5;
 
+/** 남은 시간이 이만큼이면 서두르기: 시간 막대가 빨개지고 판 둘레가 붉게 두근거리며 초마다 째깍 */
+export const HURRY_SECONDS = 10;
+/** 남은 시간이 이만큼부터는 판 위에 큰 숫자(5·4·3·2·1)가 초마다 튀어나온다 */
+export const BIG_COUNT_SECONDS = 5;
+/**
+ * 라스트 팡: 시간이 끝나면 "타임 오버!"를 보여 주고(진행 중이던 연쇄는 끝까지), 판에 남은 폭탄·무지개가 있으면
+ * "라스트 팡!" 뒤 하나씩 터뜨려 점수를 더한 다음 결과 화면으로 간다. 보너스는 콤보·피버 없이 블록 수대로
+ */
+export const TIME_OVER_MS = 900;
+export const LAST_PANG_INTRO_MS = 700;
+export const LAST_PANG_OUTRO_MS = 900;
+
 /** 이 시간 동안 아무것도 안 하면 둘 수 있는 자리를 반짝여 알려준다 */
 export const HINT_DELAY_MS = 5000;
 
@@ -77,6 +89,14 @@ export const PANG_SOUNDS = {
   pop: [
     { kind: "tone", wave: "sine", from: 700, to: 1400, ms: 90, level: 0.12 },
     { kind: "noise", filter: "bandpass", q: 2, from: 2400, to: 1600, ms: 60, level: 0.08 },
+  ],
+  /** 째깍: 마지막 10초 동안 초마다 (3·2·1은 카운트다운 삐가 대신한다) */
+  tick: [{ kind: "tone", wave: "sine", from: 1500, to: 1300, ms: 45, level: 0.07 }],
+  /** 쾅: 라스트 팡으로 남은 폭탄·무지개가 터짐 */
+  lastPang: [
+    { kind: "noise", filter: "lowpass", q: 1, from: 1400, to: 200, ms: 260, level: 0.16 },
+    { kind: "tone", wave: "triangle", from: 220, to: 70, ms: 240, level: 0.12 },
+    { kind: "tone", wave: "sine", from: 880, to: 1760, ms: 120, level: 0.08, at: 60 },
   ],
   /** 삐―: 시간 끝 */
   timeUp: [
