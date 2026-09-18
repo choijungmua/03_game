@@ -46,8 +46,9 @@ export function ProfileName({ name, onRename }: ProfileNameProps) {
 
   return (
     <section aria-label="이름 바꾸기" className="flex w-full flex-col gap-3">
-      <form onSubmit={submit} noValidate className="flex flex-col gap-2">
-        <label htmlFor="lobby-profile-name" className="text-caption-1 text-text-caption">
+      {/* 다른 탭과 같은 카드 안에 입력칸과 저장 버튼을 둔다 */}
+      <form onSubmit={submit} noValidate className="flex flex-col gap-2 rounded-2xl bg-muted/50 p-3 ring-1 ring-border-default">
+        <label htmlFor="lobby-profile-name" className="text-caption-1 font-semibold text-text-strong">
           머리 위에 보일 이름 ({NAME_MAX}글자까지)
         </label>
         <input
@@ -62,12 +63,12 @@ export function ProfileName({ name, onRename }: ProfileNameProps) {
           aria-invalid={error !== ""}
           aria-describedby="lobby-profile-name-help"
           // 모바일 확대를 막으려고 16px(text-base)
-          className="h-11 w-full min-w-0 rounded-lg border border-border-default bg-background px-3 text-base text-text-strong placeholder:text-text-placeholder focus-visible:outline-2 focus-visible:outline-primary"
+          className="h-12 w-full min-w-0 rounded-xl bg-card px-4 text-base text-text-strong ring-1 ring-inset ring-border-default transition-[box-shadow] duration-150 placeholder:text-text-placeholder focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary aria-invalid:ring-2 aria-invalid:ring-destructive motion-reduce:transition-none"
         />
         <p id="lobby-profile-name-help" aria-live="polite" className={cn("text-caption-2", error ? "text-destructive" : "text-text-caption")}>
           {error || "지금 접속 중인 친구와 같은 이름은 쓸 수 없어요"}
         </p>
-        <Button type="submit" className="mt-1 h-11">
+        <Button type="submit" className="mt-1 h-12 touch-manipulation rounded-xl text-base font-semibold motion-safe:active:scale-[0.98]">
           저장
         </Button>
       </form>

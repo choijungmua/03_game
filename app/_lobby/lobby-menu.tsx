@@ -176,7 +176,7 @@ export function LobbyMenu({ name, panels }: LobbyMenuProps) {
         <div role="tablist" aria-label="메뉴 탭" onKeyDown={onTabKeyDown} className="relative grid shrink-0 grid-cols-4 rounded-2xl bg-muted p-1">
           <span
             aria-hidden
-            className="absolute inset-y-1 left-1 w-[calc((100%-0.5rem)/4)] rounded-xl bg-card shadow-md ring-1 ring-border-default transition-transform duration-200 ease-out motion-reduce:transition-none"
+            className="absolute inset-y-1 left-1 w-[calc((100%-0.5rem)/4)] rounded-xl bg-capybara/15 shadow-sm ring-1 ring-capybara/45 transition-transform duration-200 ease-out motion-reduce:transition-none"
             style={{ transform: `translateX(${activeIndex * 100}%)` }}
           />
           {LOBBY_MENU_TABS.map((tab) => {
@@ -199,7 +199,7 @@ export function LobbyMenu({ name, panels }: LobbyMenuProps) {
                 onClick={() => setActive(tab.id)}
                 className={cn(
                   "group relative flex min-h-[4.25rem] min-w-0 touch-manipulation flex-col items-center justify-center gap-1 rounded-xl text-caption-2 font-semibold transition-[color,scale] duration-150 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-primary motion-safe:active:scale-95 motion-reduce:transition-none",
-                  selected ? "text-text-strong" : "text-text-caption hover:text-text-strong",
+                  selected ? "text-capybara-light" : "text-text-caption hover:text-text-strong",
                 )}
               >
                 <NextImage
@@ -211,7 +211,7 @@ export function LobbyMenu({ name, panels }: LobbyMenuProps) {
                   draggable={false}
                   className={cn(
                     "size-10 drop-shadow-sm transition-[scale,opacity,filter] duration-200 motion-reduce:transition-none",
-                    selected ? "scale-110" : "opacity-55 saturate-50 group-hover:opacity-100 group-hover:saturate-100",
+                    selected ? "scale-110" : "opacity-70 group-hover:opacity-100",
                   )}
                 />
                 <span aria-hidden>{tab.label}</span>
