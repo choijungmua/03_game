@@ -11,14 +11,23 @@ renderer.setClearColor(0x000000, 0);
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.toneMapping = THREE.NeutralToneMapping;
 renderer.toneMappingExposure = 1.0;
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 document.body.appendChild(renderer.domElement);
 
 const scene = new THREE.Scene();
 scene.environment = new THREE.PMREMGenerator(renderer).fromScene(new RoomEnvironment(), 0.04).texture;
 scene.environmentIntensity = 0.55;
 // 왼쪽 위에서 오는 부드러운 빛 (로비 에셋과 같은 조명 방향) + 뒤에서 털 가장자리를 밝히는 빛
-const key = new THREE.DirectionalLight("#fff4e6", 2.1);
-key.position.set(-1.2, 2.2, 2);
+const key = new THREE.DirectionalLight("#fff4e6", 2.3);
+key.position.set(-1.2, 2.4, 2);
+// 부드러운 그림자: 턱 밑·팔 밑이 살짝 어두워져 덩어리가 산다 (원래 그림처럼)
+key.castShadow = true;
+key.shadow.mapSize.set(2048, 2048);
+key.shadow.radius = 6;
+key.shadow.bias = -0.0006;
+key.shadow.normalBias = 0.012;
+Object.assign(key.shadow.camera, { left: -0.8, right: 0.8, top: 1.4, bottom: -0.4, near: 0.1, far: 8 });
 scene.add(key);
 const rim = new THREE.DirectionalLight("#ffe7cc", 0.9);
 rim.position.set(0.8, 1.2, -2);
@@ -37,9 +46,9 @@ camera.position.set(0, Math.sin(elevation) * 5, Math.cos(elevation) * 5);
 camera.lookAt(0, 0, 0);
 camera.updateMatrixWorld();
 {
-  // 바닥 원점이 그림의 발바닥 줄(VIEW.foot)에 오게 화면을 맞춘다
+  // 발 앞끝 바닥(0, 0, VIEW.footZ)이 그림의 발바닥 줄(VIEW.foot)에 오게 화면을 맞춘다
   const half = VIEW.height / 2;
-  const origin = new THREE.Vector3(0, 0, 0).applyMatrix4(camera.matrixWorldInverse); // 카메라 공간
+  const origin = new THREE.Vector3(0, 0, VIEW.footZ).applyMatrix4(camera.matrixWorldInverse); // 카메라 공간
   const bottom = origin.y - VIEW.height * (1 - VIEW.foot);
   camera.top = bottom + VIEW.height;
   camera.bottom = bottom;

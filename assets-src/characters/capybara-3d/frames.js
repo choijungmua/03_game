@@ -7,6 +7,8 @@ export const VIEW = {
   height: 1.12,
   /** 발바닥 줄: 그림 위에서부터 비율 (로비 STAND_FOOT) */
   foot: 1000 / 1024,
+  /** 발바닥 줄에 맞추는 점: 발 앞끝 (내려다보는 각도라 발 앞끝이 그림에서 가장 아래) */
+  footZ: 0.12,
 };
 
 const YAW = { down: 0, "down-right": 45, right: 90, "up-right": 135, up: 180, "up-left": -135, left: -90, "down-left": -45 };
@@ -21,8 +23,8 @@ const step = (s) => ({
   hips: [0, 0, s * 3],
   legL: [s * -26, 0, 0],
   legR: [s * 26, 0, 0],
-  armL: [-50 + s * 24, 0, -14],
-  armR: [-50 - s * 24, 0, 14],
+  armL: [-62 + s * 22, 0, -22],
+  armR: [-62 - s * 22, 0, 22],
   head: [0, 0, s * -2],
 });
 for (const [dir, yaw] of Object.entries(YAW)) {
@@ -32,7 +34,7 @@ for (const [dir, yaw] of Object.entries(YAW)) {
 }
 
 // 앉기: 엉덩이를 붙이고 두 발을 앞으로 뻗는다
-const SIT = { sit: true, legL: [-82, 0, 8], legR: [-82, 0, -8], armL: [-30, 0, 16], armR: [-30, 0, -16], hips: [-6, 0, 0], chest: [4, 0, 0] };
+const SIT = { sit: true, legL: [-84, 0, 14], legR: [-84, 0, -14], armL: [-58, 0, -20], armR: [-58, 0, 20], hips: [-8, 0, 0], chest: [6, 0, 0] };
 for (const dir of FOUR) add(`idle-${dir}`, YAW[dir], SIT);
 add("sleep-1", 0, { ...SIT, chest: [10, 0, 0], head: [14, 0, 6], face: "sleep" });
 add("sleep-2", 0, { ...SIT, chest: [12, 0, 0], head: [16, 0, 8], face: "sleep" });

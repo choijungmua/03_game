@@ -2,6 +2,7 @@
 //   node assets-src/characters/capybara-3d/bake.mjs                → 몸 프레임 + 옷마다 시트 + lib/lobby/capybara-3d.ts
 //   node assets-src/characters/capybara-3d/bake.mjs preview [out.png] [프레임,…] [--item 칸/id,…]
 //                                                                  → 확인용 합성 시트 (몸 위에 옷을 로비와 같은 방식으로 겹침)
+//   node assets-src/characters/capybara-3d/bake.mjs body 프레임,…  → 그 몸 프레임만 다시 굽는다 (원래 그림과 나란히 비교할 때)
 // 옷은 몸과 같은 뼈에 붙어 있어서(items.js) 어떤 자세에서도 몸을 따라가고, 몸 뒤로 돌아간 부분은 몸을 가림막으로 찍어 지운다.
 // 그래서 로비는 몸 그림 위에 같은 칸의 옷 그림을 그대로 겹치기만 하면 된다
 import { mkdir, readFile, writeFile } from "node:fs/promises";
@@ -131,7 +132,11 @@ async function preview({ page, frames, items }, out, only, wear) {
 const [mode, ...rest] = process.argv.slice(2);
 const stage = await openStage();
 try {
-  if (mode === "preview") {
+  if (mode === "body") {
+    for (const frame of rest[0].split(",")) {
+      await sharp(await shoot(stage.page, frame, "body", BODY_SIZE)).webp({ quality: 88, alphaQuality: 95, effort: 6 }).toFile(path.join(OUT, `capybara-${frame}.webp`));
+    }
+  } else if (mode === "preview") {
     const itemAt = rest.indexOf("--item");
     const wear = itemAt >= 0 ? rest[itemAt + 1].split(",") : [];
     const args = itemAt >= 0 ? rest.slice(0, itemAt) : rest;

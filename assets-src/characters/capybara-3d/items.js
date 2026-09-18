@@ -4,7 +4,10 @@
 //   hides: 이 옷이 덮는 몸 부위 이름 (그 부위는 가림막에서 빠져 옷이 위에 그려진다. 예: 후드가 귀를 덮음)
 import * as THREE from "three";
 
-import { blobGeometry, BODY, felt, flat, gloss, mesh, onHead, stroke } from "./rig.js";
+import { blobGeometry, BODY, EAR, EYE, felt, flat, gloss, mesh, onHead, stroke } from "./rig.js";
+
+/** 머리 꼭대기 높이 (머리 가운데 기준) */
+const TOP = BODY.head.r[1];
 
 // ── 옷 만들기 도구 ─────────────────────────────────────
 const pad = ([x, y, z], t) => [x + t, y + t, z + t];
@@ -14,20 +17,21 @@ function torso(material, { t = 0.022, top = 1, bottom = -1, arc = null } = {}) {
   const cut = top < 1 || bottom > -1 || arc !== null;
   const m = cut ? material.clone() : material;
   if (cut) m.side = THREE.DoubleSide;
-  return mesh(blobGeometry(pad(BODY.body.r, t), { bottom: BODY.body.bottom, from: top, to: bottom, arc }), m, BODY.body.at);
+  const { e, top: crown, bottom: belly } = BODY.body;
+  return mesh(blobGeometry(pad(BODY.body.r, t), { e, top: crown, bottom: belly, from: top, to: bottom, arc }), m, BODY.body.at);
 }
 /** 소매 (어깨 뼈): 팔 껍데기. 앞발은 밖으로 나온다 */
 function sleeve(material, { t = 0.016, flare = 1 } = {}) {
   const r = pad(BODY.arm.r, t);
   const m = material.clone();
   m.side = THREE.DoubleSide;
-  return mesh(blobGeometry([r[0] * flare, r[1], r[2] * flare], { bottom: 1.15 * flare, to: -0.55 }), m, [0, -0.06, 0]);
+  return mesh(blobGeometry([r[0] * flare, r[1], r[2] * flare], { bottom: 1.1 * flare, to: -0.55 }), m, [0, -0.055, 0]);
 }
 /** 바짓가랑이 (다리 뼈) */
 function trouser(material, { t = 0.016 } = {}) {
   const m = material.clone();
   m.side = THREE.DoubleSide;
-  return mesh(blobGeometry(pad([0.08, 0.1, 0.08], t), { to: -0.45 }), m, [0, -0.09, 0]);
+  return mesh(blobGeometry(pad(BODY.leg.r, t), { to: -0.45 }), m, [0, -0.1, 0]);
 }
 /** 삼각형 거르기: 중심이 keepFn(x,y,z)를 만족하는 면만 남긴다 (양면 재질로 쓴다) */
 function keep(geometry, keepFn) {
@@ -62,7 +66,7 @@ function hood(attach, head, material, { t = 0.03, rim = material, earPockets = t
   const r = pad(BODY.head.r, t);
   const opening = { cx: 0, cy: -0.12, rx: 0.64, ry: 0.66 };
   const inFace = (x, y, z) => z > 0 && ((x / r[0] - opening.cx) / opening.rx) ** 2 + ((y / r[1] - opening.cy) / opening.ry) ** 2 < 1;
-  const geometry = keep(blobGeometry(r, { bottom: BODY.head.bottom, top: BODY.head.top }), (x, y, z) => !inFace(x, y, z));
+  const geometry = keep(blobGeometry(r, { e: BODY.head.e, bottom: BODY.head.bottom, top: BODY.head.top }), (x, y, z) => !inFace(x, y, z));
   const sided = material.clone();
   sided.side = THREE.DoubleSide;
   attach(head, mesh(geometry, sided));
@@ -79,7 +83,7 @@ function hood(attach, head, material, { t = 0.03, rim = material, earPockets = t
   attach(head, new THREE.Mesh(new THREE.TubeGeometry(loop, 96, 0.022, 10, true), rim));
   if (earPockets) {
     for (const side of [-1, 1]) {
-      attach(head, mesh(blobGeometry([0.075, 0.07, 0.05]), material, [side * 0.19, 0.2, -0.05], [0, side * -0.3, side * -0.3]));
+      attach(head, mesh(blobGeometry([EAR.r[0] + 0.016, EAR.r[1] + 0.012, EAR.r[2] + 0.02]), material, [side * EAR.x, EAR.y, EAR.z], [0.2, side * -0.25, side * -0.42]));
     }
   }
   return around;
@@ -110,9 +114,9 @@ function dots(attach, bone, material, { count, size, from = -0.8, to = 0.75, t =
 
 /** 안경테: 두 눈 앞 렌즈 + 다리. lens(재질)·frame(재질)·shape(렌즈 모양 함수 → Shape) */
 function spectacles(attach, head, { frame, lens, shape, size = 0.056, bridge = true, band = null }) {
-  const eyeY = 0.035;
+  const eyeY = EYE.y;
   for (const side of [-1, 1]) {
-    const [x, y, z] = onHead(side * 0.14, eyeY, 0.035);
+    const [x, y, z] = onHead(side * EYE.x, eyeY, 0.035);
     const outline = shape(size);
     const lensMesh = mesh(new THREE.ShapeGeometry(outline, 24), lens, [x, y, z]);
     const rim = new THREE.Mesh(
@@ -133,10 +137,10 @@ function spectacles(attach, head, { frame, lens, shape, size = 0.056, bridge = t
     attach(head, lensMesh);
     // 다리: 렌즈 바깥에서 머리 옆을 따라 귀 쪽으로
     const start = [x + side * size * 0.95, y + size * 0.2, z - 0.01];
-    const path = [start, onHead(side * 0.25, eyeY + 0.04, 0.012), [side * 0.285, eyeY + 0.04, -0.04]];
+    const path = [start, onHead(side * (BODY.head.r[0] - 0.045), eyeY + 0.04, 0.012), [side * (BODY.head.r[0] + 0.006), eyeY + 0.04, -0.04]];
     attach(head, band ? stroke(path, 0.012, band) : stroke(path, 0.006, frame));
   }
-  if (bridge) attach(head, stroke([onHead(-0.085, eyeY + 0.02, 0.04), onHead(0, eyeY + 0.035, 0.045), onHead(0.085, eyeY + 0.02, 0.04)], 0.006, frame));
+  if (bridge) attach(head, stroke([onHead(-(EYE.x - size), eyeY + 0.02, 0.04), onHead(0, eyeY + 0.035, 0.07), onHead(EYE.x - size, eyeY + 0.02, 0.04)], 0.006, frame));
 }
 const circle = (r) => new THREE.Shape().absarc(0, 0, r, 0, Math.PI * 2);
 const roundRect = (r) => {
@@ -225,7 +229,7 @@ export const ITEMS = {
         crown.add(gem);
       }
       crown.add(mesh(new THREE.SphereGeometry(0.095, 24, 12, 0, Math.PI * 2, 0, Math.PI / 2), felt("#c8243a"), [0, 0.02, 0]));
-      crown.position.set(0, 0.235, -0.02);
+      crown.position.set(0, TOP - 0.005, -0.02);
       crown.rotation.x = -0.12;
       attach(head, crown);
     },
@@ -242,7 +246,7 @@ export const ITEMS = {
       const band = felt("#8a4a2a", { sheen: 0.3 });
       band.side = THREE.DoubleSide;
       hat.add(mesh(ribbon, band, [0, 0.035, 0]));
-      hat.position.set(0, 0.2, -0.02);
+      hat.position.set(0, TOP - 0.035, -0.02);
       hat.rotation.x = -0.18;
       attach(head, hat);
     },
@@ -259,7 +263,7 @@ export const ITEMS = {
       g.add(mesh(new THREE.SphereGeometry(0.06, 24, 16), felt("#ffc01e", { sheen: 0.6, shine: "#fff1a6", bumps: 0.6 }), [0.0, 0.115, 0.0]));
       const leaf = mesh(blobGeometry([0.035, 0.008, 0.018]), felt("#4f9a3a"), [0.035, 0.17, -0.005], [0, 0.4, 0.6]);
       g.add(leaf);
-      g.position.set(0, 0.24, -0.02);
+      g.position.set(0, TOP, -0.02);
       g.rotation.x = -0.15;
       attach(head, g);
     },
@@ -293,7 +297,7 @@ export const ITEMS = {
       // 무지개 테: 렌즈 둘레에 색 고리 여러 겹
       const colors = ["#ff4d4d", "#ffa53a", "#ffe14d", "#57d163", "#4aa8ff", "#9a6bff"];
       for (const side of [-1, 1]) {
-        const [x, y, z] = onHead(side * 0.14, 0.035, 0.05);
+        const [x, y, z] = onHead(side * EYE.x, EYE.y, 0.05);
         colors.forEach((c, i) => {
           const ring = mesh(new THREE.TorusGeometry(0.058 + i * 0.006, 0.0035, 8, 40), plastic(c), [x, y, z]);
           ring.rotation.y = side * Math.atan2(x, z) * 0.6;
@@ -315,7 +319,7 @@ export const ITEMS = {
       const back = [];
       for (let i = 0; i <= 16; i++) {
         const a = (i / 16) * Math.PI;
-        back.push([Math.cos(a) * 0.3, 0.075, -Math.sin(a) * 0.3]);
+        back.push([Math.cos(a) * (BODY.head.r[0] + 0.012), EYE.y + 0.04, -Math.sin(a) * (BODY.head.r[2] + 0.012)]);
       }
       attach(head, stroke(back.map(([x, y, z]) => [x * 0.98, y, z]), 0.013, felt("#2bb673", { sheen: 0.3 })));
     },
@@ -328,7 +332,7 @@ export const ITEMS = {
       const shirt = felt("#f6efe2", { sheen: 0.8 });
       // 흰 티셔츠 위에 멜빵바지: 아래 몸통 + 가슴받이 + 멜빵
       attach(bones.hips, torso(shirt, { t: 0.018 }));
-      for (const arm of [bones.armL, bones.armR]) attach(arm, mesh(blobGeometry(pad(BODY.arm.r, 0.015), { bottom: 1.15, to: 0 }), shirt, [0, -0.06, 0]));
+      for (const arm of [bones.armL, bones.armR]) attach(arm, mesh(blobGeometry(pad(BODY.arm.r, 0.015), { bottom: 1.1, to: 0 }), shirt, [0, -0.055, 0]));
       attach(bones.hips, torso(denim, { t: 0.03, top: 0.15 }));
       const bib = mesh(blobGeometry([0.12, 0.09, 0.03], { e: 0.6 }), denim, onTorso(0, 0.35, 0.03, 0.004));
       bib.lookAt(new THREE.Vector3(...onTorso(0, 0.35, 0.3)));
@@ -381,9 +385,9 @@ export const ITEMS = {
       hood(attach, bones.head, yellow);
       // 개구리 눈 (후드 위)
       for (const side of [-1, 1]) {
-        attach(bones.head, mesh(new THREE.SphereGeometry(0.06, 24, 16), felt("#7cc24a", { sheen: 0.6 }), [side * 0.13, 0.225, 0.04]));
-        attach(bones.head, mesh(new THREE.SphereGeometry(0.035, 20, 12), felt("#ffffff"), [side * 0.13, 0.235, 0.085]));
-        attach(bones.head, mesh(new THREE.SphereGeometry(0.02, 14, 10), gloss("#141010"), [side * 0.13, 0.235, 0.112]));
+        attach(bones.head, mesh(new THREE.SphereGeometry(0.06, 24, 16), felt("#7cc24a", { sheen: 0.6 }), [side * 0.13, TOP - 0.01, 0.06]));
+        attach(bones.head, mesh(new THREE.SphereGeometry(0.035, 20, 12), felt("#ffffff"), [side * 0.13, TOP, 0.105]));
+        attach(bones.head, mesh(new THREE.SphereGeometry(0.02, 14, 10), gloss("#141010"), [side * 0.13, TOP, 0.132]));
       }
       buttons(attach, bones.hips, felt("#6aa83e", { sheen: 0.4 }), [0.55, 0.2, -0.15], { size: 0.02 });
     },
@@ -399,7 +403,7 @@ export const ITEMS = {
       // 등 가시: 머리 꼭대기부터 꼬리까지
       const spike = felt("#f2d23a", { sheen: 0.5 });
       for (const [bone, pts] of [
-        [bones.head, [[0, 0.27, 0.05], [0, 0.26, -0.08], [0, 0.18, -0.2]]],
+        [bones.head, [[0, TOP + 0.035, 0.05], [0, TOP + 0.025, -0.1], [0, TOP - 0.06, -0.24]]],
         [bones.hips, [onTorso(Math.PI, 0.65, 0.026), onTorso(Math.PI, 0.25, 0.026), onTorso(Math.PI, -0.15, 0.026)]],
       ]) {
         for (const at of pts) {
@@ -431,7 +435,7 @@ export const ITEMS = {
         attach(bones.head, cone);
       }
       // 등지느러미 (머리 위) + 꼬리지느러미
-      const fin = mesh(new THREE.ConeGeometry(0.06, 0.14, 3), grey, [0, 0.3, -0.06]);
+      const fin = mesh(new THREE.ConeGeometry(0.06, 0.14, 3), grey, [0, TOP + 0.07, -0.06]);
       fin.scale.z = 0.35;
       fin.rotation.x = -0.35;
       attach(bones.head, fin);
@@ -453,6 +457,10 @@ export function dress(capybara) {
     const parts = [];
     item.build(capybara.bones, (bone, object) => {
       object.visible = false;
+      object.traverse((o) => {
+        o.castShadow = true;
+        o.receiveShadow = true;
+      });
       bone.add(object);
       parts.push(object);
       return object;
