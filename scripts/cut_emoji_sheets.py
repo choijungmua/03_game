@@ -142,7 +142,7 @@ def game_icon(slug: str) -> tuple[Path, Path]:
 
 
 def run(name: str, sheet: Image.Image) -> None:
-    if name == "emoji-apples":
+    if name == "emoji-apples-v2":
         cut_props(
             sheet,
             ["사과", "초록 사과", "썩은 사과"],
@@ -156,17 +156,21 @@ def run(name: str, sheet: Image.Image) -> None:
         print("  [모서리 기둥]")
         save(trimmed(post, 384), *lobby_prop("fence-post"))
     elif name == "emoji-game-icons":
-        cut_props(sheet, ["수박 게임", "카피바라 팡"], [game_icon("watermelon-game"), game_icon("capybara-pang")], 384)
+        # 오른쪽 칸(옛 팡 아이콘)은 emoji-pang-icon 으로 바꿨다 — 다시 잘라도 덮어쓰지 않게 수박 게임만
+        print("  [수박 게임]")
+        save(trimmed(cells(sheet, 2, 1)[0], 384), *game_icon("watermelon-game"))
+    elif name == "emoji-pang-icon":
+        save(trimmed(sheet, 384), *game_icon("capybara-pang"))
     elif name == "emoji-fruit-1":
         cut_pairs(sheet, ["cherry", "strawberry", "grape", "hallabong"], *WATERMELON, 256)
     elif name == "emoji-fruit-2":
         cut_pairs(sheet, ["persimmon", "apple", "pear", "peach"], *WATERMELON, 256)
     elif name == "emoji-fruit-3":
         cut_pairs(sheet, ["pineapple", "melon", "watermelon"], *WATERMELON, 256)
-    elif name == "emoji-pang-1":
-        cut_pairs(sheet, ["capybara", "rabbit", "cat", "dog"], *PANG, 192)
-    elif name == "emoji-pang-2":
-        cut_pairs(sheet, ["chick", "pig", "monkey"], *PANG, 192)
+    elif name == "emoji-pang-1-v2":
+        cut_pairs(sheet, ["capybara", "otter", "frog", "duckling"], *PANG, 192)
+    elif name == "emoji-pang-2-v2":
+        cut_pairs(sheet, ["macaw", "dolphin", "sloth"], *PANG, 192)
     elif name == "emoji-pick":
         cut_character(
             sheet,
@@ -181,14 +185,15 @@ def run(name: str, sheet: Image.Image) -> None:
 
 
 SHEET_NAMES = [
-    "emoji-apples",
+    "emoji-apples-v2",
     "emoji-fence-vertical",
     "emoji-game-icons",
+    "emoji-pang-icon",
     "emoji-fruit-1",
     "emoji-fruit-2",
     "emoji-fruit-3",
-    "emoji-pang-1",
-    "emoji-pang-2",
+    "emoji-pang-1-v2",
+    "emoji-pang-2-v2",
     "emoji-pick",
 ]
 
