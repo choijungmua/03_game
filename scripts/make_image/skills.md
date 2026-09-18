@@ -214,19 +214,21 @@ canvas.resize((512, 512), Image.LANCZOS).save('public/assets/images/characters/c
 
 ## 카피바라 테마 시트 (사과·울타리·게임 블록·사과 따기)
 
-얼굴이 들어가는 소품·블록은 **평소 얼굴(윗줄) / 우는 얼굴(아랫줄)** 2줄 시트로 한 번에 만들고, 세로줄마다 같은 상자로 잘라 두 프레임이 겹치게 맞춘다. 자르기는 `python scripts/cut_emoji_sheets.py [시트이름 …]`.
+얼굴이 들어가는 게임 블록은 **줄마다 표정이 다른 3줄 시트**로 한 번에 만들고, 세로줄마다 윗줄(평소 얼굴) 상자로 잘라 표정을 바꿔 끼워도 겹치게 맞춘다. 자르기는 `python scripts/cut_emoji_sheets.py [시트이름 …]`.
 
 | 시트 | 칸 | 들어가는 곳 |
 |---|---|---|
-| `emoji-apples-v2` | 가로 3 | `ui/lobby/fish-catches/{apple,green-apple,rotten-apple}.webp` — 카피바라 얼굴(주둥이·작은 귀·점)을 한 사과 (가방·나무에 달린 사과·먹는 사과) |
+| `cute-apples` | 가로 3 | `ui/lobby/fish-catches/{apple,green-apple,rotten-apple}.webp` — 카피바라 얼굴 사과(하트 웃음 / 별눈 반짝 / 눈물·애벌레 썩은 사과). 가방·나무에 달린 사과·먹는 사과 |
+| `cute-apple-button` | 1장 | `ui/lobby/apple.webp` — 로비 "사과 따기" 버튼 (낚시 버튼과 같은 나무 테·펠트 판, 카피바라가 사과를 번쩍 듦) |
 | `emoji-fence-vertical` | 세로 1장 | `props/fence-vertical` + `props/fence-post` (판 길이는 기둥 높이로 재서 한 타일만 남긴다) |
-| `emoji-fruit-{1,2,3}` | 가로 4·4·3 × 세로 2 | `games/watermelon-game/fruits/<slug>{,-cry}.webp` 11종 |
-| `emoji-pang-{1,2}-v2` | 가로 4·3 × 세로 2 | `games/capybara-pang/animals/<key>{,-cry}.webp` — 카피바라와 남미 습지 친구들 7종(카피바라·수달·청개구리·아기오리·마코앵무새·분홍 강돌고래·나무늘보). 판에서 한눈에 갈리게 색이 겹치지 않는 동물로 고른다 |
+| `cute-fruit-{1,2,3}` | 가로 4·4·3 × 세로 3 | `games/watermelon-game/fruits/<slug>{,-surprise,-cry}.webp` 11종 — 평소 / 깜짝(땀방울, 빨리 떨어지거나 착지·선 위에서 위험할 때) / 우는 얼굴(합쳐질 때) |
+| `cute-pang-{1,2}` | 가로 4·3 × 세로 3 | `games/capybara-pang/animals/<key>{,-happy,-cry}.webp` — 카피바라와 남미 습지 친구들 7종(카피바라·수달·청개구리·아기오리·마코앵무새·분홍 강돌고래·나무늘보). 평소 / 눈웃음+하트(깜빡임·고를 때) / 우는 얼굴(터질 때). 판에서 한눈에 갈리게 색이 겹치지 않는 동물로 고른다 |
 | `emoji-pick` | 가로 3 × 세로 2 | `capybara-pick-{1,2,3}-{up,down}.webp` (사과 따기 폴짝) |
 | `emoji-game-icons` | 가로 2 | `games/watermelon-game/icon.webp` (오른쪽 칸 옛 팡 아이콘은 안 씀) |
 | `emoji-pang-icon` | 1장 | `games/capybara-pang/icon.webp` — 잎 접시 위 수달·카피바라·아기오리 구슬 |
 
-- 우는 얼굴은 **눈을 질끈 감은 꺾인 선 + 좌우로 튀는 굵은 파란 펠트 눈물 + 네모나게 벌린 입**으로 통일한다. 게임 코드가 터지는 순간에만 이 그림으로 바꿔 그린다
+- 귀여움 기준: 머리가 큰 치비 비율, 동글동글·통통, 흰 하이라이트 두 개가 든 큰 까만 눈, 작은 입, 진한 분홍 볼터치, 파스텔 톤 폭신한 펠트. 얼룩덜룩하거나 사실적인 질감은 다시 만든다
+- 우는 얼굴은 **눈을 질끈 감은 >< + 좌우로 튀는 굵은 파란 펠트 눈물 + 크게 벌린 입**으로 통일한다. 게임 코드가 터지는 순간에만 이 그림으로 바꿔 그린다
 - 과일·동물은 정사각형 canvas 가운데에 실루엣이 `PAD`(1.16) 여백으로 들어간다. 이 값은 `watermelon-game/constants.ts`의 `FRUIT_IMAGE_SCALE`과 짝이라 한쪽만 바꾸면 크기가 어긋난다
 - 사과 따기 3프레임은 한 배율로 줄여 발바닥 높이를 맞춘다 (뜨는 높이는 로비의 폴짝 코드가 준다).
-- 모델은 `-m gpt-5.6-luna` (빠르고 사용량이 적다). Codex가 파일 복사에 실패해도 `make_image`가 `~/.codex/generated_images`에서 방금 만든 그림을 찾아 가져온다
+- 모델은 `-m gpt-5.6-luna` (빠르고 사용량이 적다). Codex가 파일 복사에 실패하면 `make_image`가 `~/.codex/generated_images`에서 방금 만든 그림을 찾아 가져온다. 단 동시에 돌린 생성이 있으면 어느 그림인지 모르니 멈추고 후보 경로를 보여 준다 — 그 세션 폴더의 마지막 그림을 확인해 `scripts/make_image/assets/<이름>.png`로 복사한다

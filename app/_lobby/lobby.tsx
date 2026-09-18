@@ -85,6 +85,7 @@ import { markLobbyExit } from "@/components/navigation/lobby-link";
 import { CAPYBARA_EMOTES, emoteChat, emoteImage, parseEmoteChat } from "@/lib/games/emotes";
 
 import {
+  APPLE_BUTTON_SRC,
   BUBBLE_DEPTH,
   BUBBLE_LINE,
   BUBBLE_TEXT_WIDTH,
@@ -93,7 +94,6 @@ import {
   EMOTE_OUTLINE,
   EMOTE_SIZE,
   FISH_BUTTON_SRC,
-  FRAME_SRC,
   GUESTBOOK_BUTTON_SRC,
   SITE_LINKS,
   SLEEP_AFTER_MS,
@@ -2930,12 +2930,15 @@ export function Lobby({ games, listGames }: { games: DoorGame[]; listGames: Door
               aria-keyshortcuts="Space"
               className="group flex flex-col items-center gap-0.5 rounded-full focus-visible:outline-2 focus-visible:outline-primary"
             >
-              {/* 나무 테(목욕·방명록과 같은 그림) 안 펠트 판 위에 사과 아이콘 */}
+              {/* 낚시 버튼과 같은 나무 테·펠트 판 그림(카피바라가 사과를 번쩍 든 모습). 마우스를 올리거나 포커스면 판 위에 사과 아이콘 */}
               <span className="relative block size-14 transition-transform md:size-18 duration-100 motion-safe:group-active:scale-90">
-                <span aria-hidden className="absolute inset-[16%] flex items-center justify-center rounded-full bg-capybara-light text-capybara-dark">
-                  <Apple className="size-6 md:size-7" />
+                <NextImage src={APPLE_BUTTON_SRC} alt="" width={256} height={256} unoptimized draggable={false} className="size-full drop-shadow-md" />
+                <span
+                  aria-hidden
+                  className="absolute inset-[16%] flex items-center justify-center rounded-full bg-overlay text-white opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-visible:opacity-100 motion-reduce:transition-none"
+                >
+                  <Apple className="size-7" />
                 </span>
-                <NextImage src={FRAME_SRC} alt="" fill unoptimized sizes="72px" draggable={false} className="drop-shadow-md" />
               </span>
               <span className="rounded-full bg-card/85 px-2 py-0.5 text-caption-3 font-semibold text-text-strong">사과 따기</span>
             </button>

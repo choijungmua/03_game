@@ -36,10 +36,28 @@ export const FEVER_COMBO = 10;
 export const FEVER_MS = 8000;
 export const FEVER_MULTIPLIER = 2;
 
-/** 바꾸기·터지기·떨어지기 애니메이션 시간 */
+/**
+ * 바꾸기·터지기·떨어지기 애니메이션 시간. 터지기·떨어지기는 globals.css pang-pop(0.46s)·pang-drop(0.3s)과 같아야 한다.
+ * 터지기는 우는 얼굴로 흔들며 버티다(앞 48%) 풍선처럼 부풀어 펑 — 순식간에 사라지지 않고 표정이 보이게 천천히
+ */
 export const SWAP_MS = 140;
-export const POP_MS = 160;
-export const FALL_MS = 220;
+export const POP_MS = 460;
+export const FALL_MS = 300;
+/** 터지는 중 펑(pang-pop 48%)에 맞춰 눈물·반짝이가 튀어나가기 시작하는 시각 */
+export const BURST_AT_MS = Math.round(POP_MS * 0.48);
+/** 동물 표정 그림 (파일 이름 뒤에 붙는 말): 평소 / 눈웃음(깜빡임·고를 때) / 우는 얼굴(터질 때) */
+export const ANIMAL_FACES = { calm: "", happy: "-happy", cry: "-cry" } as const;
+/** 터질 때 튀어나가는 조각: 눈물 둘(좌우) + 반짝이 넷. dx·dy는 블록 크기 대비 날아가는 거리(%) */
+export const POP_SPARKS = [
+  { kind: "tear", dx: -85, dy: -10 },
+  { kind: "tear", dx: 85, dy: -10 },
+  { kind: "star", dx: -55, dy: -80 },
+  { kind: "star", dx: 55, dy: -80 },
+  { kind: "star", dx: -65, dy: 70 },
+  { kind: "star", dx: 65, dy: 70 },
+] as const;
+/** 한 번에 이만큼 넘게 터지면 판이 흔들린다 */
+export const SHAKE_CLEAR_COUNT = 5;
 
 /** 이 시간 동안 아무것도 안 하면 둘 수 있는 자리를 반짝여 알려준다 */
 export const HINT_DELAY_MS = 5000;
