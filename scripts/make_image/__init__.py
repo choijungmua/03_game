@@ -44,6 +44,11 @@ def make_image(prompt: str, name: str, refs: list[str] | None = None, transparen
             text = last_message.read_text(encoding="utf-8") if last_message.exists() else ""
             found = [Path(p) for p in re.findall(r"[A-Za-z]:\\[^`\s*]+?\.png", text) if Path(p).exists()]
             fresh = [p for p in Path.home().glob(".codex/generated_images/*/*.png") if p.stat().st_mtime >= started]
+            # generated_images 폴더는 Codex 세션마다 하나라, 동시에 돌린 다른 make_image 의 그림이 섞여 있을 수 있다.
+            # 세션이 둘 이상이면 어느 게 이 요청 그림인지 모르니 추측하지 말고 멈춘다 (한 번 엉뚱한 그림을 집어 온 적 있음)
+            if not found and len({p.parent for p in fresh}) > 1:
+                listing = "\n".join(f"  {p}" for p in sorted(fresh, key=lambda p: p.stat().st_mtime))
+                raise RuntimeError(f"Codex가 {out} 을 만들지 않았고, 동시에 돈 생성이 있어 어느 그림인지 모릅니다. 직접 골라 복사하세요:\n{listing}")
             found += sorted(fresh, key=lambda p: p.stat().st_mtime)
             if not found:
                 raise RuntimeError(f"Codex가 {out} 을 만들지 않았습니다. 위 Codex 출력을 확인하세요")

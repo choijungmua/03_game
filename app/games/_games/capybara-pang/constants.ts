@@ -5,15 +5,18 @@ export const BOARD_SIZE = 7;
 /** 동물 펠트 얼굴 그림 폴더. 평소 얼굴은 <key>.webp, 터질 때 우는 얼굴은 <key>-cry.webp */
 export const ANIMAL_IMAGE_BASE = "/assets/images/games/capybara-pang/animals";
 
-/** 판에 나오는 동물. 색 원 위에 펠트 얼굴 그림을 얹는다 (색만으로 구분하지 않게 얼굴 모양도 다르다) */
+/**
+ * 판에 나오는 동물: 카피바라와 남미 습지에 같이 사는 친구들. 색 원 위에 펠트 얼굴 그림을 얹는다.
+ * 색만으로 구분하지 않게 원 색도 얼굴 모양도 7종이 모두 다르다 (갈색·회색·연두·노랑·빨강·분홍·하늘)
+ */
 export const ANIMALS = [
   { key: "capybara", name: "카피바라", colorClass: "bg-amber-600 text-white" },
-  { key: "rabbit", name: "토끼", colorClass: "bg-pink-400 text-neutral-950" },
-  { key: "cat", name: "고양이", colorClass: "bg-orange-400 text-neutral-950" },
-  { key: "dog", name: "강아지", colorClass: "bg-sky-500 text-neutral-950" },
-  { key: "chick", name: "병아리", colorClass: "bg-yellow-300 text-neutral-950" },
-  { key: "pig", name: "돼지", colorClass: "bg-rose-300 text-neutral-950" },
-  { key: "monkey", name: "원숭이", colorClass: "bg-lime-500 text-neutral-950" },
+  { key: "otter", name: "수달", colorClass: "bg-slate-500 text-white" },
+  { key: "frog", name: "청개구리", colorClass: "bg-lime-400 text-neutral-950" },
+  { key: "duckling", name: "아기오리", colorClass: "bg-yellow-300 text-neutral-950" },
+  { key: "macaw", name: "마코앵무새", colorClass: "bg-red-500 text-white" },
+  { key: "dolphin", name: "분홍 강돌고래", colorClass: "bg-pink-300 text-neutral-950" },
+  { key: "sloth", name: "나무늘보", colorClass: "bg-sky-400 text-neutral-950" },
 ] as const;
 
 export const KIND_COUNT = ANIMALS.length;

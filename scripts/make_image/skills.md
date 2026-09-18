@@ -218,12 +218,13 @@ canvas.resize((512, 512), Image.LANCZOS).save('public/assets/images/characters/c
 
 | 시트 | 칸 | 들어가는 곳 |
 |---|---|---|
-| `emoji-apples` | 가로 3 | `ui/lobby/fish-catches/{apple,green-apple,rotten-apple}.webp` (가방·나무에 달린 사과·먹는 사과) |
+| `emoji-apples-v2` | 가로 3 | `ui/lobby/fish-catches/{apple,green-apple,rotten-apple}.webp` — 카피바라 얼굴(주둥이·작은 귀·점)을 한 사과 (가방·나무에 달린 사과·먹는 사과) |
 | `emoji-fence-vertical` | 세로 1장 | `props/fence-vertical` + `props/fence-post` (판 길이는 기둥 높이로 재서 한 타일만 남긴다) |
 | `emoji-fruit-{1,2,3}` | 가로 4·4·3 × 세로 2 | `games/watermelon-game/fruits/<slug>{,-cry}.webp` 11종 |
-| `emoji-pang-{1,2}` | 가로 4·3 × 세로 2 | `games/capybara-pang/animals/<key>{,-cry}.webp` 7종 |
+| `emoji-pang-{1,2}-v2` | 가로 4·3 × 세로 2 | `games/capybara-pang/animals/<key>{,-cry}.webp` — 카피바라와 남미 습지 친구들 7종(카피바라·수달·청개구리·아기오리·마코앵무새·분홍 강돌고래·나무늘보). 판에서 한눈에 갈리게 색이 겹치지 않는 동물로 고른다 |
 | `emoji-pick` | 가로 3 × 세로 2 | `capybara-pick-{1,2,3}-{up,down}.webp` (사과 따기 폴짝) |
-| `emoji-game-icons` | 가로 2 | `games/{watermelon-game,capybara-pang}/icon.webp` |
+| `emoji-game-icons` | 가로 2 | `games/watermelon-game/icon.webp` (오른쪽 칸 옛 팡 아이콘은 안 씀) |
+| `emoji-pang-icon` | 1장 | `games/capybara-pang/icon.webp` — 잎 접시 위 수달·카피바라·아기오리 구슬 |
 
 - 우는 얼굴은 **눈을 질끈 감은 꺾인 선 + 좌우로 튀는 굵은 파란 펠트 눈물 + 네모나게 벌린 입**으로 통일한다. 게임 코드가 터지는 순간에만 이 그림으로 바꿔 그린다
 - 과일·동물은 정사각형 canvas 가운데에 실루엣이 `PAD`(1.16) 여백으로 들어간다. 이 값은 `watermelon-game/constants.ts`의 `FRUIT_IMAGE_SCALE`과 짝이라 한쪽만 바꾸면 크기가 어긋난다
