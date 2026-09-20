@@ -48,12 +48,6 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
     // 폰트 변수는 html에 둔다: globals.css가 html에 font-sans(var(--font-pretendard))를 걸어서, body에만 두면 html에서 변수가 비어 기본 폰트로 떨어진다
     <html lang="ko" className={`${pretendard.variable} dark`} suppressHydrationWarning>
       <head>
-        {/* 애드센스 사이트 확인·광고 로더. next/script는 data-nscript 속성을 붙여 애드센스가 경고하므로 일반 script를 쓴다 */}
-        <script
-          async
-          src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-1459138523237889"
-          crossOrigin="anonymous"
-        />
       </head>
       <body>
         <JsonLd data={websiteJsonLd()} />

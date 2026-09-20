@@ -26,6 +26,7 @@ export const BATH_BUTTON_SRC = "/assets/images/ui/lobby/bath.webp";
 export const GUESTBOOK_BUTTON_SRC = "/assets/images/ui/lobby/guestbook.webp";
 /** 사과나무 밑에서 뜨는 "사과 따기" 버튼 그림 (낚시 버튼과 같은 나무 테·펠트 판 위, 카피바라 얼굴 사과를 번쩍 든 카피바라) */
 export const APPLE_BUTTON_SRC = "/assets/images/ui/lobby/apple.webp";
+export const LAMP_BUTTON_SRC = "/assets/images/ui/lobby/lamp.webp";
 /** 오른쪽 위 낚시 가방 버튼 그림 (나무 테·펠트 판 위 카피바라 얼굴 백팩) */
 export const FISH_BAG_SRC = "/assets/images/ui/lobby/bag.webp";
 

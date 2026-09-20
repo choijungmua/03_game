@@ -1,10 +1,9 @@
-// 로비 옷장: 3D 카피바라(assets-src/characters/capybara-3d)와 같은 뼈에 입혀 프레임마다 구운 옷 그림을 몸 그림 위에 겹친다.
-// 옷은 몸과 같은 자세·방향으로 구워져 있어 자리를 맞출 게 없다 — 같은 프레임 칸을 그대로 겹치면 끝.
-// 몸: public/assets/images/characters/capybara-3d/capybara-<프레임>.webp
-// 옷: public/assets/images/characters/capybara-3d/wardrobe/<칸>/<id>.webp (프레임 순서대로 칸을 늘어놓은 시트, lib/lobby/capybara-3d.ts)
-// 새 옷·새 동작: items.js·frames.js에 넣고 `node assets-src/characters/capybara-3d/bake.mjs`
-
 import { BAKED_FRAMES, type BakedFrame, OUTFIT_SHEET } from "./capybara-3d";
+import { drawCharacterGlasses, drawCharacterHat } from "./character-accessories";
+import { drawCharacterClothes } from "./character-clothes";
+import { characterBaseBounds } from "./character-base";
+import { characterFit } from "./character-fit";
+import { LOBBY_CHARACTER_BASE } from "./character-style";
 
 // 칸을 늘리려면(상의·신발…) 여기와 items.js에 넣고 다시 굽는다. 겹치는 순서는 LAYER_ORDER
 export const WARDROBE_SLOTS = ["hat", "glasses", "onepiece"] as const;
@@ -80,10 +79,8 @@ export const outfitSheets = (outfit: Outfit) =>
     return id ? [outfitSheetSrc(slot, id)] : [];
   });
 
-/**
- * 몸 그림(base) 위에 입은 옷을 겹쳐 (left, top, size) 정사각형에 그린다. 몸과 옷은 같은 프레임·같은 틀로 구워져 칸을 그대로 겹친다.
- * 옷 시트가 아직 안 받아졌으면 false (몸만 그려진다)
- */
+export const pngOutfitSources = (outfit: Outfit) => outfit.hat ? [outfitSheetSrc("hat", outfit.hat)] : [];
+
 export function drawDressed(
   ctx: CanvasRenderingContext2D,
   base: HTMLImageElement,
@@ -91,8 +88,28 @@ export function drawDressed(
   [left, top, size]: readonly [number, number, number],
   imageFor: (src: string) => HTMLImageElement,
 ) {
-  ctx.drawImage(base, left, top, size, size);
   const frame = bakedFrame(base.src);
+  if (frame && base.src.includes(`${LOBBY_CHARACTER_BASE}/`)) {
+    const [baseLeft, baseTop, baseSize] = characterBaseBounds(frame, [left, top, size]);
+    ctx.drawImage(base, baseLeft, baseTop, baseSize, baseSize);
+    const fit = characterFit(frame);
+    ctx.save();
+    ctx.translate(baseLeft, baseTop);
+    ctx.scale(baseSize, baseSize);
+    if (outfit.onepiece) drawCharacterClothes(ctx, base, { id: outfit.onepiece, fit });
+    if (outfit.glasses) drawCharacterGlasses(ctx, { id: outfit.glasses, fit });
+    let complete = true;
+    if (outfit.hat) {
+      const hat = imageFor(outfitSheetSrc("hat", outfit.hat));
+      complete = hat.complete && hat.naturalWidth > 0;
+      const facing = frame.replace(/^(stand|walk1|walk2|idle|punch|yawn-\d|doze-\d|pick-\d)-/, "");
+      const hatFrame = frame.startsWith("scratch") ? "stand-up" : bakedFrame(`capybara-stand-${facing}.webp`) ?? "stand-down";
+      if (complete) drawCharacterHat(ctx, hat, { cell: outfitCell(hatFrame), id: outfit.hat, fit });
+    }
+    ctx.restore();
+    return complete;
+  }
+  ctx.drawImage(base, left, top, size, size);
   if (!frame) return true;
   const [sx, sy, cell] = outfitCell(frame);
   let complete = true;

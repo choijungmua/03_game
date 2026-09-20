@@ -1,10 +1,5 @@
 import { APPLE_REGROW_MS, APPLES_PER_TREE } from "./constants";
 
-// 딴 사과가 어떤 종류인지는 서버가 정해 가방에 넣는다 (lib/lobby/server-fishing.ts의 pick 명령)
-
-// ponytail: 딴 사과는 이 탭 메모리에만 남는다 (새로고침하면 다시 열리고, 다른 유저 나무에는 그대로 보인다).
-// 모두가 같은 나무를 봐야 하면 백엔드 로비 상태에 나무별 딴 시각을 둘 것
-
 /** 나무 한 그루에서 딴 시각들(performance.now) → 지금 달려 있는 사과 수. 딴 지 APPLE_REGROW_MS가 지난 건 다시 열린다 */
 export const applesLeft = (pickedAt: readonly number[], now: number) =>
   Math.max(0, APPLES_PER_TREE - pickedAt.filter((at) => now - at < APPLE_REGROW_MS).length);

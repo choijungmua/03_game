@@ -12,12 +12,15 @@ import { Apple, Armchair, Bath, Fish, HandFist, NotebookPen } from "lucide-react
 import { type ApiError, API_URL } from "@/lib/api-url";
 
 import { Loading } from "@/components/feedback/loading";
+import { Progress } from "@/components/feedback/progress";
 import { ButtonFocusGuard } from "@/app/games/[slug]/button-focus-guard";
 
 import { flashButton, isShortcutKey } from "./shortcut";
 
 /** 캔버스는 CSS 폰트를 물려받지 않으니 사이트 폰트(Pretendard) 이름을 직접 쓴다 */
 const CANVAS_FONT = pretendard.style.fontFamily;
+const APPLE_SYNC_MS = 2000;
+const LAMP_SYNC_MS = 2000;
 
 import {
   BUILDING_ASSETS,
@@ -73,9 +76,12 @@ import {
   type Meal,
   mealDone,
   parseFeedChat,
+  satietyWalkSpeed,
   type Satiety,
 } from "@/lib/lobby/feeding";
-import { applesLeft, nearestTree, pickApple } from "@/lib/lobby/apples";
+import { nearestTree } from "@/lib/lobby/apples";
+import { type AppleState, syncApples } from "@/lib/lobby/server-apples";
+import { type LampState, syncLamps } from "@/lib/lobby/server-lamps";
 import { type FishingState, syncFishing } from "@/lib/lobby/server-fishing";
 import { pushSnapshot, sampleSnapshots, type Snapshot } from "@/lib/lobby/interpolation";
 import { loadLobbyProfile, type LobbyProfile, saveLobbyProfile } from "@/lib/lobby/profile";
@@ -95,6 +101,7 @@ import {
   EMOTE_SIZE,
   FISH_BUTTON_SRC,
   GUESTBOOK_BUTTON_SRC,
+  LAMP_BUTTON_SRC,
   SITE_LINKS,
   SLEEP_AFTER_MS,
   SLEEP_FRAME_MS,
@@ -119,8 +126,9 @@ import {
   type LobbyMessage,
   type PresenceRequest,
 } from "@/lib/lobby/presence";
-import { HEAD_ANCHORS } from "@/lib/lobby/capybara-3d";
-import { CHARACTER_3D, drawDressed, loadOutfit, type Outfit, outfitSheets, saveOutfit, WARDROBE_SLOTS } from "@/lib/lobby/wardrobe";
+import { characterFit } from "@/lib/lobby/character-fit";
+import { drawDressed, loadOutfit, type Outfit, pngOutfitSources as outfitSheets, saveOutfit, WARDROBE_SLOTS } from "@/lib/lobby/wardrobe";
+import { LOBBY_CHARACTER_BASE } from "@/lib/lobby/character-style";
 import {
   BATH_OFFSET_Y,
   BATH_RX,
@@ -139,12 +147,14 @@ import {
   hash2,
   LOBBY_SEED,
   nearestWater,
+  playerBodyBlocked,
   SPRING_RX,
   SPRING_RY,
   TILE,
   type Tile,
   toDirection,
   WALK_SPEED,
+  worldToViewport,
 } from "@/lib/lobby/world";
 
 import { Wardrobe } from "./wardrobe";
@@ -179,7 +189,6 @@ interface CapybaraLook {
   idle: IdleFrame | null;
   /** 먹기 시작하고 지난 시간(ms). 안 먹는 중이면 -1 */
   eating: number;
-  /** 사과를 따려고 뛰어오른 진행도 0→1 (폴짝 한 번). 안 따는 중이면 -1 */
   picking: number;
 }
 
@@ -242,6 +251,9 @@ const IDLE_ACTIONS: readonly { action: "scratch" | "yawn" | "doze"; ms: number }
   { action: "doze", ms: 3000 },
 ];
 const IDLE_CYCLE_MS = IDLE_ACTIONS.reduce((sum, { ms }) => sum + IDLE_WAIT_MS + ms, 0);
+const IDLE_SOUND_MIN_MS = 12_000;
+const IDLE_SOUND_MAX_MS = 30_000;
+const idleSoundDelay = () => IDLE_SOUND_MIN_MS + Math.random() * (IDLE_SOUND_MAX_MS - IDLE_SOUND_MIN_MS);
 /** 누른 곳까지 이만큼 가까워지면 멈춘다(제자리 떨림 방지) */
 const ARRIVE_PX = 6;
 /** 카피바라 스프라이트를 그리는 크기. 3D로 구운 프레임은 서든 앉든 같은 틀·같은 축척이다 */
@@ -252,8 +264,6 @@ const SIT_SIZE = 64;
 const STAND_FOOT = 1000 / 1024;
 /** 먹는 스프라이트에서 앞발(먹이를 드는 자리)의 발바닥 위 높이 비율 */
 const FOOD_Y = 0.42;
-/** 발 기준 충돌 상자 */
-const HIT = { halfWidth: 12, up: 8, down: 4 };
 const CHUNK = 16;
 /** 오두막 문 앞 이 거리 안에 들어오면 입장 준비 */
 const DOOR_RADIUS = TILE * 0.9;
@@ -262,6 +272,8 @@ const ENTER_CHARGE_MS = 900;
 const SEAT_REACH = TILE * 1.4;
 /** 방명록 게시판 앞 이 거리 안에서 Space로 방명록을 연다 */
 const GUESTBOOK_REACH = TILE * 1.5;
+const LAMP_REACH = TILE * 1.5;
+const LAMP_TOGGLE_MS = 1200;
 /** 사과나무 밑동 가운데에서 사과가 달린 자리(타일). 달린 사과 수만큼 앞에서부터 그린다 */
 const APPLE_SPOTS: readonly [number, number][] = [
   [-0.45, -1.9],
@@ -281,7 +293,7 @@ const RECONNECT_MAX_MS = 8000;
 const MAX_BUFFERED_BYTES = 64 * 1024;
 /** 텍스처 한 장이 덮는 월드 크기(px) — 타일의 배수여야 칸마다 이어진다 */
 const TEXTURE_SIZE = 192;
-const CHARACTER_BASE = CHARACTER_3D;
+const CHARACTER_BASE = LOBBY_CHARACTER_BASE;
 
 const KEY_VECTORS: Partial<Record<string, [number, number]>> = {
   ArrowUp: [0, -1],
@@ -400,16 +412,6 @@ function drawChunk(
     } else {
       ctx.fillStyle = GROUND_BY_ID.get(kind)?.fallbackColor ?? "#8cbf3f";
       ctx.fillRect(x, y, TILE, TILE);
-    }
-    if (kind === "meadow") {
-      // 같은 풀 텍스처가 반복돼 보이지 않게 짙고 옅은 풀 얼룩을 섞는다 (펠트 텍스처와 안 맞는 평면 들꽃 점은 그리지 않는다)
-      const noise = hash2(3, tx, ty);
-      if (noise < 0.14) {
-        ctx.fillStyle = noise < 0.07 ? "rgba(50,90,10,0.16)" : "rgba(255,245,160,0.12)";
-        ctx.beginPath();
-        ctx.ellipse(x + TILE / 2, y + TILE / 2, TILE * (0.5 + noise * 2), TILE * (0.35 + noise), 0, 0, Math.PI * 2);
-        ctx.fill();
-      }
     }
 
     const neighbors: [number, number][] = [
@@ -552,7 +554,8 @@ function drawBathing(
   if (animate) for (const offset of [0, 900]) drawRipple(ctx, x, y - 3, ((now + offset) % 1800) / 1800);
   // 바라보는 방향 서기 프레임의 머리 꼭대기(3D 모델에서 잰 자리). YUZU_SINK만큼 내려 털에 살짝 묻히게 얹고,
   // 물속을 걸을 때 몸이 들썩이는 만큼(drawCapybara와 같은 식) 같이 올린다
-  const [topX, topY] = HEAD_ANCHORS[`stand-${facing}`].headTop;
+  const fit = characterFit(`stand-${facing}`);
+  const [topX, topY] = [fit.x * 100, (fit.y - fit.ry) * 100];
   const headX = x - STAND_SIZE / 2 + (STAND_SIZE * topX) / 100;
   const headTop = y + BATH_SINK - STAND_SIZE * STAND_FOOT + (STAND_SIZE * topY) / 100;
   const lift = stride > 0 && animate ? Math.abs(Math.sin((stride / (STRIDE_PX * 2)) * Math.PI)) * 3 : 0;
@@ -725,7 +728,7 @@ function drawCapybara(
   const drawDressed = (image: HTMLImageElement, left: number, top: number, size: number) => {
     ctx.drawImage(wardrobe.dressed(image, outfit, size) ?? image, left, top, size, size);
   };
-  if (!look.sitting) drawGroundShadow(ctx, x, y, 18);
+  if (!look.sitting) drawGroundShadow(ctx, x, y + 1, 18, 2);
 
   if (look.stunned) {
     const image = sprites.get("stun");
@@ -753,7 +756,6 @@ function drawCapybara(
   // 앉기·때리기 스프라이트는 상하좌우 4장뿐이라 대각선은 가까운 옆모습을 쓴다
   const direction = toDirection(facing);
 
-  // 사과 따기: 잔뜩 웅크렸다가(1) 앞발을 번쩍 뻗어 뛰어오르고(2) 아깝게 헛손질한다(3). 뜨는 높이는 폴짝(hop) 쪽에서 준다
   if (look.picking >= 0) {
     const frame = look.picking < 0.18 || look.picking >= 1 ? 1 : look.picking < 0.72 ? 2 : 3;
     const pickImage = sprites.get(`pick-${frame}-${direction === "down" ? "down" : "up"}`);
@@ -1234,6 +1236,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
   const bathButtonRef = useRef<HTMLButtonElement>(null);
   const guestbookButtonRef = useRef<HTMLButtonElement>(null);
   const appleButtonRef = useRef<HTMLButtonElement>(null);
+  const lampButtonRef = useRef<HTMLButtonElement>(null);
   const lastChatAt = useRef(-Infinity);
   /** 화면(소리 버튼)은 저장값을 구독하고(다른 탭·게임 화면에서 바꿔도 따라간다), 게임 루프는 ref로 같은 설정을 읽는다 */
   const settings = useLobbySettings();
@@ -1253,6 +1256,10 @@ export function Lobby({ games }: { games: DoorGame[] }) {
   const [guestbookOpen, setGuestbookOpen] = useState(false);
   /** 사과나무 밑에 서 있음 (Space·버튼으로 사과를 딴다) */
   const [appleNearby, setAppleNearby] = useState(false);
+  const [appleProgress, setAppleProgress] = useState<number | null>(null);
+  const [lampNearby, setLampNearby] = useState(false);
+  const [lampProgress, setLampProgress] = useState<number | null>(null);
+  const [lampOn, setLampOn] = useState(true);
   const [fishing, setFishing] = useState(false);
   /** 온천: 둘레에 서 있으면 near(목욕 버튼), 물 안이면 in(나오기 버튼) */
   const [bath, setBath] = useState<"near" | "in" | null>(null);
@@ -1263,6 +1270,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
   const [fishInventory, setFishInventory] = useState<FishInventory>({});
   /** 카피바라 포만감. 가방에서 먹이를 누르면 feedRequest에 넣고, 게임 루프가 먹이며 새 값을 넣는다 */
   const [satiety, setSatiety] = useState<Satiety>({ value: 0, at: 0 });
+  const satietyRef = useRef<Satiety>(satiety);
   /** 카피바라 애정도(0~100). 사과를 먹일 때마다 오른다 */
   const [affection, setAffection] = useState(0);
   /** 옷장 탭에 보일 입은 옷. 게임 루프는 outfitRef를 읽는다 */
@@ -1294,7 +1302,9 @@ export function Lobby({ games }: { games: DoorGame[] }) {
     /** 서버가 준 가방·포만감·애정도·옷·낚시 상태를 화면에 반영한다 */
     const applyFishingState = (state: FishingState) => {
       setFishInventory(state.inventory);
-      setSatiety({ value: state.satiety, at: Date.now() });
+      const nextSatiety = { value: state.satiety, at: Date.now() };
+      satietyRef.current = nextSatiety;
+      setSatiety(nextSatiety);
       setAffection(state.affection);
       // 옷은 서버 값이 먼저다 (다른 기기에서 갈아입었을 수 있다). 옷장 창은 저장값을 읽으므로 같이 저장해 둔다
       outfitRef.current = state.outfit;
@@ -1309,7 +1319,18 @@ export function Lobby({ games }: { games: DoorGame[] }) {
     let fishingNextAt: number | null = null;
     const askFishing = (command: Parameters<typeof syncFishing>[2], name?: FishCatch, outfit?: Outfit) =>
       syncFishing(profileRef.current.id, profileRef.current.token, command, name, outfit);
-    void askFishing("sync").then(applyFishingState).catch(fishingFailed);
+    let fishingSyncPending = false;
+    const refreshFishing = () => {
+      if (fishingSyncPending) return;
+      fishingSyncPending = true;
+      void askFishing("sync")
+        .then(applyFishingState)
+        .catch(fishingFailed)
+        .finally(() => {
+          fishingSyncPending = false;
+        });
+    };
+    refreshFishing();
 
     const sprites = new Map<SpriteKey, HTMLImageElement>();
     for (const facing of FACINGS) {
@@ -1337,6 +1358,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
     const images = new Map<SpriteId, { asset: SpriteAsset; image: HTMLImageElement }>(
       SPRITE_ASSETS.map((asset) => [asset.id, { asset, image: loadImage(lobbyAssetSrc(asset)) }]),
     );
+    const lanternOffImage = loadImage("/assets/images/lobby/props/lantern/off.webp");
     const textures = new Map<Texture, HTMLImageElement>(GROUND_ASSETS.map((asset) => [asset.id, loadImage(lobbyAssetSrc(asset))]));
     const buildingImages = BUILDING_ASSETS.map((asset) => loadImage(lobbyAssetSrc(asset)));
     const icons = new Map(world.doors.map((door) => [door.slug, loadImage(`/assets/images/games/${door.slug}/icon.webp`)]));
@@ -1368,7 +1390,6 @@ export function Lobby({ games }: { games: DoorGame[] }) {
           const id = outfit[slot];
           return id ? [`${slot}:${id}`] : [];
         });
-        if (worn.length === 0) return null;
         // 그릴 크기 그대로 구워서 매 프레임 확대·축소 없이 1:1로 찍는다 (크기가 키에 들어가 화면 배율이 바뀌면 새로 굽는다)
         const px = Math.ceil(size * pixelRatio);
         const key = `${base.src}|${px}|${worn.join(",")}`;
@@ -1413,11 +1434,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
       return chunkAt(cx, cy).tiles[(ty - cy * CHUNK) * CHUNK + (tx - cx * CHUNK)];
     };
     /** 몸 네 모서리 중 하나라도 막히면 못 간다. 온천 돌 테두리·오두막 앞은 타일보다 그림에 맞춘 타원으로 막는다 (world.blockedAt) */
-    const blocked = (x: number, y: number) =>
-      world.blockedAt(x - HIT.halfWidth, y - HIT.up) ||
-      world.blockedAt(x + HIT.halfWidth, y - HIT.up) ||
-      world.blockedAt(x - HIT.halfWidth, y + HIT.down) ||
-      world.blockedAt(x + HIT.halfWidth, y + HIT.down);
+    const blocked = (x: number, y: number) => playerBodyBlocked(world.blockedAt, { x, y });
 
     /** 온천이 여러 개라 목욕·둘레 판정은 (x, y)에서 가장 가까운 온천 기준 */
     const springNear = (x: number, y: number) =>
@@ -1440,6 +1457,8 @@ export function Lobby({ games }: { games: DoorGame[] }) {
 
     // 게임에서 돌아오면 들어갔던 오두막 문 앞에서 다시 시작한다
     const positionKey = "lobby-position-v3";
+    const geometryParams = new URLSearchParams(window.location.search);
+    const geometryProbe = geometryParams.has("lobby-geometry-test");
     const me = {
       x: world.spawn.x,
       y: world.spawn.y,
@@ -1466,6 +1485,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
       meal: null as Meal | null,
       /** 사과를 따는 중인 나무 번호와 따기 시작한 시각. 움직이거나 맞으면 비운다 */
       picking: null as { tree: number; at: number } | null,
+      lamp: null as { key: string; at: number; turnOn: boolean } | null,
       /** 방금 딴 사과와 딴 시각. 가지에서 머리 위로 들려 올라왔다 사라진다 */
       picked: null as Meal | null,
       /** 서버가 정해 준 이름표. 첫 동기화 전엔 비어 있다 */
@@ -1488,37 +1508,126 @@ export function Lobby({ games }: { games: DoorGame[] }) {
     const nearestDoor = () => world.doors.find((door) => Math.hypot(door.x - me.x, door.y - me.y) < DOOR_RADIUS) ?? null;
     const nearestSeat = () => world.seats.findIndex((seat) => Math.hypot(seat.seatX - me.x, seat.standY - me.y) < SEAT_REACH);
     const nearGuestbook = () => Math.hypot(world.guestbook.x - me.x, world.guestbook.y - me.y) < GUESTBOOK_REACH;
-    /** 나무마다 사과를 딴 시각들 (lib/lobby/apples.ts) */
-    const applePicks = world.appleTrees.map((): number[] => []);
+    const lanterns = world.props.filter((prop) => prop.kind === "lantern");
+    const lampsOff = new Set<string>();
+    let lampPending = false;
+    let lampMutationVersion = 0;
+    let lampSyncPending = false;
+    const applyLampState = (state: LampState) => {
+      lampsOff.clear();
+      lanterns.forEach((lamp) => {
+        const key = `${lamp.tx},${lamp.ty}`;
+        if (state[key] === false) lampsOff.add(key);
+      });
+    };
+    const refreshLamps = () => {
+      if (lampSyncPending || lampPending) return;
+      const version = lampMutationVersion;
+      lampSyncPending = true;
+      void syncLamps()
+        .then((state) => {
+          if (version === lampMutationVersion) applyLampState(state);
+        })
+        .catch(fishingFailed)
+        .finally(() => {
+          lampSyncPending = false;
+        });
+    };
+    refreshLamps();
+    const nearestLamp = () => {
+      let nearest = -1;
+      let distance = LAMP_REACH;
+      lanterns.forEach((lamp, index) => {
+        const next = Math.hypot((lamp.tx + 0.5) * TILE - me.x, (lamp.ty + 1) * TILE - me.y);
+        if (next <= distance) {
+          nearest = index;
+          distance = next;
+        }
+      });
+      return nearest;
+    };
+    let appleCounts = world.appleTrees.map(() => 3);
+    let pickPending = false;
+    let appleMutationVersion = 0;
+    const applyAppleState = (state: AppleState) => {
+      appleCounts = world.appleTrees.map((_, index) => state.trees[index] ?? 3);
+    };
+    const askApples = (command: "sync" | "pick", tree?: number) =>
+      syncApples(profileRef.current.id, profileRef.current.token, command, tree);
+    let appleSyncPending = false;
+    const refreshApples = () => {
+      if (appleSyncPending || pickPending) return;
+      const version = appleMutationVersion;
+      appleSyncPending = true;
+      void askApples("sync")
+        .then((state) => {
+          if (version === appleMutationVersion) applyAppleState(state);
+        })
+        .catch(fishingFailed)
+        .finally(() => {
+          appleSyncPending = false;
+        });
+    };
+    refreshApples();
     const nearestAppleTree = () => nearestTree(world.appleTrees, me.x, me.y, APPLE_REACH);
-    /** 나무를 올려다보며 따기 시작한다. APPLE_PICK_MS 동안 폴짝폴짝 뛰다가 finishPick에서 하나를 딴다 */
     const startPick = (index: number, now: number) => {
-      if (me.picking) return; // 따는 중에 Space를 또 눌러도 한 번만 딴다
+      if (me.picking || pickPending) return;
       const tree = world.appleTrees[index];
       me.facing = facingOf(tree.x - me.x, tree.y - TILE - me.y);
-      if (applesLeft(applePicks[index], now) === 0) return showNotice("사과가 다 떨어졌어요. 조금 있으면 다시 열려요");
+      if (appleCounts[index] === 0) return showNotice("사과가 다 떨어졌어요. 조금 있으면 다시 열려요");
       me.picking = { tree: index, at: now };
-      startHop();
-      showNotice("영차영차, 사과 따는 중…", APPLE_PICK_MS);
+      setAppleProgress(0);
     };
     /** 다 땄으면 서버가 사과 종류를 정해 가방에 넣어 준다 */
     const finishPick = (now: number) => {
       const picking = me.picking;
       if (!picking || now < picking.at + APPLE_PICK_MS) return;
       me.picking = null;
-      if (!pickApple(applePicks[picking.tree], now)) return;
-      startHop();
-      playSound("applePick", settingsRef.current);
-      const left = `남은 사과 ${applesLeft(applePicks[picking.tree], now)}개`;
-      void askFishing("pick")
+      pickPending = true;
+      appleMutationVersion += 1;
+      setAppleProgress(100);
+      void askApples("pick", picking.tree)
         .then((state) => {
-          applyFishingState(state);
+          applyAppleState(state);
+          setFishInventory(state.inventory);
           const kind = APPLE_KINDS.find((apple) => apple === state.lastCatch);
-          if (!kind) return;
+          if (!kind || state.caughtCount === 0) return showNotice("사과가 다 떨어졌어요. 조금 있으면 다시 열려요");
+          playSound("applePick", settingsRef.current);
           me.picked = { name: kind, at: performance.now() };
-          showNotice(`${APPLE_FOUND_LINES[kind]} ${left}`, 2000);
+          showNotice(`${APPLE_FOUND_LINES[kind]} ${state.caughtCount}개 · 남은 사과 ${state.trees[picking.tree] ?? 0}개`, 2000);
         })
-        .catch(fishingFailed);
+        .catch(fishingFailed)
+        .finally(() => {
+          pickPending = false;
+          setAppleProgress(null);
+          refreshApples();
+        });
+    };
+    const startLampToggle = (index: number, now: number) => {
+      if (me.lamp) return;
+      const lamp = lanterns[index];
+      const key = `${lamp.tx},${lamp.ty}`;
+      me.facing = facingOf((lamp.tx + 0.5) * TILE - me.x, (lamp.ty + 1) * TILE - me.y);
+      me.lamp = { key, at: now, turnOn: lampsOff.has(key) };
+      setLampProgress(0);
+    };
+    const finishLampToggle = (now: number) => {
+      if (!me.lamp || now < me.lamp.at + LAMP_TOGGLE_MS) return;
+      const { key, turnOn } = me.lamp;
+      if (turnOn) lampsOff.delete(key);
+      else lampsOff.add(key);
+      setLampOn(turnOn);
+      me.lamp = null;
+      setLampProgress(null);
+      lampPending = true;
+      lampMutationVersion += 1;
+      void syncLamps(key, turnOn)
+        .then(applyLampState)
+        .catch(fishingFailed)
+        .finally(() => {
+          lampPending = false;
+          refreshLamps();
+        });
     };
     /** 통나무 두 자리 중 비어 있는 나와 가까운 자리의 x. 둘 다 찼으면 null */
     const freeSpot = (index: number) => {
@@ -1585,11 +1694,13 @@ export function Lobby({ games }: { games: DoorGame[] }) {
     let shownWater = false;
     let shownGuestbook = false;
     let shownApple = false;
+    let shownLamp = false;
     let shownFishing = false;
     let shownStunned = false;
     // 내 캐릭터 동작 프레임이 바뀌는 순간에만 효과음을 내려고 지난 프레임을 기억한다
     let soundPose: Pose = "stand";
     let soundIdle: IdleFrame | null = null;
+    let nextIdleSoundAt = performance.now() + idleSoundDelay();
     let noticeTimer = 0;
 
     const showNotice = (text: string, ms = 1600) => {
@@ -1616,7 +1727,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
         .then((state) => {
           applyFishingState(state);
           if (line !== me.fishing) return;
-          const wait = fishingNextAt === null ? FISH_CAST_MS : Math.max(FISH_CAST_MS, fishingNextAt - Date.now());
+          const wait = fishingNextAt === null ? FISH_CAST_MS : Math.max(FISH_CAST_MS, fishingNextAt - Date.now()) * 2;
           line.biteAt = performance.now() + wait;
         })
         .catch(fishingFailed);
@@ -1705,6 +1816,17 @@ export function Lobby({ games }: { games: DoorGame[] }) {
     // 터치는 조이스틱: 처음 누른 자리가 중심, 끈 방향으로 걷고 끈 거리만큼 빨라진다
     const stick = { id: -1, originX: 0, originY: 0, dx: 0, dy: 0 };
     const view = { width: 0, height: 0 };
+    const onGeometryMove = (event: Event) => {
+      if (!geometryProbe || !(event instanceof CustomEvent) || typeof event.detail !== "object" || event.detail === null) return;
+      const x = Reflect.get(event.detail, "x");
+      const y = Reflect.get(event.detail, "y");
+      if (typeof x !== "number" || typeof y !== "number" || !Number.isFinite(x) || !Number.isFinite(y) || blocked(x, y)) return;
+      me.x = x;
+      me.y = y;
+      camera.x = x;
+      camera.y = y;
+    };
+    document.addEventListener("lobby-geometry-test-position", onGeometryMove);
 
     const renderStick = () => {
       const base = joystickRef.current;
@@ -1726,6 +1848,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
       canvas.width = Math.round(view.width * dpr);
       canvas.height = Math.round(view.height * dpr);
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.imageSmoothingQuality = "high";
     };
     resize();
 
@@ -1753,7 +1876,12 @@ export function Lobby({ games }: { games: DoorGame[] }) {
         if (!event.repeat) {
           spaceRequest.current = true;
           flashButton(
-            sitButtonRef.current ?? bathButtonRef.current ?? fishButtonRef.current ?? guestbookButtonRef.current ?? appleButtonRef.current,
+            sitButtonRef.current ??
+              bathButtonRef.current ??
+              fishButtonRef.current ??
+              guestbookButtonRef.current ??
+              appleButtonRef.current ??
+              lampButtonRef.current,
           );
         }
       } else if (event.code === "Enter") {
@@ -2011,6 +2139,9 @@ export function Lobby({ games }: { games: DoorGame[] }) {
         onBlur();
         return;
       }
+      refreshFishing();
+      refreshApples();
+      refreshLamps();
       if (socket || disposed) return;
       window.clearTimeout(reconnectTimer);
       reconnectDelay = RECONNECT_MIN_MS;
@@ -2077,6 +2208,8 @@ export function Lobby({ games }: { games: DoorGame[] }) {
           setGuestbookOpen(true);
         } else if (nearestSeat() < 0 && nearestAppleTree() >= 0) {
           startPick(nearestAppleTree(), now);
+        } else if (nearestSeat() < 0 && nearestLamp() >= 0) {
+          startLampToggle(nearestLamp(), now);
         } else if (nearestSeat() < 0 && water) {
           // 한 번 던지면 멈출 때까지 입질마다 알아서 당기고 다시 던진다 (아래 게임 루프)
           castLine(water, now);
@@ -2145,11 +2278,22 @@ export function Lobby({ games }: { games: DoorGame[] }) {
         stopAuto();
         me.meal = null;
         me.picking = null;
+        me.lamp = null;
+        setAppleProgress(null);
+        setLampProgress(null);
       }
-      if (me.picking && (isStunned || now < me.attackUntil)) me.picking = null;
-      // 사과 따는 동안은 손이 닿을 때까지 폴짝폴짝 뛴다
-      if (me.picking && now - me.hop.start >= HOP_MS + 140) startHop();
+      if (me.picking && (isStunned || now < me.attackUntil)) {
+        me.picking = null;
+        setAppleProgress(null);
+      }
+      if (me.lamp && (isStunned || now < me.attackUntil)) {
+        me.lamp = null;
+        setLampProgress(null);
+      }
+      if (me.picking) setAppleProgress(Math.min(100, Math.round(((now - me.picking.at) / APPLE_PICK_MS) * 10) * 10));
       finishPick(now);
+      if (me.lamp) setLampProgress(Math.min(100, Math.round(((now - me.lamp.at) / LAMP_TOGGLE_MS) * 10) * 10));
+      finishLampToggle(now);
       // 한 입 베어 물 때마다 아삭 쩝
       if (me.meal) {
         const bite = Math.floor((now - me.meal.at) / EAT_BITE_MS);
@@ -2187,7 +2331,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
       let moved = false;
       if (wantsMove && !me.sitting) {
         const length = Math.hypot(dx, dy); // 대각선도 같은 속도
-        const step = Math.min(WALK_SPEED * speed * (dt / 1000), distance);
+        const step = Math.min(WALK_SPEED * speed * satietyWalkSpeed(satietyRef.current, Date.now()) * (dt / 1000), distance);
         // 목욕 중엔 물 안쪽 타원 밖으로 못 걸어 나가고(나오기는 Space), 뭍에선 막히는 타일에 막힌다
         const bathing = inBath(me.x, me.y);
         const bathWater = bathCenter(springNear(me.x, me.y));
@@ -2223,7 +2367,9 @@ export function Lobby({ games }: { games: DoorGame[] }) {
       const bathingNow = inBath(me.x, me.y);
       // 목욕 중엔 긁기·하품 동작을 쉰다 (물에 잘린 몸으로는 어색하다)
       me.idleMs =
-        moved || wantsMove || me.sitting || me.fishing || me.meal || me.picking || isStunned || attacking || bathingNow ? 0 : nextIdle(me.idleMs, dt);
+        moved || wantsMove || me.sitting || me.fishing || me.meal || me.picking || me.lamp || isStunned || attacking || bathingNow
+          ? 0
+          : nextIdle(me.idleMs, dt);
       // 발을 내딛는 프레임마다 톡, 긁는 박자마다 슥슥, 하품을 시작할 때 하아암
       if (me.pose !== soundPose && me.pose !== "stand") {
         // 발 밑 타일에 따라 풀밭 사각, 나무 데크 통, 진흙 철퍽, 온천 물속 찰박
@@ -2233,14 +2379,23 @@ export function Lobby({ games }: { games: DoorGame[] }) {
       soundPose = me.pose;
       const idleFrame = idleSprite(me.idleMs);
       if (idleFrame !== soundIdle) {
-        if (idleFrame === "scratch-2" || idleFrame === "scratch-3") playSound("scratch", settingsRef.current);
-        if (idleFrame === "yawn-1") playSound("yawn", settingsRef.current);
+        if (now >= nextIdleSoundAt && (idleFrame === "scratch-2" || idleFrame === "yawn-1")) {
+          playSound(idleFrame === "scratch-2" ? "scratch" : "yawn", settingsRef.current);
+          nextIdleSoundAt = now + idleSoundDelay();
+        }
         soundIdle = idleFrame;
       }
 
       const follow = reducedMotion ? 1 : Math.min(1, dt / 120);
       camera.x += (me.x - camera.x) * follow;
       camera.y += (me.y - camera.y) * follow;
+      if (geometryProbe) {
+        const foot = worldToViewport(me, camera, view);
+        canvas.dataset.playerX = String(me.x);
+        canvas.dataset.playerY = String(me.y);
+        canvas.dataset.footScreenX = String(foot.x);
+        canvas.dataset.footScreenY = String(foot.y);
+      }
 
       const door = nearestDoor();
       if (!door) doorArmed = true;
@@ -2265,6 +2420,13 @@ export function Lobby({ games }: { games: DoorGame[] }) {
       if (guestbookHere !== shownGuestbook) setGuestbookNearby((shownGuestbook = guestbookHere));
       const appleHere = !me.sitting && !fishingActive && !seatHere && bathHere === null && nearestAppleTree() >= 0;
       if (appleHere !== shownApple) setAppleNearby((shownApple = appleHere));
+      const lampIndex = !me.sitting && !fishingActive && !seatHere && bathHere === null ? nearestLamp() : -1;
+      const lampHere = lampIndex >= 0;
+      if (lampHere !== shownLamp) setLampNearby((shownLamp = lampHere));
+      if (lampHere) {
+        const lamp = lanterns[lampIndex];
+        setLampOn(!lampsOff.has(`${lamp.tx},${lamp.ty}`));
+      }
       if (fishingActive !== shownFishing) setFishing((shownFishing = fishingActive));
       if (isStunned !== shownStunned) setStunned((shownStunned = isStunned));
 
@@ -2422,7 +2584,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
       // ponytail: 사과나무 그림이 없어 열대 나무 그림을 쓰고, 사과 자리(APPLE_SPOTS)도 그 그림 잎에 맞췄다. 사과나무 에셋이 들어오면 둘 다 바꿀 것
       world.appleTrees.forEach((tree, index) => {
         if (!inView(tree.x, tree.y, TILE * 4)) return;
-        const hanging = applesLeft(applePicks[index], now);
+        const hanging = appleCounts[index] ?? 0;
         drawables.push({
           y: tree.y - TILE * 0.2 + 0.01,
           draw: () => {
@@ -2434,7 +2596,18 @@ export function Lobby({ games }: { games: DoorGame[] }) {
         const x = (prop.tx + 0.5) * TILE;
         if (!inView(x, prop.ty * TILE, TILE * 4)) continue;
         const bottom = (prop.ty + 0.9) * TILE;
-        drawables.push({ y: bottom, draw: () => sprite(prop.kind, x, bottom) });
+        drawables.push({
+          y: bottom,
+          draw: () => {
+            const lampOff = prop.kind === "lantern" && lampsOff.has(`${prop.tx},${prop.ty}`);
+            const lamp = lampOff ? images.get("lantern") : undefined;
+            if (lamp && ready(lanternOffImage)) {
+              const width = lamp.asset.width * TILE;
+              drawGroundShadow(ctx, x, bottom - 3, width * 0.38);
+              drawImageBottom(ctx, lanternOffImage, x, bottom, width);
+            } else sprite(prop.kind, x, bottom);
+          },
+        });
       }
       for (const remote of remotes.values()) {
         const look: CapybaraLook = {
@@ -2458,7 +2631,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
               drawCapybara(ctx, sprites, x, y, remote.facing, look, remote.outfit, wardrobe, now, !reducedMotion);
               if (meal && look.eating >= 0 && !look.sitting) drawFood(ctx, meal.name, x, y, look.eating);
             };
-            if (remoteBathing) drawBathing(ctx, remote.x, remote.y, remote.facing, look.stride, now, !reducedMotion, images.get("yuzu")?.image, body);
+            if (remoteBathing) drawBathing(ctx, remote.x, remote.y, remote.facing, look.stride, now, !reducedMotion, remote.outfit.hat ? undefined : images.get("yuzu")?.image, body);
             else body(remote.x, remote.y);
           },
         });
@@ -2472,7 +2645,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
         stride: me.walkDist,
         idle: idleSprite(me.idleMs),
         eating: eatingMs(me.meal, now),
-        picking: me.picking ? Math.min(1, (now - me.hop.start) / HOP_MS) : -1,
+        picking: me.picking ? Math.min(1, (now - me.picking.at) / APPLE_PICK_MS) : -1,
       };
       const myMeal = me.meal;
       // 통나무에 앉고 일어날 때 그림만 이전 자리에서 폴짝 뛰어 옮겨 간다
@@ -2490,7 +2663,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
             if (myMeal && myLook.eating >= 0 && !myLook.sitting) drawFood(ctx, myMeal.name, x, y, myLook.eating);
             if (me.picked) drawPicked(ctx, me.picked, x, y, now);
           };
-          if (myBathing) drawBathing(ctx, drawnX, drawnY, me.facing, myLook.stride, now, !reducedMotion, images.get("yuzu")?.image, body);
+          if (myBathing) drawBathing(ctx, drawnX, drawnY, me.facing, myLook.stride, now, !reducedMotion, outfitRef.current.hat ? undefined : images.get("yuzu")?.image, body);
           else body(drawnX, drawnY);
         },
       });
@@ -2591,6 +2764,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
     const preload = [
       ...sprites.values(),
       ...[...images.values()].map((entry) => entry.image),
+      lanternOffImage,
       ...textures.values(),
       ...buildingImages,
       ...icons.values(),
@@ -2599,6 +2773,9 @@ export function Lobby({ games }: { games: DoorGame[] }) {
     ];
     let loadedCount = 0;
     let sendId = 0;
+    let appleSyncId = 0;
+    let lampSyncId = 0;
+    let fishingSyncId = 0;
     const start = () => {
       if (disposed) return;
       setLoadProgress(100);
@@ -2616,6 +2793,9 @@ export function Lobby({ games }: { games: DoorGame[] }) {
       frame = requestAnimationFrame(tick);
       connect();
       sendId = window.setInterval(send, LOBBY_TICK_MS);
+      appleSyncId = window.setInterval(refreshApples, APPLE_SYNC_MS);
+      lampSyncId = window.setInterval(refreshLamps, LAMP_SYNC_MS);
+      fishingSyncId = window.setInterval(refreshFishing, 15_000);
     };
     void Promise.all(
       preload.map((image) =>
@@ -2641,8 +2821,12 @@ export function Lobby({ games }: { games: DoorGame[] }) {
       window.removeEventListener("pointercancel", onPointerUp);
       window.removeEventListener("blur", onBlur);
       document.removeEventListener("visibilitychange", onVisibilityChange);
+      document.removeEventListener("lobby-geometry-test-position", onGeometryMove);
       cancelAnimationFrame(frame);
       window.clearInterval(sendId);
+      window.clearInterval(appleSyncId);
+      window.clearInterval(lampSyncId);
+      window.clearInterval(fishingSyncId);
       window.clearTimeout(reconnectTimer);
       window.clearTimeout(noticeTimer);
       disposed = true;
@@ -2770,16 +2954,21 @@ export function Lobby({ games }: { games: DoorGame[] }) {
         className="pointer-events-none absolute bottom-[max(0.75rem,env(safe-area-inset-bottom))] left-[max(0.75rem,env(safe-area-inset-left))] size-20 rounded-lg border-2 border-white/40 shadow-md sm:size-32"
       />
 
-      {/* 가운데 안내 글: 왼쪽 아래 미니맵(모바일 폭 ~5.75rem, sm 이상 ~8.75rem)·오른쪽 아래 버튼 줄(폭 ~5.5rem)을 가리지 않게 양옆을 비우고, 맨 아래 사이트 링크 줄 위에 둔다 */}
-      <div className="pointer-events-none absolute inset-x-0 bottom-0 flex flex-col items-center gap-2 px-24 sm:px-40 pb-[max(2.75rem,calc(env(safe-area-inset-bottom)+2rem))]">
-        <p
-          role="status"
-          aria-live="polite"
-          className="max-w-full rounded-xl bg-card/90 px-4 py-2 text-center text-body-2 font-semibold text-text-strong shadow-sm empty:hidden"
-        >
-          {status}
-        </p>
-      </div>
+      <p role="status" aria-live="polite" className="sr-only">
+        {status}
+      </p>
+      {appleProgress !== null && (
+        <div className="pointer-events-none absolute inset-x-0 bottom-[max(3rem,calc(env(safe-area-inset-bottom)+2.25rem))] flex flex-col items-center gap-1 px-24 sm:px-40">
+          <p className="text-caption-3 font-semibold text-text-strong">사과 따는 중…</p>
+          <Progress value={appleProgress} size="sm" className="w-48 bg-card/85" aria-label="사과 따는 중" />
+        </div>
+      )}
+      {lampProgress !== null && (
+        <div className="pointer-events-none absolute inset-x-0 bottom-[max(3rem,calc(env(safe-area-inset-bottom)+2.25rem))] flex flex-col items-center gap-1 px-24 sm:px-40">
+          <p className="text-caption-3 font-semibold text-text-strong">램프 {lampOn ? "끄는" : "켜는"} 중…</p>
+          <Progress value={lampProgress} size="sm" className="w-48 bg-card/85" aria-label={`램프 ${lampOn ? "끄는" : "켜는"} 중`} />
+        </div>
+      )}
 
       <KeyboardGuide />
 
@@ -2918,6 +3107,32 @@ export function Lobby({ games }: { games: DoorGame[] }) {
                 </span>
               </span>
               <span className="rounded-full bg-card/85 px-2 py-0.5 text-caption-3 font-semibold text-text-strong">사과 따기</span>
+            </button>
+          )}
+          {lampNearby && (
+            <button
+              ref={lampButtonRef}
+              type="button"
+              onClick={() => {
+                spaceRequest.current = true;
+              }}
+              aria-pressed={lampOn}
+              aria-label={lampOn ? "램프 끄기" : "램프 켜기"}
+              aria-keyshortcuts="Space"
+              className="group flex flex-col items-center gap-0.5 rounded-full focus-visible:outline-2 focus-visible:outline-primary"
+            >
+              <span className="relative block size-14 transition-transform duration-100 md:size-18 motion-safe:group-active:scale-90">
+                <NextImage
+                  src={LAMP_BUTTON_SRC}
+                  alt=""
+                  width={512}
+                  height={512}
+                  unoptimized
+                  draggable={false}
+                  className={cn("size-full drop-shadow-md", !lampOn && "brightness-75")}
+                />
+              </span>
+              <span className="rounded-full bg-card/85 px-2 py-0.5 text-caption-3 font-semibold text-text-strong">{lampOn ? "램프 끄기" : "램프 켜기"}</span>
             </button>
           )}
           {(waterNearby || fishing || autoFishing) && (

@@ -138,6 +138,8 @@ interface Hud {
   weaponLevel: number;
   skillGauge: number;
   barrier: boolean;
+  barrierSeconds: number;
+  barrierCooldownSeconds: number;
   overdrive: boolean;
   /** 보스 남은 체력(%, 2 단위). 보스가 없으면 null */
   bossHp: number | null;
@@ -184,6 +186,8 @@ function readHud(state: GameState): Hud {
     // 게이지는 정수로만 바꿔 보스 피해로 조금씩 찰 때마다 다시 그리지 않게 한다
     skillGauge: Math.floor(state.skillGauge),
     barrier: state.barrierMs > 0,
+    barrierSeconds: Math.ceil(state.barrierMs / 2_000),
+    barrierCooldownSeconds: Math.ceil(state.barrierCooldownMs / 2_000),
     overdrive: state.overdriveMs > 0,
     // 체력바는 2% 단위로만 바꿔 맞을 때마다 HUD 전체를 다시 그리지 않게 한다
     bossHp: boss ? Math.max(0, Math.ceil((boss.hp / boss.maxHp) * 50) * 2) : null,
@@ -201,9 +205,11 @@ type FrameSnapshot = Pick<
   | "fireInMs"
   | "weaponLevel"
   | "shieldBlocks"
+  | "barrierBlocks"
   | "splits"
   | "skillGauge"
   | "barrierMs"
+  | "barrierCooldownMs"
   | "overdriveMs"
   | "bombMs"
   | "bossPatternIndex"
@@ -231,9 +237,11 @@ function takeFrameSnapshot(state: GameState): FrameSnapshot {
     fireInMs: state.fireInMs,
     weaponLevel: state.weaponLevel,
     shieldBlocks: state.shieldBlocks,
+    barrierBlocks: state.barrierBlocks,
     splits: state.splits,
     skillGauge: state.skillGauge,
     barrierMs: state.barrierMs,
+    barrierCooldownMs: state.barrierCooldownMs,
     overdriveMs: state.overdriveMs,
     bombMs: state.bombMs,
     bossPatternIndex: state.bossPatternIndex,
@@ -273,6 +281,7 @@ function playStepSounds(
     else throttled("enemyHit", PLANE_SHOOTER_SOUNDS.enemyHit);
   }
   if (state.shieldBlocks > prev.shieldBlocks) throttled("shieldBlock", PLANE_SHOOTER_SOUNDS.shieldBlock);
+  if (state.barrierBlocks > prev.barrierBlocks) throttled("shieldBlock", PLANE_SHOOTER_SOUNDS.shieldBlock);
   if (state.splits > prev.splits) playGameSound(PLANE_SHOOTER_SOUNDS.split);
   if (state.barrierMs > prev.barrierMs) playGameSound(PLANE_SHOOTER_SOUNDS.barrier);
   if (state.overdriveMs > prev.overdriveMs) playGameSound(PLANE_SHOOTER_SOUNDS.overdrive);
@@ -377,6 +386,12 @@ function applyStepEffects(prev: FrameSnapshot, state: GameState, effects: Effect
   }
 
   if (state.barrierMs > prev.barrierMs) popup(effects, labelX, labelY, `${SKILLS.barrier.label}!`, "success");
+  if (state.barrierBlocks > prev.barrierBlocks) {
+    popup(effects, labelX, labelY, "흡수!", "success");
+    effects.ringMs = EFFECTS.ringMs;
+    effects.ringX = state.planeX;
+    effects.ringY = getPlaneY(state);
+  }
   if (state.overdriveMs > prev.overdriveMs) popup(effects, labelX, labelY, `${SKILLS.overdrive.label}! Lv+${OVERDRIVE_LEVELS}`, "warning");
   if (state.bombMs > prev.bombMs) {
     popup(effects, state.width / 2, state.height * 0.5, `${SKILLS.bomb.label}!`, "warning", true);
@@ -629,9 +644,16 @@ function draw(
       ctx.globalAlpha = Math.min(1, state.barrierMs / 600) * 0.8;
       ctx.strokeStyle = palette.success;
       ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(x, y, BARRIER_RADIUS, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.fillStyle = palette.warning;
+    for (let index = 0; index < 3; index += 1) {
+      const angle = clockMs / 260 + (index * Math.PI * 2) / 3;
       ctx.beginPath();
-      ctx.arc(x, y, BARRIER_RADIUS, 0, Math.PI * 2);
-      ctx.stroke();
+      ctx.arc(x + Math.cos(angle) * BARRIER_RADIUS, y + Math.sin(angle) * BARRIER_RADIUS, 3, 0, Math.PI * 2);
+      ctx.fill();
+    }
     }
     ctx.globalAlpha = 1;
   } else if (deathMs < PLANE_EXPLOSION_MS) {
@@ -887,6 +909,7 @@ export function CapybaraPlaneShooter() {
 
   function requestSkill(kind: SkillKind) {
     if (phase !== "playing" || pausedRef.current) return;
+    if (skillRef.current === ULTIMATE_SKILL || (skillRef.current !== null && kind !== ULTIMATE_SKILL)) return;
     skillRef.current = kind;
   }
 
@@ -935,11 +958,14 @@ export function CapybaraPlaneShooter() {
 
   const handleKey = useEffectEvent((event: KeyboardEvent) => {
     const pressed = event.type === "keydown";
-    const ultimateKey = SKILL_KEYS[ULTIMATE_SKILL].keys.includes(event.key);
-    if (ultimateKey) {
+    const skill = (Object.keys(SKILL_KEYS) as SkillKind[]).find((kind) => SKILL_KEYS[kind].keys.includes(event.key));
+    if (skill) {
       if (phase !== "playing" || pausedRef.current) return;
       event.preventDefault();
-      if (pressed && !event.repeat) fireUltimate();
+      if (pressed && !event.repeat) {
+        if (skill === ULTIMATE_SKILL) fireUltimate();
+        else requestSkill(skill);
+      }
       return;
     }
     if (LEFT_KEYS.has(event.key) || RIGHT_KEYS.has(event.key)) {
@@ -1001,6 +1027,11 @@ export function CapybaraPlaneShooter() {
       data-testid="capybara-plane-shooter-screen"
       data-phase={phase}
       data-paused={paused}
+      style={{
+        backgroundImage: `linear-gradient(color-mix(in oklch, var(--background) 42%, transparent), color-mix(in oklch, var(--background) 78%, transparent)), url(${SPRITES[getBackgroundSpriteKey(hud?.stage ?? 1)]})`,
+        backgroundPosition: "center",
+        backgroundSize: "cover",
+      }}
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
@@ -1160,15 +1191,36 @@ export function CapybaraPlaneShooter() {
           )}
           {hud && (
             <div
-              className="absolute right-2 bottom-[max(1rem,env(safe-area-inset-bottom))] flex items-center"
+        className="absolute right-2 bottom-[max(1rem,env(safe-area-inset-bottom))] flex items-center gap-2"
               onPointerDown={stopPropagation}
               onPointerUp={stopPropagation}
               onClick={stopPropagation}
             >
-              <button
-                type="button"
-                aria-label="카피바라 광선 발사 (C)"
-                aria-keyshortcuts="C"
+        <button
+          type="button"
+          aria-label={
+            hud.barrier
+              ? `방어막 활성 ${hud.barrierSeconds}초 남음`
+              : hud.barrierCooldownSeconds > 0
+                ? `방어막 재사용 ${hud.barrierCooldownSeconds}초 남음`
+                : "방어막 사용 (Z)"
+          }
+          aria-keyshortcuts="Z"
+          disabled={hud.skillGauge < SKILLS.barrier.cost || hud.barrierCooldownSeconds > 0}
+          onClick={() => requestSkill("barrier")}
+          className="min-h-11 touch-manipulation rounded-full bg-success px-4 font-bold text-neutral-950 shadow-lg transition-[opacity,transform] hover:scale-105 focus-visible:outline-2 focus-visible:outline-white disabled:opacity-35"
+        >
+          {hud.barrier
+            ? `방어막 ${hud.barrierSeconds}초`
+            : hud.barrierCooldownSeconds > 0
+              ? `재사용 ${hud.barrierCooldownSeconds}초`
+              : "방어막"}{" "}
+          <span className="hidden md:inline">Z</span>
+        </button>
+        <button
+          type="button"
+          aria-label="카피바라 광선 발사 (Space)"
+          aria-keyshortcuts="Space"
                 disabled={hud.skillGauge < SKILL_GAUGE_MAX}
                 onClick={fireUltimate}
                 className="hidden min-h-11 touch-manipulation items-center gap-2 rounded-full bg-warning px-4 font-bold text-neutral-950 shadow-lg transition-[opacity,transform] hover:scale-105 focus-visible:outline-2 focus-visible:outline-white disabled:opacity-35 md:flex"

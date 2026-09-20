@@ -9,7 +9,8 @@ export const GAME_TITLES = {
   "capybara-gomoku": "오목",
   "capybara-alkkagi": "알까기",
   "capybara-log-dodge": "통나무 피하기",
-  "capybara-pang": "카피바라 팡",
+  "capybara-pang": "바라매치",
+  "capybara-defense": "카피바라 디펜스",
   "watermelon-game": "수박 게임",
 } as const;
 
@@ -18,8 +19,6 @@ export const LIST_ONLY_GAMES: readonly string[] = [
   "reaction-time",
   "click-speed",
   "capybara-baduk",
-  // 오두막 간판 아이콘(icon.webp)이 아직 없어 목록에만 둔다. 아이콘을 만들면 빼서 오두막으로
-  "capybara-pang",
 ];
 
 /**

@@ -13,6 +13,8 @@ interface GamePageProps {
   params: Promise<{ slug: string }>;
 }
 
+export const dynamicParams = false;
+
 export function generateStaticParams() {
   return GAMES.map((game) => ({ slug: game.slug }));
 }

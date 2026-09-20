@@ -71,12 +71,14 @@ export interface GameState {
   killsSinceDrop: number;
   /** 아르마딜로 방패에 막힌 총알 수 (화면이 막힌 순간에 소리를 내려고 센다) */
   shieldBlocks: number;
+  barrierBlocks: number;
   /** 독화살개구리가 갈라진 횟수 */
   splits: number;
   /** 스킬 게이지 0~SKILL_GAUGE_MAX. 격추·보스 피해로 차고, 스킬을 쓰면 비용만큼 준다 */
   skillGauge: number;
   /** 방어막 남은 시간 */
   barrierMs: number;
+  barrierCooldownMs: number;
   /** 폭주 남은 시간 */
   overdriveMs: number;
   /** 폭탄이 터진 뒤 남은 연출 시간 (0보다 커지는 순간이 터진 프레임) */
@@ -178,7 +180,7 @@ export const CHARGE_WINDUP_MS = 1000;
 /** 예고 뒤 비행기 높이까지 내리꽂는 시간 */
 export const CHARGE_DASH_MS = 800;
 /** 첫 보스(5스테이지) 체력. 뒤 보스일수록 (보스 순번^1.3)배로 늘어 무기 레벨이 쌓인 만큼 버틴다 */
-export const BOSS_BASE_HP = 450;
+export const BOSS_BASE_HP = 300;
 /** 보스 페이즈(1·2·3)별 발사·패턴 간격 배수. 체력이 줄수록 빨라진다 (돌격 예고 시간은 공정하게 그대로 둔다) */
 export const BOSS_PHASE_TEMPO = [1, 0.8, 0.6] as const;
 /** 보스를 격파하면 무기 레벨을 이만큼 올려 준다 (드롭만으로 40스테이지 무렵 최대가 되게 작게) */
@@ -206,6 +208,7 @@ export const SKILLS: Record<SkillKind, { label: string; cost: number; ms: number
   overdrive: { label: "폭주", cost: 70, ms: 10000 },
   bomb: { label: "카피바라 광선", cost: 100, ms: 1600 },
 };
+export const BARRIER_COOLDOWN_MS = 20_000;
 /** 폭주 동안 무기 레벨에 더하는 값 (최대 레벨은 넘지 않는다) */
 export const OVERDRIVE_LEVELS = 3;
 /** 방어막 반경. 닿는 적 탄은 사라지고 들이받은 일반 적은 부서진다 */
@@ -432,9 +435,11 @@ export function createState(width: number, height: number): GameState {
     weaponLevel: 1,
     killsSinceDrop: 0,
     shieldBlocks: 0,
+    barrierBlocks: 0,
     splits: 0,
     skillGauge: 0,
     barrierMs: 0,
+    barrierCooldownMs: 0,
     overdriveMs: 0,
     bombMs: 0,
     fireInMs: 0,
@@ -898,9 +903,13 @@ function detonateBomb(state: GameState, random: () => number) {
 /** 게이지가 비용만큼 있으면 스킬을 쓴다. 쓰면 true */
 export function castSkill(state: GameState, kind: SkillKind, random: () => number = Math.random) {
   const { cost, ms } = SKILLS[kind];
+  if (kind === "barrier" && state.barrierCooldownMs > 0) return false;
   if (state.skillGauge < cost) return false;
   state.skillGauge -= cost;
-  if (kind === "barrier") state.barrierMs = ms;
+  if (kind === "barrier") {
+    state.barrierMs = ms;
+    state.barrierCooldownMs = BARRIER_COOLDOWN_MS;
+  }
   else if (kind === "overdrive") state.overdriveMs = ms;
   else detonateBomb(state, random);
   return true;
@@ -953,6 +962,7 @@ export function step(
   state.invincibleMs = Math.max(0, state.invincibleMs - dt);
   state.bannerMs = Math.max(0, state.bannerMs - dt);
   state.barrierMs = Math.max(0, state.barrierMs - dt);
+  state.barrierCooldownMs = Math.max(0, state.barrierCooldownMs - dt);
   state.overdriveMs = Math.max(0, state.overdriveMs - dt);
   state.bombMs = Math.max(0, state.bombMs - dt);
 
@@ -1045,10 +1055,13 @@ export function step(
   const plane: Circle = { x: state.planeX, y: planeY, r: PLANE_HIT_RADIUS, vx: 0, vy: 0 };
   if (state.barrierMs > 0) {
     // 방어막은 닿는 적 탄을 지우고, 들이받은 일반 적은 같이 부순다 (비행기는 다치지 않는다)
+    const shotsBeforeBarrier = state.shots.length;
     state.shots = state.shots.filter((shot) => !overlaps(shot, plane, BARRIER_RADIUS + shot.r));
+    state.barrierBlocks += shotsBeforeBarrier - state.shots.length;
     for (const enemy of state.enemies) {
       if (enemy.kind === "boss" || enemy.hp <= 0 || !overlaps(enemy, plane, BARRIER_RADIUS + enemy.r)) continue;
       enemy.hp = 0;
+      state.barrierBlocks += 1;
       explode(state, enemy);
     }
   } else if (state.invincibleMs <= 0) {

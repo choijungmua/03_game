@@ -58,21 +58,21 @@ export const MAX_SNAPSHOTS = 8;
 export const SNAPSHOT_RESTART_MS = 500;
 
 /** 물가 낚시: 찌를 던지고 입질이 오기까지 걸리는 시간(ms) 범위 */
-export const FISH_BITE_MIN_MS = 1500;
-export const FISH_BITE_MAX_MS = 5000;
+export const FISH_BITE_MIN_MS = 3000;
+export const FISH_BITE_MAX_MS = 10_000;
 /** 입질(찌가 쑥 들어감) 뒤 이 시간 안에 Space를 눌러야 낚인다 */
-export const FISH_BITE_WINDOW_MS = 1500;
+export const FISH_BITE_WINDOW_MS = 3000;
 /** 발에서 이 거리(px, 1.5타일) 안에 물이 있으면 낚시할 수 있다 */
 export const FISH_REACH = 72;
 /** 낚싯대를 뒤로 젖혔다 휘둘러 찌가 날아가 물에 떨어지기까지 */
-export const FISH_CAST_MS = 600;
+export const FISH_CAST_MS = 1200;
 /** 당긴 뒤 물고기가 물에서 버둥대다 머리 위로 끌려오기까지 (놓쳤으면 빈 찌가 돌아온다) */
-export const FISH_REEL_MS = 1400;
+export const FISH_REEL_MS = 2800;
 /** 끌어올린 물고기를 머리 위에 들고 이름을 보여 주는 시간 */
-export const FISH_SHOW_MS = 1800;
+export const FISH_SHOW_MS = 3600;
 /** 자동 낚시: 입질 뒤 이만큼 있다가 당기고, 다 끝나면 이만큼 쉬었다 다시 던진다 */
-export const FISH_AUTO_REEL_MS = 400;
-export const FISH_AUTO_RECAST_MS = 700;
+export const FISH_AUTO_REEL_MS = 800;
+export const FISH_AUTO_RECAST_MS = 1400;
 /** 낚은 것 캔버스 그림: 몸 색, 길이(px) */
 export const FISH_LOOKS: Record<(typeof FISH_CATCHES)[number], { color: string; size: number }> = {
   송사리: { color: "#b9c7cf", size: 20 },
@@ -152,7 +152,7 @@ export const APPLES_PER_TREE = 3;
 export const APPLE_REGROW_MS = 60_000;
 export const APPLE_REACH = 77;
 /** 사과 하나를 따는 데 걸리는 시간(ms). 그동안 폴짝폴짝 뛰고, 움직이면 멈춘다 — Space 연타로 한꺼번에 못 딴다 */
-export const APPLE_PICK_MS = 1200;
+export const APPLE_PICK_MS = 2000;
 /** 먹는 동작 한 번(세 입 베어 물기)과 한 입 간격, 먹은 뒤 하트가 더 떠오르는 시간 */
 export const EAT_MS = 1800;
 export const EAT_BITE_MS = 600;

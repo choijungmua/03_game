@@ -12,12 +12,16 @@ import {
   isBlockingTile,
   LOBBY_SEED,
   nearestWater,
+  PLAYER_BODY,
+  playerBodyBlocked,
+  playerBodyCorners,
   SPRING_COLLIDER_OFFSET_Y,
   SPRING_COLLIDER_RY,
   REST_CY,
   SPRING_RX,
   SPRING_RY,
   TILE,
+  worldToViewport,
 } from "./world";
 
 const GAMES = Array.from({ length: 7 }, (_, i) => ({ slug: `game-${i}`, title: `게임 ${i}` }));
@@ -47,6 +51,54 @@ function walkableFromSpawn(world: ReturnType<typeof createWorld>) {
 const blockedAt = (world: ReturnType<typeof createWorld>, x: number, y: number) => world.blockedAt(x, y);
 
 describe("카피바라 습지 마을", () => {
+  it("발점을 기준으로 네 모서리 충돌 상자를 계산한다", () => {
+    // Given
+    const foot = { x: 320, y: 240 };
+
+    // When
+    const corners = playerBodyCorners(foot);
+
+    // Then
+    expect(corners).toEqual([
+      { x: 320 - PLAYER_BODY.halfWidth, y: 240 - PLAYER_BODY.up },
+      { x: 320 + PLAYER_BODY.halfWidth, y: 240 - PLAYER_BODY.up },
+      { x: 320 - PLAYER_BODY.halfWidth, y: 240 + PLAYER_BODY.down },
+      { x: 320 + PLAYER_BODY.halfWidth, y: 240 + PLAYER_BODY.down },
+    ]);
+    expect(Math.abs(corners.reduce((sum, corner) => sum + corner.y, 0) / corners.length - foot.y)).toBeLessThanOrEqual(4);
+  });
+
+  it("몸 네 모서리 중 막힌 점이 하나라도 있으면 이동을 막는다", () => {
+    // Given
+    const blockedPoint = { x: 112, y: 192 };
+    const visited: { x: number; y: number }[] = [];
+
+    // When
+    const blocked = playerBodyBlocked((x, y) => {
+      visited.push({ x, y });
+      return x === blockedPoint.x && y === blockedPoint.y;
+    }, { x: 100, y: 200 });
+
+    // Then
+    expect(blocked).toBe(true);
+    expect(visited).toContainEqual(blockedPoint);
+  });
+
+  it.each([
+    { width: 1440, height: 900 },
+    { width: 390, height: 844 },
+  ])("뷰포트가 달라도 같은 월드 접근점은 같은 카메라 상대 위치다 %#", (viewport) => {
+    // Given
+    const camera = { x: -144, y: 312 };
+    const approach = { x: 24, y: 456 };
+
+    // When
+    const screen = worldToViewport(approach, camera, viewport);
+
+    // Then
+    expect({ x: screen.x - viewport.width / 2, y: screen.y - viewport.height / 2 }).toEqual({ x: 168, y: 144 });
+  });
+
   it("같은 seed는 항상 같은 맵이다", () => {
     const a = createWorld(LOBBY_SEED, GAMES);
     const b = createWorld(LOBBY_SEED, GAMES);
@@ -60,6 +112,13 @@ describe("카피바라 습지 마을", () => {
     expect(new Set(world.doors.map((door) => door.y)).size).toBeGreaterThanOrEqual(3);
     const positions = new Set(world.doors.map((door) => `${door.x},${door.y}`));
     for (const door of world.doors) expect(positions.has(`${-door.x},${door.y}`)).toBe(true);
+  });
+
+  it("등록된 디펜스 게임도 자동으로 오두막과 문이 생긴다", () => {
+    const world = createWorld(LOBBY_SEED, [...GAMES, { slug: "capybara-defense", title: "카피바라 디펜스" }]);
+
+    expect(world.buildings.some((building) => building.slug === "capybara-defense")).toBe(true);
+    expect(world.doors.some((door) => door.slug === "capybara-defense")).toBe(true);
   });
 
   it.each([7, 16])("오두막 %i채: 문 앞은 데크, 바로 뒤는 자기 오두막이고, 스폰에서 모든 문까지 걸어갈 수 있다", (count) => {

@@ -1,4 +1,17 @@
-import { BOARD_SIZE, COMBO_BONUS_CAP, COMBO_BONUS_POINTS, FEVER_MULTIPLIER, KIND_COUNT, TILE_POINTS } from "./constants";
+import {
+  BOARD_SIZE,
+  COMBO_MULTIPLIER_CAP,
+  COMBO_MULTIPLIER_STEP,
+  EXTRA_CLEAR_POINTS,
+  FEVER_MULTIPLIER,
+  KIND_COUNT,
+  REMAINING_SECOND_POINTS,
+  SPECIAL_CLEAR_POINTS,
+  TILE_POINTS,
+  TIME_BONUS_CAP_SECONDS,
+  TIME_BONUS_COMBO_STEP,
+  TIME_BONUS_SECONDS,
+} from "./constants";
 
 /** bomb = 4개 매치로 생김, 누르면 가로·세로 한 줄씩 터짐 / rainbow = 5개 매치로 생김, 바꾼 동물을 판에서 전부 터뜨림 */
 export type TileSpecial = "none" | "bomb" | "rainbow";
@@ -247,7 +260,74 @@ export function collapse(board: readonly (Tile | null)[], random: Random, ids: I
 }
 
 /** 한 번 터질 때 점수. 콤보가 이어질수록 보너스, 피버 중엔 배수 */
-export function scoreFor(clearedCount: number, combo: number, fever: boolean) {
-  const base = clearedCount * TILE_POINTS + Math.min(Math.max(combo - 1, 0), COMBO_BONUS_CAP) * COMBO_BONUS_POINTS;
-  return fever ? base * FEVER_MULTIPLIER : base;
+export function scoreFor(
+  clearedCount: number,
+  combo: number,
+  fever: boolean,
+  specialCount = 0,
+  remainingSeconds = 0,
+) {
+  const extraClears = Math.max(clearedCount - 3, 0);
+  const base = clearedCount * TILE_POINTS + extraClears * extraClears * EXTRA_CLEAR_POINTS;
+  const comboScore =
+    (base + specialCount * SPECIAL_CLEAR_POINTS + Math.floor(remainingSeconds) * REMAINING_SECOND_POINTS) *
+    comboMultiplierFor(combo);
+  return fever ? comboScore * FEVER_MULTIPLIER : comboScore;
+}
+
+export type ScoreBreakdown = {
+  readonly base: number;
+  readonly combo: number;
+  readonly special: number;
+  readonly time: number;
+};
+
+export const EMPTY_SCORE_BREAKDOWN: ScoreBreakdown = { base: 0, combo: 0, special: 0, time: 0 };
+
+export function scoreBreakdownFor(
+  clearedCount: number,
+  combo: number,
+  fever: boolean,
+  specialCount = 0,
+  remainingSeconds = 0,
+): ScoreBreakdown {
+  const base = scoreFor(clearedCount, 1, false);
+  const afterCombo = scoreFor(clearedCount, combo, fever);
+  const afterSpecial = scoreFor(clearedCount, combo, fever, specialCount);
+  const total = scoreFor(clearedCount, combo, fever, specialCount, remainingSeconds);
+
+  return {
+    base,
+    combo: afterCombo - base,
+    special: afterSpecial - afterCombo,
+    time: total - afterSpecial,
+  };
+}
+
+export function addScoreBreakdown(current: ScoreBreakdown, awarded: ScoreBreakdown): ScoreBreakdown {
+  return {
+    base: current.base + awarded.base,
+    combo: current.combo + awarded.combo,
+    special: current.special + awarded.special,
+    time: current.time + awarded.time,
+  };
+}
+
+export function comboMultiplierFor(combo: number) {
+  const tier = Math.floor(Math.max(combo, 0) / COMBO_MULTIPLIER_STEP);
+  return Math.min(2 ** tier, COMBO_MULTIPLIER_CAP);
+}
+
+export type TimeBonusReason = "combo" | "special";
+
+export function timeBonusReasonsFor(combo: number, specialCount: number): readonly TimeBonusReason[] {
+  return [
+    ...(specialCount > 0 ? (["special"] as const) : []),
+    ...(combo > 0 && combo % TIME_BONUS_COMBO_STEP === 0 ? (["combo"] as const) : []),
+  ];
+}
+
+export function timeBonusFor(combo: number, specialCount: number, awardedSeconds: number) {
+  const earned = timeBonusReasonsFor(combo, specialCount).length * TIME_BONUS_SECONDS;
+  return Math.min(earned, Math.max(0, TIME_BONUS_CAP_SECONDS - awardedSeconds));
 }

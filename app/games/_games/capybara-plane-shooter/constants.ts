@@ -7,7 +7,7 @@ import type { SkillKind, WeaponKind } from "./logic";
 export const SKILL_KEYS: Record<SkillKind, { key: string; keys: readonly string[] }> = {
   barrier: { key: "Z", keys: ["z", "Z", "1"] },
   overdrive: { key: "X", keys: ["x", "X", "2"] },
-  bomb: { key: "C", keys: ["c", "C", "3"] },
+  bomb: { key: "Space", keys: [" ", "c", "C", "3"] },
 };
 
 /** 소리 묶음을 ms만큼 늦게 시작시킨다 (다른 소리 뒤에 이어 붙일 때) */

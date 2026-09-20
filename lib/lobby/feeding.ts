@@ -10,6 +10,8 @@ export interface Satiety {
 export const currentSatiety = (saved: Satiety, now: number) =>
   Math.max(0, Math.min(SATIETY_MAX, saved.value - Math.max(0, now - saved.at) / SATIETY_DECAY_MS));
 
+export const satietyWalkSpeed = (saved: Satiety, now: number) => 0.85 + (currentSatiety(saved, now) / SATIETY_MAX) * 0.15;
+
 /** 먹는 중인 것과 먹기 시작한 시각(performance.now) */
 export interface Meal {
   name: FishCatch;

@@ -11,7 +11,10 @@ import {
   isValidSwap,
   nextSpecial,
   planClear,
+  scoreBreakdownFor,
   scoreFor,
+  timeBonusFor,
+  timeBonusReasonsFor,
   shuffleBoard,
   type TileSpecial,
 } from "./logic";
@@ -114,6 +117,58 @@ describe("capybara-pang 로직", () => {
     expect(scoreFor(3, 5, false)).toBeGreaterThan(scoreFor(3, 1, false));
     expect(scoreFor(3, 99, false)).toBe(scoreFor(3, 50, false));
     expect(scoreFor(3, 5, true)).toBe(scoreFor(3, 5, false) * 2);
+    expect(scoreFor(3, 1, false, 0, 30)).toBeGreaterThan(scoreFor(3, 1, false, 0, 0));
+  });
+
+  it("특수 블록과 5콤보에만 제한적으로 시간을 보상한다", () => {
+    expect(timeBonusFor(1, 0, 0)).toBe(0);
+    expect(timeBonusFor(5, 0, 0)).toBe(1);
+    expect(timeBonusFor(4, 1, 0)).toBe(1);
+    expect(timeBonusFor(5, 1, 0)).toBe(2);
+    expect(timeBonusFor(5, 1, 9)).toBe(1);
+    expect(timeBonusFor(5, 1, 10)).toBe(0);
+  });
+
+  it("시간 보상 이유를 콤보와 특수 블록으로 구분한다", () => {
+    expect(timeBonusReasonsFor(5, 0)).toEqual(["combo"]);
+    expect(timeBonusReasonsFor(1, 1)).toEqual(["special"]);
+    expect(timeBonusReasonsFor(5, 1)).toEqual(["special", "combo"]);
+  });
+
+  it("점수 구성 요소의 합계가 기존 최종 점수와 정확히 일치한다", () => {
+    const breakdown = scoreBreakdownFor(7, 5, true, 1, 30);
+
+    expect(breakdown.base + breakdown.combo + breakdown.special + breakdown.time).toBe(scoreFor(7, 5, true, 1, 30));
+  });
+
+  it("30회 자동 플레이에서 초보·보통·상위 점수 목표를 만족한다", () => {
+    const simulate = (seed: number, moves: number, comboChance: number, specialChance: number) => {
+      let state = seed >>> 0;
+      const random = () => ((state = (state * 1_664_525 + 1_013_904_223) >>> 0) / 2 ** 32);
+      let combo = 0;
+      let score = 0;
+      for (let move = 0; move < moves; move += 1) {
+        combo = random() < comboChance ? combo + 1 : 1;
+        const cleared = random() < 0.2 ? 4 : 3;
+        const specials = random() < specialChance ? 1 : 0;
+        const remainingSeconds = 60 - move * (60 / moves);
+        score += scoreFor(cleared, combo, combo >= 10, specials, remainingSeconds);
+      }
+      return score;
+    };
+    const runs = (moves: number, comboChance: number, specialChance: number) =>
+      Array.from({ length: 30 }, (_, index) => simulate(index + 1, moves, comboChance, specialChance));
+    const average = (scores: readonly number[]) => scores.reduce((sum, score) => sum + score, 0) / scores.length;
+
+    const beginner = runs(6, 0.25, 0.03);
+    const regular = runs(24, 0.75, 0.1);
+    const expert = runs(55, 0.98, 0.2);
+
+    expect(average(beginner)).toBeGreaterThanOrEqual(80_000);
+    expect(average(beginner)).toBeLessThanOrEqual(150_000);
+    expect(average(regular)).toBeGreaterThanOrEqual(500_000);
+    expect(average(regular)).toBeLessThanOrEqual(2_000_000);
+    expect(Math.max(...expert)).toBeGreaterThanOrEqual(100_000_000);
   });
   it("라스트 팡: 남은 폭탄·무지개를 하나씩 터뜨리면 연쇄까지 다 터지고 특수 블록이 하나도 안 남는다", () => {
     // 3행 양 끝 폭탄 두 개(서로 연쇄) + 5행 가운데 무지개

@@ -25,16 +25,21 @@ export const KIND_COUNT = ANIMALS.length;
 export const ROUND_SECONDS = 60;
 
 /** 블록 한 개 점수 */
-export const TILE_POINTS = 10;
-/** 콤보 1단계마다 더하는 점수, 이 단계까지만 늘어난다 */
-export const COMBO_BONUS_POINTS = 10;
-export const COMBO_BONUS_CAP = 10;
+export const TILE_POINTS = 5_000;
+export const EXTRA_CLEAR_POINTS = 2_000;
+export const SPECIAL_CLEAR_POINTS = 25_000;
+export const REMAINING_SECOND_POINTS = 100;
+export const COMBO_MULTIPLIER_STEP = 5;
+export const COMBO_MULTIPLIER_CAP = 1_024;
 /** 마지막으로 터진 뒤 이 시간 안에 또 터뜨려야 콤보가 이어진다 */
 export const COMBO_WINDOW_MS = 2000;
 /** 콤보가 이 수의 배수가 될 때마다 피버 */
 export const FEVER_COMBO = 10;
 export const FEVER_MS = 8000;
 export const FEVER_MULTIPLIER = 2;
+export const TIME_BONUS_SECONDS = 1;
+export const TIME_BONUS_COMBO_STEP = 5;
+export const TIME_BONUS_CAP_SECONDS = 10;
 
 /**
  * 바꾸기·터지기·떨어지기 애니메이션 시간. 터지기·떨어지기는 globals.css pang-pop(0.46s)·pang-drop(0.3s)과 같아야 한다.

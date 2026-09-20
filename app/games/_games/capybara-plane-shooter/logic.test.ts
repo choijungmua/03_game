@@ -406,7 +406,15 @@ describe("스킬", () => {
     step(state, 16, { ...IDLE, skill: "barrier" });
     expect(state.hp).toBe(MAX_HP);
     expect(state.shots).toHaveLength(0);
+    expect(state.barrierBlocks).toBe(1);
     expect(state.skillGauge).toBe(0);
+    expect(state.barrierCooldownMs).toBeGreaterThan(state.barrierMs);
+
+    state.skillGauge = SKILLS.barrier.cost;
+    const barrierBeforeRetry = state.barrierMs;
+    step(state, 16, { ...IDLE, skill: "barrier" });
+    expect(state.skillGauge).toBe(SKILLS.barrier.cost);
+    expect(state.barrierMs).toBeLessThan(barrierBeforeRetry);
 
     for (let t = 0; t < SKILLS.barrier.ms; t += 16) step(state, 16, IDLE);
     state.shots.push(shot());
@@ -442,6 +450,7 @@ describe("스테이지", () => {
   it("5스테이지마다 보스가 나온다", () => {
     expect(getStageConfig(4).boss).toBe(false);
     expect(getStageConfig(5).boss).toBe(true);
+    expect(getStageConfig(5).bossHp).toBe(300);
     expect(getStageConfig(10).boss).toBe(true);
   });
 
@@ -577,6 +586,22 @@ describe("보스 패턴", () => {
     for (let t = 0; t < 1000; t += 16) step(state, 16, IDLE);
     expect(state.bossLaserX).toBeGreaterThan(200);
     expect(state.hp).toBeLessThan(1e6);
+  });
+
+  it("광선과 방어막을 연달아 요청해도 게이지와 무적 상태가 중복 적용되지 않는다", () => {
+    const barrierFirst = playing({ skillGauge: SKILL_GAUGE_MAX });
+    step(barrierFirst, 16, { ...IDLE, skill: "barrier" });
+    step(barrierFirst, 16, { ...IDLE, skill: "bomb" });
+    expect(barrierFirst.skillGauge).toBe(SKILL_GAUGE_MAX - SKILLS.barrier.cost);
+    expect(barrierFirst.barrierMs).toBeGreaterThan(0);
+    expect(barrierFirst.bombMs).toBe(0);
+
+    const laserFirst = playing({ skillGauge: SKILL_GAUGE_MAX });
+    step(laserFirst, 16, { ...IDLE, skill: "bomb" });
+    step(laserFirst, 16, { ...IDLE, skill: "barrier" });
+    expect(laserFirst.skillGauge).toBe(0);
+    expect(laserFirst.bombMs).toBeGreaterThan(0);
+    expect(laserFirst.barrierMs).toBe(0);
   });
 
   it("레이저 경고선이 고정된 뒤 반대편으로 움직이면 피한다", () => {

@@ -107,7 +107,7 @@ export function FishBag({
               )}
             </>
           );
-          const cell = "flex w-full min-w-0 flex-col items-center gap-0.5 rounded-2xl bg-muted/50 p-2 ring-1 ring-border-default";
+          const cell = "flex min-h-28 w-full min-w-0 flex-col items-center justify-center gap-0.5 rounded-2xl bg-muted/50 p-2 ring-1 ring-border-default";
           return (
             <li key={name} className="min-w-0">
               {/* 먹을 수 있는 것(사과)만 누를 수 있다. 물고기·장화는 모아 보기만 한다 (카피바라는 초식동물) */}

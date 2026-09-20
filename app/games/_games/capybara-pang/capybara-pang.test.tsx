@@ -4,8 +4,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { mockIntersectionObserver } from "@/lib/games/testing/mock-intersection-observer";
 
 import { CapybaraPang, COUNTDOWN_STEP_MS, COUNTDOWN_VALUES } from "./capybara-pang";
-import { HURRY_SECONDS, ROUND_SECONDS } from "./constants";
+import { HINT_DELAY_MS, HURRY_SECONDS, ROUND_SECONDS, SWAP_MS } from "./constants";
 import { type Board, findMove, isValidSwap } from "./logic";
+import { PangHud } from "./pang-hud";
 
 async function advance(ms: number) {
   await act(async () => {
@@ -53,6 +54,7 @@ describe("CapybaraPang", () => {
 
   it("카운트다운 뒤 7×7 판이 나오고, 둘 수 있는 수를 탭-탭으로 두면 점수가 오른다", async () => {
     render(<CapybaraPang />);
+    expect(screen.getByRole("heading", { name: "바라매치" })).toBeInTheDocument();
     await startPlaying();
 
     expect(getScreenEl()).toHaveAttribute("data-phase", "playing");
@@ -67,6 +69,18 @@ describe("CapybaraPang", () => {
     await advance(3000);
 
     expect(Number(screen.getByTestId("play-score").textContent?.replace(/,/g, ""))).toBeGreaterThan(0);
+    expect(screen.getByTestId("score-gain")).toHaveTextContent(/^\+[\d,]+$/);
+  });
+
+  it("일정 시간 조작이 없으면 계산된 수를 문구와 함께 알려준다", async () => {
+    render(<CapybaraPang />);
+    await startPlaying();
+
+    expect(screen.queryByText("힌트: 흰 테두리의 두 친구를 서로 바꿔 보세요")).not.toBeInTheDocument();
+    await advance(HINT_DELAY_MS);
+
+    expect(screen.getByText("힌트: 흰 테두리의 두 친구를 서로 바꿔 보세요")).toBeInTheDocument();
+    expect(document.querySelectorAll(".ring-4.ring-white")).toHaveLength(2);
   });
 
   it("줄이 안 생기는 바꾸기는 제자리로 돌아오고 점수가 그대로다", async () => {
@@ -116,4 +130,113 @@ describe("CapybaraPang", () => {
     expect(saved).toHaveLength(1);
     expect(saved[0].score).toBeGreaterThan(0);
   });
+
+  it("결과의 네 점수 구성 합계가 최종 점수와 정확히 일치한다", async () => {
+    render(<CapybaraPang />);
+    await startPlaying();
+
+    const { board, elements } = readBoard();
+    const [a, b] = findMove(board) ?? [0, 1];
+    tap(elements[a]);
+    tap(elements[b]);
+    await advance(ROUND_SECONDS * 1000 + 30_000);
+
+    const breakdown = ["base", "combo", "special", "time"].map((component) =>
+      Number(screen.getByTestId(`result-score-${component}`).textContent?.replace(/[^\d-]/g, "")),
+    );
+    expect(breakdown.reduce((sum, points) => sum + points, 0)).toBe(
+      Number(screen.getByTestId("result-score").textContent?.replace(/,/g, "")),
+    );
+  });
+
+  it("점수를 얻지 못한 라스트 팡도 네 점수 구성 요소가 모두 0으로 남는다", async () => {
+    render(<CapybaraPang />);
+    await startPlaying();
+    await advance(ROUND_SECONDS * 1000);
+
+    expect(getScreenEl()).toHaveAttribute("data-phase", "lastpang");
+    await advance(30_000);
+
+    expect(getScreenEl()).toHaveAttribute("data-phase", "result");
+    expect(screen.getByTestId("result-score")).toHaveTextContent("0");
+    expect(screen.getByText("기본 점수")).toBeInTheDocument();
+    expect(screen.getByText("콤보 보너스")).toBeInTheDocument();
+    expect(screen.getByText("특수 블록 보너스")).toBeInTheDocument();
+    expect(screen.getByText("시간 보너스")).toBeInTheDocument();
+    expect(screen.getByTestId("result-score-base")).toHaveTextContent("0");
+    expect(screen.getByTestId("result-score-combo")).toHaveTextContent("0");
+    expect(screen.getByTestId("result-score-special")).toHaveTextContent("0");
+    expect(screen.getByTestId("result-score-time")).toHaveTextContent("0");
+  });
+
+it("시간 보상은 게임 안에서 900ms 뒤에 스스로 사라진다", async () => {
+  let randomState = 4_294_967_291;
+  const random = vi.spyOn(Math, "random").mockImplementation(() => {
+    randomState = (randomState * 1_664_525 + 1_013_904_223) >>> 0;
+    return randomState / 2 ** 32;
+  });
+
+  try {
+    render(<CapybaraPang />);
+    await startPlaying();
+
+    for (let clear = 0; clear < 4; clear += 1) {
+      const { board, elements } = readBoard();
+      const move = findMove(board);
+      expect(move).not.toBeNull();
+      const [first, second] = move ?? [0, 1];
+      tap(elements[first]);
+      tap(elements[second]);
+      await advance(1_000);
+    }
+
+    const { board, elements } = readBoard();
+    const move = findMove(board);
+    expect(move).not.toBeNull();
+    const [first, second] = move ?? [0, 1];
+    tap(elements[first]);
+    tap(elements[second]);
+    await advance(SWAP_MS + 10);
+
+    expect(screen.getByTestId("time-gain")).toHaveTextContent("+1초 · 연속 콤보");
+    expect(screen.getByTestId("time-gain")).toHaveAttribute("aria-live", "polite");
+
+    await advance(899);
+    expect(screen.getByTestId("time-gain")).toBeInTheDocument();
+    await advance(1);
+    expect(screen.queryByTestId("time-gain")).not.toBeInTheDocument();
+  } finally {
+    random.mockRestore();
+  }
+});
+
+it("시간 보상은 콤보와 특수 블록 이유를 함께 읽을 수 있게 표시한다", () => {
+  const { rerender } = render(
+    <PangHud
+      timer={<span>60.0초</span>}
+      score={0}
+      scoreGain={null}
+      timeGain={{ id: 1, seconds: 1, reasons: ["combo"] }}
+      combo={0}
+      fever={false}
+      lastBonus={0}
+    />,
+  );
+
+  expect(screen.getByTestId("time-gain")).toHaveTextContent("+1초 · 연속 콤보");
+
+  rerender(
+    <PangHud
+      timer={<span>60.0초</span>}
+      score={0}
+      scoreGain={null}
+      timeGain={{ id: 2, seconds: 2, reasons: ["special", "combo"] }}
+      combo={0}
+      fever={false}
+      lastBonus={0}
+    />,
+  );
+
+  expect(screen.getByTestId("time-gain")).toHaveTextContent("+2초 · 특수 블록 · 연속 콤보");
+});
 });

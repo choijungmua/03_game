@@ -1,6 +1,6 @@
 "use client";
 
-import { Bomb, ChevronDown, Sparkles } from "lucide-react";
+import { ChevronDown } from "lucide-react";
 import Image from "next/image";
 import { useEffect, useEffectEvent, useRef, useState } from "react";
 
@@ -43,8 +43,13 @@ import {
   TIME_OVER_MS,
 } from "./constants";
 import { PangLeaderboard } from "./leaderboard";
+import { PangHud } from "./pang-hud";
 import {
+  EMPTY_SCORE_BREAKDOWN,
   type Blast,
+  type ScoreBreakdown,
+  type TimeBonusReason,
+  addScoreBreakdown,
   blastsIn,
   type Board,
   collapse,
@@ -61,8 +66,11 @@ import {
   planClear,
   rowOf,
   scoreFor,
+  scoreBreakdownFor,
   shuffleBoard,
   swapTiles,
+  timeBonusFor,
+  timeBonusReasonsFor,
   type Tile,
 } from "./logic";
 import { getRank, insertRecord, saveRecords, usePangRecords } from "./records";
@@ -78,6 +86,7 @@ type Phase = "idle" | "countdown" | "playing" | "lastpang" | "result";
 
 interface RoundResult {
   score: number;
+  breakdown: ScoreBreakdown;
   maxCombo: number;
   recordId: string | null;
   /** 한 번도 터뜨리지 못해 기록이 없으면 null */
@@ -85,6 +94,12 @@ interface RoundResult {
   /** 라스트 팡으로 더해진 점수 (score에 이미 들어 있다) */
   lastBonus: number;
 }
+
+type TimeGain = {
+  readonly id: number;
+  readonly seconds: number;
+  readonly reasons: readonly TimeBonusReason[];
+};
 
 const EMPTY_CELLS: ReadonlySet<number> = new Set();
 
@@ -111,18 +126,23 @@ function delayLayers(layers: readonly SoundLayer[], ms: number): SoundLayer[] {
 /** 남은 시간 글자 + 줄어드는 막대. 마지막 HURRY_SECONDS초엔 빨갛게 두근거린다 */
 function PlayTimer({ startAt, hurry }: { startAt: number; hurry: boolean }) {
   const valueRef = useRef<HTMLSpanElement>(null);
+  const barRef = useRef<HTMLDivElement>(null);
   const remaining = (elapsedMs: number) => Math.max(0, ROUND_SECONDS - elapsedMs / 1000).toFixed(1);
-  useFrameText(valueRef, () => remaining(Date.now() - startAt));
+  useFrameText(valueRef, () => {
+    const seconds = Number(remaining(Date.now() - startAt));
+    if (barRef.current) barRef.current.style.transform = `scaleX(${Math.min(seconds / ROUND_SECONDS, 1)})`;
+    return seconds.toFixed(1);
+  });
 
   return (
     <div className="flex w-full items-center gap-3">
       <div className="h-3 flex-1 overflow-hidden rounded-full bg-black/20">
         <div
+          ref={barRef}
           className={cn(
-            "h-full origin-left animate-pang-time rounded-full transition-colors duration-300",
+            "h-full origin-left rounded-full transition-colors duration-300",
             hurry ? "bg-red-500" : "bg-success",
           )}
-          style={{ animationDuration: `${ROUND_SECONDS}s` }}
         />
       </div>
       <p
@@ -260,32 +280,35 @@ function PangTile({
           focused && !selected && "outline-2 outline-offset-1 outline-primary",
           // 터질 땐 우는 얼굴로 흔들며 버티다 풍선처럼 펑 / 고르면 콩콩 / 힌트면 도리도리 / 평소엔 숨 쉬듯 오르내림
           popping
-            ? "animate-pang-pop motion-reduce:animate-none motion-reduce:opacity-0"
+            ? "animate-pang-pop motion-reduce:animate-none"
             : selected
               ? "animate-pang-hop motion-reduce:animate-none motion-reduce:scale-110"
-              : hinted
-                ? "animate-pang-wiggle motion-reduce:animate-none motion-reduce:ring-4 motion-reduce:ring-white"
+            : hinted
+              ? "ring-4 ring-white ring-offset-2 ring-offset-background motion-safe:animate-pang-wiggle"
                 : "animate-pang-idle motion-reduce:animate-none",
         )}
         style={resting ? { animationDelay: `${-beat * 2.4}s` } : undefined}
       >
-        {tile.special === "bomb" ? (
-          <>
-            <Bomb aria-hidden="true" className="size-1/2" />
-            {/* 도화선 불꽃이 타닥타닥 — 곧 터질 것 같은 폭탄 */}
-            <span
-              aria-hidden="true"
-              className="absolute top-[4%] right-[10%] size-[24%] rounded-full bg-radial from-yellow-200 via-orange-400 to-red-500/0 motion-safe:animate-pang-fuse"
+          {tile.special === "bomb" ? (
+            <Image
+              src="/assets/images/games/capybara-pang/powerups/acorn-bomb.png"
+              alt="도토리 폭탄"
+              width={128}
+              height={128}
+              unoptimized
+              draggable={false}
+              className="size-[72%] select-none object-contain motion-safe:animate-pang-fuse"
             />
-          </>
-        ) : tile.special === "rainbow" ? (
-          <>
-            <span
-              aria-hidden="true"
-              className="absolute inset-0 rounded-full bg-linear-to-br from-pink-400 via-yellow-300 to-sky-400 motion-safe:animate-pang-rainbow"
+          ) : tile.special === "rainbow" ? (
+            <Image
+              src="/assets/images/games/capybara-pang/powerups/rainbow-lily.png"
+              alt="무지개 수련"
+              width={128}
+              height={128}
+              unoptimized
+              draggable={false}
+              className="size-[72%] select-none object-contain"
             />
-            <Sparkles aria-hidden="true" className="relative size-1/2" />
-          </>
         ) : (
           <>
             <Image
@@ -364,6 +387,8 @@ export function CapybaraPang() {
   /** 힌트는 계산한 판이 그대로일 때만 보여준다 */
   const [hint, setHint] = useState<{ board: Board; cells: readonly number[] } | null>(null);
   const [score, setScore] = useState(0);
+  const [scoreGain, setScoreGain] = useState<{ readonly id: number; readonly points: number } | null>(null);
+  const [timeGain, setTimeGain] = useState<TimeGain | null>(null);
   const [combo, setCombo] = useState({ count: 0, at: 0 });
   const [feverUntil, setFeverUntil] = useState(0);
   /** 지금 터지는 폭탄·무지개 (가로·세로 광선, 퍼지는 고리) */
@@ -386,6 +411,8 @@ export function CapybaraPang() {
   const lastClearAtRef = useRef(0);
   const feverUntilRef = useRef(0);
   const lastBonusRef = useRef(0);
+  const timeBonusRef = useRef(0);
+  const scoreBreakdownRef = useRef<ScoreBreakdown>(EMPTY_SCORE_BREAKDOWN);
   const dragRef = useRef<{ index: number; x: number; y: number; moved: boolean } | null>(null);
   const boardElRef = useRef<HTMLDivElement>(null);
   const resultAtRef = useRef(0);
@@ -423,7 +450,7 @@ export function CapybaraPang() {
     const finalScore = scoreRef.current;
     if (finalScore === 0) {
       playGameSound([...PANG_SOUNDS.timeUp, ...delayLayers(GAME_SOUNDS.fail, RESULT_SOUND_DELAY_MS)]);
-      setResult({ score: 0, maxCombo: 0, recordId: null, rank: null, lastBonus: 0 });
+      setResult({ score: 0, breakdown: EMPTY_SCORE_BREAKDOWN, maxCombo: 0, recordId: null, rank: null, lastBonus: 0 });
       return;
     }
 
@@ -438,7 +465,14 @@ export function CapybaraPang() {
     ]);
     saveRecords(insertRecord(records, record));
     void submitGameRecord("capybara-pang", record.score, record);
-    setResult({ score: finalScore, maxCombo: record.maxCombo, recordId: record.id, rank, lastBonus: lastBonusRef.current });
+    setResult({
+      score: finalScore,
+      breakdown: scoreBreakdownRef.current,
+      maxCombo: record.maxCombo,
+      recordId: record.id,
+      rank,
+      lastBonus: lastBonusRef.current,
+    });
   });
 
   /**
@@ -476,10 +510,15 @@ export function CapybaraPang() {
         // 연쇄로 같이 터지는 특수 블록까지 planClear가 범위를 넓힌다. 보너스는 콤보·피버 없이 블록 수대로
         const plan = planClear(current, [], [index], [], idsRef.current);
         const points = scoreFor(plan.cleared.size, 1, false);
+        scoreBreakdownRef.current = addScoreBreakdown(
+          scoreBreakdownRef.current,
+          scoreBreakdownFor(plan.cleared.size, 1, false),
+        );
         lastBonusRef.current += points;
         scoreRef.current += points;
         setLastBonus(lastBonusRef.current);
         setScore(scoreRef.current);
+        setScoreGain({ id: scoreRef.current, points });
         playGameSound(PANG_SOUNDS.lastPang);
         setBlasts(blastsIn(current, plan.cleared));
         setPopping(plan.cleared);
@@ -506,17 +545,24 @@ export function CapybaraPang() {
 
   useEffect(() => {
     if (phase !== "playing") return;
-    const timers = [
-      setTimeout(() => void timeUp(), ROUND_SECONDS * 1000),
-      setTimeout(() => setHurry(true), (ROUND_SECONDS - HURRY_SECONDS) * 1000),
-    ];
+    const untilEnd = playStartAt + ROUND_SECONDS * 1000 - Date.now();
+    const untilHurry = untilEnd - HURRY_SECONDS * 1000;
+    const timers = [setTimeout(() => void timeUp(), Math.max(0, untilEnd))];
+    if (untilHurry > 0) timers.push(setTimeout(() => setHurry(true), untilHurry));
     // 마지막 10초는 초마다 째깍, 3·2·1초 전은 카운트다운 삐
     for (let left = HURRY_SECONDS; left >= 1; left -= 1) {
       const sound = left <= COUNTDOWN_VALUES.length ? GAME_SOUNDS.countdown : PANG_SOUNDS.tick;
-      timers.push(setTimeout(() => playGameSound(sound), (ROUND_SECONDS - left) * 1000));
+      const delay = untilEnd - left * 1000;
+      if (delay > 0) timers.push(setTimeout(() => playGameSound(sound), delay));
     }
     return () => timers.forEach(clearTimeout);
-  }, [phase]);
+  }, [phase, playStartAt]);
+
+  useEffect(() => {
+    if (!timeGain) return;
+    const timer = setTimeout(() => setTimeGain(null), 900);
+    return () => clearTimeout(timer);
+  }, [timeGain]);
 
   /** 폭탄·무지개처럼 한꺼번에 많이 터지면 펑 하는 순간 판이 쿵 흔들린다 (jsdom엔 animate가 없어 선택 호출) */
   function shakeBoard() {
@@ -555,7 +601,7 @@ export function CapybaraPang() {
     setBoard(next);
   }
 
-  function registerClear(tileCount: number) {
+  function registerClear(tileCount: number, specialCount: number) {
     const now = Date.now();
     const nextCombo = now - lastClearAtRef.current <= COMBO_WINDOW_MS ? comboRef.current + 1 : 1;
     comboRef.current = nextCombo;
@@ -566,9 +612,23 @@ export function CapybaraPang() {
       setFeverUntil(feverUntilRef.current);
       playGameSound(GAME_SOUNDS.record);
     }
-    scoreRef.current += scoreFor(tileCount, nextCombo, feverUntilRef.current > now);
+    const remainingSeconds = Math.max(0, (playStartAt + ROUND_SECONDS * 1000 - now) / 1000);
+    const points = scoreFor(tileCount, nextCombo, feverUntilRef.current > now, specialCount, remainingSeconds);
+    scoreBreakdownRef.current = addScoreBreakdown(
+      scoreBreakdownRef.current,
+      scoreBreakdownFor(tileCount, nextCombo, feverUntilRef.current > now, specialCount, remainingSeconds),
+    );
+    scoreRef.current += points;
     setScore(scoreRef.current);
+    setScoreGain({ id: scoreRef.current, points });
     setCombo({ count: nextCombo, at: now });
+
+    const timeBonus = timeBonusFor(nextCombo, specialCount, timeBonusRef.current);
+    if (timeBonus > 0) {
+      timeBonusRef.current += timeBonus;
+      setPlayStartAt((current) => current + timeBonus * 1000);
+      setTimeGain({ id: scoreRef.current, seconds: timeBonus, reasons: timeBonusReasonsFor(nextCombo, specialCount) });
+    }
   }
 
   /** 줄이 없어질 때까지 터뜨리기 → 떨어뜨리기를 반복한다 */
@@ -583,10 +643,11 @@ export function CapybaraPang() {
         ? planClear(current, runs, seeds, preferred, idsRef.current, rainbowTarget)
         : planClear(current, runs, [], [], idsRef.current);
 
-      registerClear(plan.cleared.size + plan.created.size);
+      const activeBlasts = blastsIn(current, plan.cleared);
+      registerClear(plan.cleared.size + plan.created.size, activeBlasts.length);
       playGameSound(plan.cleared.size > SHAKE_CLEAR_COUNT ? GAME_SOUNDS.explosion : PANG_SOUNDS.pop);
       setPopping(plan.cleared);
-      setBlasts(blastsIn(current, plan.cleared));
+      setBlasts(activeBlasts);
       if (plan.cleared.size > SHAKE_CLEAR_COUNT) shakeBoard();
       await wait(POP_MS);
       if (round !== roundRef.current) return;
@@ -692,7 +753,11 @@ export function CapybaraPang() {
     lastClearAtRef.current = 0;
     feverUntilRef.current = 0;
     lastBonusRef.current = 0;
+    timeBonusRef.current = 0;
+    scoreBreakdownRef.current = EMPTY_SCORE_BREAKDOWN;
     setScore(0);
+    setScoreGain(null);
+    setTimeGain(null);
     setCombo({ count: 0, at: 0 });
     setFeverUntil(0);
     setLastBonus(0);
@@ -756,15 +821,14 @@ export function CapybaraPang() {
   }, []);
 
   const tier = result ? getPangTier(result.score) : null;
+  const resultScore = result?.score.toLocaleString("ko-KR") ?? "";
   const fever = feverUntil > 0;
 
   const screenClass =
     phase === "countdown"
       ? "bg-success text-neutral-950"
       : phase === "playing" || phase === "lastpang"
-        ? fever
-          ? "bg-violet-950 text-white"
-          : "bg-background text-foreground"
+      ? "bg-background text-foreground"
         : phase === "result" && tier && !recordsVisible
           ? cn(tier.bgClass, tier.fgClass)
           : "bg-background text-foreground";
@@ -783,7 +847,7 @@ export function CapybaraPang() {
         ? `${ROUND_SECONDS}초 동안 같은 동물 3개를 이어 터뜨리세요. 방향키로 칸을 옮기고 Enter로 고르세요`
         : phase === "lastpang"
           ? banner === "lastpang"
-            ? "라스트 팡! 남은 폭탄과 무지개가 터지며 점수가 더해져요"
+          ? "피날레! 남은 폭탄과 무지개가 터지며 점수가 더해져요"
             : "타임 오버!"
         : phase === "result" && result && tier
           ? `${rankLabel}, ${result.score}점, 최대 ${result.maxCombo}콤보, ${tier.label} 등급`
@@ -803,7 +867,14 @@ export function CapybaraPang() {
         screenClass,
       )}
     >
-      {locked && <div aria-hidden="true" className={cn(FULL_BLEED_LAYER, "-z-10", screenClass)} />}
+      {locked && <div aria-hidden="true" className={cn(FULL_BLEED_LAYER, "-z-20", screenClass)} />}
+      {phase !== "result" && (
+        <div
+          aria-hidden="true"
+          className={cn(FULL_BLEED_LAYER, "-z-10 bg-cover bg-center opacity-35", phase === "playing" && "opacity-25")}
+          style={{ backgroundImage: "url(/assets/images/games/capybara-plane-shooter/background/swamp-morning.webp)" }}
+        />
+      )}
       <p aria-live="polite" className="sr-only">
         {liveMessage}
       </p>
@@ -851,45 +922,25 @@ export function CapybaraPang() {
 
       {(phase === "playing" || phase === "lastpang") && (
         <div className="flex w-full max-w-xl flex-col items-center gap-4 pt-8">
-          <div className="flex w-full items-end justify-between gap-4">
-            <p className="flex flex-col">
-              <span className="text-caption-2 font-semibold opacity-70">점수</span>
-              <span data-testid="play-score" className="text-title-1 font-black tabular-nums">
-                {score.toLocaleString("ko-KR")}
-              </span>
-            </p>
-            <div className="flex flex-col items-end gap-1">
-              {lastBonus > 0 && (
-                <span
-                  key={lastBonus}
-                  data-testid="last-pang-bonus"
-                  className="rounded-full bg-orange-400 px-3 py-0.5 text-caption-1 font-black tabular-nums text-neutral-950 motion-safe:animate-pang-combo"
-                >
-                  라스트 팡 +{lastBonus.toLocaleString("ko-KR")}
-                </span>
-              )}
-              {fever && (
-                <span
-                  data-testid="fever"
-                  className="rounded-full bg-yellow-300 px-3 py-0.5 text-caption-1 font-black text-neutral-950 motion-safe:animate-pulse"
-                >
-                  피버 ×2
-                </span>
-              )}
-              <span
-                // 콤보가 오를 때마다 새로 붙여 글씨가 크게 튀어나왔다 자리 잡게 한다
-                key={combo.count}
-                data-testid="play-combo"
-                className={cn(
-                  "text-title-3 font-bold tabular-nums motion-safe:animate-pang-combo",
-                  combo.count >= FEVER_COMBO / 2 && "text-yellow-300",
-                  combo.count < 2 && "invisible",
-                )}
-              >
-                {combo.count}콤보
-              </span>
-            </div>
-          </div>
+          <PangHud
+            timer={<PlayTimer startAt={playStartAt} hurry={hurry} />}
+            score={score}
+            scoreGain={scoreGain}
+            timeGain={timeGain}
+            combo={combo.count}
+            fever={fever}
+            lastBonus={lastBonus}
+          />
+
+          <p
+            aria-live="polite"
+            className={cn(
+              "min-h-7 rounded-full px-3 py-1 text-caption-1 font-semibold",
+              hintCells.length > 0 ? "bg-black/60 text-white" : "text-transparent",
+            )}
+          >
+            {hintCells.length > 0 ? "힌트: 흰 테두리의 두 친구를 서로 바꿔 보세요" : "힌트 자리"}
+          </p>
 
           <div
             ref={boardElRef}
@@ -903,10 +954,10 @@ export function CapybaraPang() {
               dragRef.current = null;
             }}
             className={cn(
-              "relative aspect-square w-[min(100%,calc(100dvh-14rem))] touch-none overflow-hidden rounded-2xl bg-black/15 transition-shadow duration-300",
+              "relative aspect-square w-[min(100%,calc(100dvh-15.5rem))] touch-none overflow-hidden rounded-2xl bg-card/90 ring-1 ring-border backdrop-blur-sm transition-shadow duration-300",
               // 피버 동안은 판 둘레가 노랗게 빛나고, 마지막 10초엔 붉게 두근거린다
               fever
-                ? "shadow-[0_0_0_4px_rgb(253_224_71/0.85),0_0_32px_rgb(253_224_71/0.55)] motion-safe:animate-pulse"
+              ? "shadow-[0_0_0_4px_rgb(253_224_71/0.85),0_0_32px_rgb(253_224_71/0.55)]"
                 : hurry && phase === "playing" && "shadow-[0_0_0_4px_rgb(248_113_113/0.8)] motion-safe:animate-pang-hurry",
             )}
           >
@@ -936,13 +987,11 @@ export function CapybaraPang() {
                     banner === "lastpang" ? "bg-orange-500" : "bg-red-500",
                   )}
                 >
-                  {banner === "lastpang" ? "라스트 팡!" : "타임 오버!"}
+                  {banner === "lastpang" ? "피날레!" : "타임 오버!"}
                 </span>
               </span>
             )}
           </div>
-
-          <PlayTimer startAt={playStartAt} hurry={hurry} />
         </div>
       )}
 
@@ -956,9 +1005,19 @@ export function CapybaraPang() {
               <p data-testid="result-tier" className="rounded-full bg-black/15 px-4 py-1 text-caption-1 font-bold">
                 {tier.label}
               </p>
-              <p className="flex items-baseline gap-2 font-black tabular-nums">
-                <span data-testid="result-score" className="text-[5rem] leading-none sm:text-[7rem]">
-                  {result.score.toLocaleString("ko-KR")}
+              <p className="flex max-w-full flex-nowrap items-baseline gap-2 whitespace-nowrap font-black tabular-nums">
+                <span
+                  data-testid="result-score"
+                  className={cn(
+                    "leading-none",
+                    resultScore.length <= 5
+                      ? "text-[clamp(2.5rem,14vw,7rem)]"
+                      : resultScore.length <= 8
+                        ? "text-[clamp(2.25rem,10vw,5rem)]"
+                        : "text-[clamp(1.75rem,8vw,3.5rem)]",
+                  )}
+                >
+                  {resultScore}
                 </span>
                 <span className="text-title-1">점</span>
               </p>
@@ -970,9 +1029,26 @@ export function CapybaraPang() {
             <p data-testid="result-summary" className="text-title-3 font-semibold text-balance">
               {tier.label} <span data-testid="result-combo">최대 {result.maxCombo}콤보</span>, {tier.description}
             </p>
+            <dl
+              data-testid="result-score-breakdown"
+              aria-label="점수 구성"
+              className="grid w-full gap-px overflow-hidden rounded-xl bg-black/15 text-caption-1 font-semibold tabular-nums"
+            >
+              {[
+                { key: "base", label: "기본 점수", points: result.breakdown.base },
+                { key: "combo", label: "콤보 보너스", points: result.breakdown.combo },
+                { key: "special", label: "특수 블록 보너스", points: result.breakdown.special },
+                { key: "time", label: "시간 보너스", points: result.breakdown.time },
+              ].map((row) => (
+                <div key={row.key} className="flex items-center justify-between bg-black/10 px-4 py-2">
+                  <dt>{row.label}</dt>
+                  <dd data-testid={`result-score-${row.key}`}>+{row.points.toLocaleString("ko-KR")}</dd>
+                </div>
+              ))}
+            </dl>
             {result.lastBonus > 0 && (
               <p data-testid="result-last-pang" className="-mt-3 text-caption-1 font-bold opacity-80">
-                라스트 팡 보너스 +{result.lastBonus.toLocaleString("ko-KR")}점 포함
+                피날레 보너스 +{result.lastBonus.toLocaleString("ko-KR")}점 포함
               </p>
             )}
 

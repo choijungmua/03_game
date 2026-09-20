@@ -287,6 +287,17 @@ export function ClickSpeed() {
       ref={containerRef}
       data-testid="click-speed-screen"
       data-phase={phase}
+      style={
+        phase === "idle" || phase === "result"
+          ? {
+              backgroundImage:
+                "linear-gradient(color-mix(in oklch, var(--background) 70%, var(--success)), color-mix(in oklch, var(--background) 88%, var(--primary))), url('/assets/images/games/click-speed/icon.webp')",
+              backgroundPosition: "center, center bottom -3rem",
+              backgroundRepeat: "no-repeat",
+              backgroundSize: "cover, min(28rem, 80vw) auto",
+            }
+          : undefined
+      }
       onPointerDown={handlePointerDown}
       onClick={handleClick}
       className={cn(

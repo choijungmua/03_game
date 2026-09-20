@@ -190,6 +190,17 @@ export function ReactionTime() {
     <div
       data-testid="reaction-area"
       data-phase={phase}
+      style={
+        phase === "idle" || phase === "result"
+          ? {
+              backgroundImage:
+                "linear-gradient(color-mix(in oklch, var(--background) 72%, var(--warning)), color-mix(in oklch, var(--background) 88%, var(--primary))), url('/assets/images/games/reaction-time/icon.webp')",
+              backgroundPosition: "center, center bottom -4rem",
+              backgroundRepeat: "no-repeat",
+              backgroundSize: "cover, min(26rem, 76vw) auto",
+            }
+          : undefined
+      }
       onPointerDown={handlePress}
       onClick={handleClick}
       className={cn(

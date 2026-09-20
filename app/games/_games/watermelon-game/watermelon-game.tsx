@@ -898,6 +898,13 @@ export function WatermelonGame() {
       data-testid="watermelon-game-screen"
       data-phase={phase}
       data-paused={paused}
+      style={{
+        backgroundImage:
+          "linear-gradient(color-mix(in oklch, var(--background) 66%, var(--success)), color-mix(in oklch, var(--background) 82%, var(--warning))), url('/assets/images/games/watermelon-game/icon.webp')",
+        backgroundPosition: "center, center bottom -2rem",
+        backgroundRepeat: "no-repeat",
+        backgroundSize: "cover, min(32rem, 92vw) auto",
+      }}
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
@@ -926,8 +933,8 @@ export function WatermelonGame() {
         <div className="flex w-full max-w-md flex-col items-center gap-8 text-center">
           <header className="flex flex-col items-center gap-2">
             <h1 className="px-12 text-title-1 font-bold text-text-strong">{TITLE}</h1>
-            <p className="text-caption-1 text-balance text-text-caption">
-              화면을 좌우로 움직여 자리를 고르고 손을 떼면 과일이 떨어져요. 같은 과일끼리 닿으면 한 단계 큰 과일로 합쳐져요. 키보드는 ←→로 옮기고 Space로 떨어뜨려요. 과일이 빨간 점선을 넘은 채로 2초가 지나면 끝나요.
+            <p className="px-12 text-caption-1 text-balance text-text-caption sm:px-0">
+              화면을 좌우로 움직여 자리를 고르고 손을 떼면 과일이 떨어져요. 같은 과일끼리 닿으면 한 단계 큰 과일로 합쳐져요. 키보드는 <span className="whitespace-nowrap">←→로</span> 옮기고 Space로 떨어뜨려요. 과일이 빨간 점선을 넘은 채로 2초가 지나면 끝나요.
             </p>
           </header>
 
@@ -989,19 +996,65 @@ export function WatermelonGame() {
                   {hud.score.toLocaleString("ko-KR")}
                 </span>
               </p>
-              <p className="flex items-center gap-1.5 rounded-full bg-black/40 py-1 pr-1.5 pl-3 text-caption-1 font-semibold">
-                다음
-                <FruitDot
-                  key={hud.next}
-                  level={hud.next}
-                  size={22}
-                  className="motion-safe:animate-in motion-safe:zoom-in-50 motion-safe:spin-in-45"
-                />
-                <span className="sr-only">{FRUITS[hud.next].name}</span>
-              </p>
             </div>
           )}
         </div>
+      )}
+
+      {phase === "playing" && hud && (
+        <aside
+          aria-label={`다음 과일 ${FRUITS[hud.next].name}`}
+          className="pointer-events-none absolute flex items-center gap-1.5 rounded-full bg-black/55 py-1 pr-2 pl-2 text-caption-1 font-semibold portrait:top-[max(env(safe-area-inset-top),calc(50%-min(50dvh,calc(50vw*1.6667))-3.25rem))] portrait:left-1/2 portrait:-translate-x-1/2 landscape:top-1/2 landscape:left-[calc(50%+min(50vw,calc(50dvh*0.6))+0.5rem)] landscape:-translate-y-1/2 lg:hidden"
+        >
+          <span>다음</span>
+          <span className="relative size-9 shrink-0 motion-safe:animate-in motion-safe:zoom-in-90">
+            <NextImage
+              src="/assets/images/characters/capybara/capybara-idle-down.webp"
+              alt=""
+              aria-hidden="true"
+              width={36}
+              height={36}
+              unoptimized
+              draggable={false}
+              className="size-9 select-none object-contain"
+            />
+            <FruitDot
+              key={hud.next}
+              level={hud.next}
+              size={13}
+              className="absolute top-5 left-1/2 -translate-x-1/2 motion-safe:animate-in motion-safe:zoom-in-50"
+            />
+          </span>
+        </aside>
+      )}
+
+      {phase === "playing" && hud && (
+        <aside
+          data-testid="next-fruit-capybara"
+          aria-label={`다음 과일 ${FRUITS[hud.next].name}`}
+          className="pointer-events-none absolute top-1/2 hidden -translate-y-1/2 flex-col items-center lg:flex"
+          style={{ left: `calc(50% + min(50vw, calc(50dvh * ${GAME_WIDTH} / ${GAME_HEIGHT})) + 1rem)` }}
+        >
+          <span className="rounded-full bg-black/55 px-3 py-1 text-caption-1 font-bold text-white">다음</span>
+          <div className="relative mt-2 motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-2">
+            <NextImage
+              src="/assets/images/characters/capybara/capybara-idle-down.webp"
+              alt=""
+              aria-hidden="true"
+              width={128}
+              height={128}
+              unoptimized
+              draggable={false}
+              className="size-32 select-none object-contain"
+            />
+            <FruitDot
+              key={hud.next}
+              level={hud.next}
+              size={34}
+              className="absolute top-[4.5rem] left-1/2 -translate-x-1/2 motion-safe:animate-in motion-safe:zoom-in-50"
+            />
+          </div>
+        </aside>
       )}
 
       {phase === "result" && result && tier && biggest && (

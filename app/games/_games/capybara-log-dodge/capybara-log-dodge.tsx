@@ -985,6 +985,12 @@ export function CapybaraLogDodge() {
       data-testid="capybara-log-dodge-screen"
       data-phase={phase}
       data-paused={paused}
+      style={{
+        backgroundImage: `linear-gradient(color-mix(in oklch, var(--background) 52%, transparent), color-mix(in oklch, var(--background) 80%, transparent)), url(${MEADOW_SRC})`,
+        backgroundPosition: "center",
+        backgroundRepeat: "repeat",
+        backgroundSize: "auto, 32rem",
+      }}
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}

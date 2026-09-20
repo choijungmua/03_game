@@ -14,6 +14,31 @@ export const LOBBY_SEED = "ggpli";
 /** 걷기 속도(px/s). 서버의 순간이동 검사도 이 값을 쓴다 */
 export const WALK_SPEED = 240;
 
+export type WorldPoint = { readonly x: number; readonly y: number };
+export type Viewport = { readonly width: number; readonly height: number };
+
+export const PLAYER_BODY = { halfWidth: 12, up: 8, down: 4 } as const;
+
+export function playerBodyCorners(foot: WorldPoint): readonly WorldPoint[] {
+  return [
+    { x: foot.x - PLAYER_BODY.halfWidth, y: foot.y - PLAYER_BODY.up },
+    { x: foot.x + PLAYER_BODY.halfWidth, y: foot.y - PLAYER_BODY.up },
+    { x: foot.x - PLAYER_BODY.halfWidth, y: foot.y + PLAYER_BODY.down },
+    { x: foot.x + PLAYER_BODY.halfWidth, y: foot.y + PLAYER_BODY.down },
+  ];
+}
+
+export function playerBodyBlocked(blockedAt: (x: number, y: number) => boolean, foot: WorldPoint): boolean {
+  return playerBodyCorners(foot).some(({ x, y }) => blockedAt(x, y));
+}
+
+export function worldToViewport(point: WorldPoint, camera: WorldPoint, viewport: Viewport): WorldPoint {
+  return {
+    x: point.x - camera.x + viewport.width / 2,
+    y: point.y - camera.y + viewport.height / 2,
+  };
+}
+
 export type Direction = "up" | "down" | "left" | "right";
 export const DIRECTIONS: readonly Direction[] = ["up", "down", "left", "right"];
 /** 캐릭터가 바라보는 8방향 (걷기 스프라이트는 8방향, 앉기·때리기는 4방향만 있다) */
