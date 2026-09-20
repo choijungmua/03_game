@@ -579,6 +579,18 @@ describe("보스 패턴", () => {
     expect(state.hp).toBeLessThan(1e6);
   });
 
+  it("레이저 경고선이 고정된 뒤 반대편으로 움직이면 피한다", () => {
+    const { state } = bossFight({ bossPatternIndex: BOSS_PATTERNS.indexOf("laser"), planeX: 300 });
+
+    for (let elapsed = 0; elapsed < LASER_WINDUP_MS / 2; elapsed += 16) step(state, 16, IDLE);
+    for (let elapsed = LASER_WINDUP_MS / 2; elapsed < LASER_WINDUP_MS; elapsed += 16) {
+      step(state, 16, { ...IDLE, direction: -1 });
+    }
+    for (let elapsed = 0; elapsed < 1000; elapsed += 16) step(state, 16, { ...IDLE, direction: -1 });
+
+    expect(state.hp).toBe(1e6);
+  });
+
   it("부하 소환은 보스 좌우에서 부하를 하나씩 내보낸다", () => {
     const { state } = bossFight({ bossPatternIndex: BOSS_PATTERNS.indexOf("summon") });
     step(state, 16, IDLE);

@@ -1,6 +1,6 @@
 "use client";
 
-import { Bomb, ChevronDown, Heart, Shield, Zap } from "lucide-react";
+import { ChevronDown, Heart } from "lucide-react";
 import Image from "next/image";
 import { useEffect, useEffectEvent, useRef, useState } from "react";
 
@@ -100,7 +100,7 @@ export const COUNTDOWN_STEP_MS = 800;
 const TITLE = GAME_TITLES["capybara-plane-shooter"];
 const LEFT_KEYS = new Set(["ArrowLeft", "a", "A"]);
 const RIGHT_KEYS = new Set(["ArrowRight", "d", "D"]);
-const SKILL_ICONS: Record<SkillKind, typeof Shield> = { barrier: Shield, overdrive: Zap, bomb: Bomb };
+const ULTIMATE_SKILL: SkillKind = "bomb";
 
 /**
  * 게임 세계 크기는 기기와 상관없이 고정이다. 화면에는 이 비율 그대로 확대·축소만 해서 맞추므로
@@ -110,7 +110,7 @@ const GAME_WIDTH = 450;
 const GAME_HEIGHT = 800;
 
 /** 게임 안에서 그리는 크기(px). 판정 반경에 맞춰 잡는다 */
-const PLANE_SIZE = 46;
+const PLANE_SIZE = 58;
 const FLAME_WIDTH = 14;
 const FLAME_HEIGHT = 19;
 const FLAME_FRAME_MS = 90;
@@ -595,7 +595,27 @@ function draw(
           : state.bank > 0
             ? PLANE_SPRITES.right
             : PLANE_SPRITES.center;
-    drawSprite(ctx, sprites[planeSprite], x, y, PLANE_SIZE);
+  drawSprite(ctx, sprites[planeSprite], x, y, PLANE_SIZE);
+  const weaponColor: Record<WeaponKind, string> = {
+    basic: palette.success,
+    double: palette.warning,
+    spread: palette.danger,
+    rapid: palette.warning,
+    pierce: palette.text,
+  };
+  ctx.fillStyle = weaponColor[state.weapon];
+  ctx.globalAlpha = 0.9;
+  const podWidth = state.weapon === "pierce" ? 5 : state.weapon === "spread" ? 9 : 7;
+  for (const side of [-1, 1] as const) {
+    ctx.beginPath();
+    ctx.roundRect(x + side * 17 - podWidth / 2, y - 8, podWidth, state.weapon === "rapid" ? 18 : 13, 3);
+    ctx.fill();
+  }
+  if (state.weapon === "double") {
+    ctx.fillRect(x - 4, y - 24, 3, 8);
+    ctx.fillRect(x + 1, y - 24, 3, 8);
+  }
+  ctx.globalAlpha = 1;
     if (effects.muzzleMs > 0 && !reducedMotion) {
       // 총구 불꽃: 쏠 때마다 기수 끝이 작게 번쩍인다
       ctx.globalAlpha = (effects.muzzleMs / EFFECTS.muzzleMs) * 0.8;
@@ -604,7 +624,7 @@ function draw(
       ctx.arc(x, y - PLANE_SIZE / 2, 5, 0, Math.PI * 2);
       ctx.fill();
     }
-    if (state.barrierMs > 0) {
+  if (state.barrierMs > 0) {
       // 방어막: 비행기를 감싼 원. 끝나갈 무렵(0.6초)부터 서서히 흐려진다
       ctx.globalAlpha = Math.min(1, state.barrierMs / 600) * 0.8;
       ctx.strokeStyle = palette.success;
@@ -618,6 +638,20 @@ function draw(
     // 격추당하면 비행기 대신 크게 터지는 폭발을 보여준다
     const frame = Math.min(EXPLOSION_FRAMES.length - 1, Math.floor((deathMs / PLANE_EXPLOSION_MS) * EXPLOSION_FRAMES.length));
     drawSprite(ctx, sprites[EXPLOSION_FRAMES[frame]], x, y, PLANE_EXPLOSION_SIZE);
+  }
+  if (state.bombMs > 0) {
+    const beamAlpha = Math.min(1, state.bombMs / 240);
+    const beamWidth = reducedMotion ? 46 : 54 + Math.sin(clockMs / 35) * 8;
+    const beam = ctx.createLinearGradient(x - beamWidth, 0, x + beamWidth, 0);
+    beam.addColorStop(0, "transparent");
+    beam.addColorStop(0.25, palette.warning);
+    beam.addColorStop(0.5, palette.text);
+    beam.addColorStop(0.75, palette.warning);
+    beam.addColorStop(1, "transparent");
+    ctx.globalAlpha = beamAlpha * 0.9;
+    ctx.fillStyle = beam;
+    ctx.fillRect(x - beamWidth, 0, beamWidth * 2, y - PLANE_SIZE / 2);
+    ctx.globalAlpha = 1;
   }
 
   drawEffects(ctx, effects, palette, palette.font, !reducedMotion);
@@ -656,6 +690,7 @@ export function CapybaraPlaneShooter() {
   const [result, setResult] = useState<RoundResult | null>(null);
   const [hud, setHud] = useState<Hud | null>(null);
   const [paused, setPaused] = useState(false);
+  const [ultimateSlide, setUltimateSlide] = useState(0);
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const keysRef = useRef({ left: false, right: false });
@@ -855,6 +890,12 @@ export function CapybaraPlaneShooter() {
     skillRef.current = kind;
   }
 
+  function fireUltimate() {
+    if ((stateRef.current?.skillGauge ?? 0) < SKILL_GAUGE_MAX) return;
+    requestSkill(ULTIMATE_SKILL);
+    setUltimateSlide(0);
+  }
+
   function startCountdown() {
     changePaused(false);
     skillRef.current = null;
@@ -894,11 +935,11 @@ export function CapybaraPlaneShooter() {
 
   const handleKey = useEffectEvent((event: KeyboardEvent) => {
     const pressed = event.type === "keydown";
-    const skill = (Object.keys(SKILL_KEYS) as SkillKind[]).find((kind) => SKILL_KEYS[kind].keys.includes(event.key));
-    if (skill) {
+    const ultimateKey = SKILL_KEYS[ULTIMATE_SKILL].keys.includes(event.key);
+    if (ultimateKey) {
       if (phase !== "playing" || pausedRef.current) return;
       event.preventDefault();
-      if (pressed && !event.repeat) requestSkill(skill);
+      if (pressed && !event.repeat) fireUltimate();
       return;
     }
     if (LEFT_KEYS.has(event.key) || RIGHT_KEYS.has(event.key)) {
@@ -1004,7 +1045,10 @@ export function CapybaraPlaneShooter() {
             {/* 좌우 여백: 좁은 폰에서 제목이 오른쪽 위 공유 버튼 밑으로 들어가지 않게 */}
             <h1 className="px-12 text-title-1 font-bold text-text-strong">{TITLE}</h1>
             <p className="text-caption-1 text-balance text-text-caption">
+              <span>간식을 먹을 때마다 기체와 탄이 바뀌어요. 게이지가 가득 차면 PC에서는 버튼, 모바일에서는 밀어서 카피바라 광선을 발사하세요. 카이만 보스의 레이저는 경고선 반대편으로 피하세요.</span>
+              <span className="hidden">
               카피바라 조종사가 풀잎탄을 자동으로 쏴요. 화면을 좌우로 드래그하거나 방향키로 움직여 하피독수리·말벌·재규어를 격추하세요. 스테이지가 오르면 방패로 막는 아르마딜로, 경고선 뒤 내리꽂는 칼새, 둘로 갈라지는 독화살개구리, 따라오는 흡혈박쥐도 나와요. 떨어진 간식을 먹으면 무기가 바뀌고 무기 레벨이 {MAX_WEAPON_LEVEL}레벨까지 올라 탄이 점점 많아져요. 맞으면 레벨이 하나 내려가요. 격추할수록 스킬 게이지가 차서 방어막(Z)·폭주(X)·폭탄(C)을 오른쪽 아래 버튼으로 쓸 수 있어요. 5스테이지마다 나오는 카이만 보스는 체력이 줄수록 거세지고 레이저·부하 소환·앞 방패도 써요. 돌격 뒤 기절했을 때 쏘면 피해가 3배예요. 격파해서 무기 레벨을 {BOSS_REWARD_LEVELS} 올리세요. 체력은 {MAX_HP}칸이에요.
+              </span>
             </p>
           </header>
 
@@ -1092,61 +1136,65 @@ export function CapybaraPlaneShooter() {
             </div>
           )}
           {hud && (
-            // 오른쪽 가장자리 세로 게이지: 간식을 먹을 때마다 아래부터 한 칸씩 찬다
             <div
-              role="img"
-              aria-label={`무기 레벨 ${hud.weaponLevel}/${MAX_WEAPON_LEVEL}`}
-              className="pointer-events-none absolute top-1/2 right-2 flex -translate-y-1/2 flex-col items-center gap-1"
+              className="pointer-events-none absolute top-1/2 right-2 flex -translate-y-1/2 flex-col items-center gap-1 rounded-full bg-black/45 px-2 py-2"
             >
-              <span className="text-caption-2 font-black tabular-nums">
-                {hud.overdrive ? SKILLS.overdrive.label : hud.weaponLevel === MAX_WEAPON_LEVEL ? "MAX" : `Lv${hud.weaponLevel}`}
+              <span className="text-caption-2 font-black whitespace-nowrap tabular-nums">
+                {hud.weaponLevel === MAX_WEAPON_LEVEL ? "MAX" : `Lv${hud.weaponLevel}`}
               </span>
-              <span className="flex flex-col-reverse gap-0.5 rounded-full bg-black/30 p-1">
-                {Array.from({ length: MAX_WEAPON_LEVEL }, (_, index) => (
-                  <span
-                    key={index}
-                    className={cn("h-3 w-2.5 rounded-sm", index < hud.weaponLevel ? "bg-warning" : "bg-foreground/20")}
-                  />
-                ))}
-              </span>
+              <div
+                role="progressbar"
+                aria-valuemin={0}
+                aria-valuemax={SKILL_GAUGE_MAX}
+                aria-valuenow={hud.skillGauge}
+                aria-label={`카피바라 광선 게이지 ${hud.skillGauge}/${SKILL_GAUGE_MAX}`}
+                className="relative h-24 w-3 overflow-hidden rounded-full bg-white/20 ring-1 ring-white/20"
+              >
+                <span
+                  aria-hidden="true"
+                  className="absolute inset-x-0 bottom-0 rounded-full bg-warning transition-[height] duration-200"
+                  style={{ height: `${hud.skillGauge}%` }}
+                />
+              </div>
             </div>
           )}
           {hud && (
-            // 오른쪽 아래 스킬: 게이지 + 버튼 세 개. 누르는 동작이 뒤의 드래그·시작으로 새지 않게 막는다
             <div
-              className="absolute right-2 bottom-[max(1rem,env(safe-area-inset-bottom))] flex flex-col items-center gap-2"
+              className="absolute right-2 bottom-[max(1rem,env(safe-area-inset-bottom))] flex items-center"
               onPointerDown={stopPropagation}
+              onPointerUp={stopPropagation}
               onClick={stopPropagation}
             >
-              <Progress
-                value={hud.skillGauge}
-                size="sm"
-                aria-label={`스킬 게이지 ${hud.skillGauge}/${SKILL_GAUGE_MAX}`}
-                className="w-11 bg-black/40 [&>*]:bg-warning"
-              />
-              {(Object.keys(SKILL_KEYS) as SkillKind[]).map((kind) => {
-                const ready = hud.skillGauge >= SKILLS[kind].cost;
-                const active = (kind === "barrier" && hud.barrier) || (kind === "overdrive" && hud.overdrive);
-                const Icon = SKILL_ICONS[kind];
-                return (
-                  <button
-                    key={kind}
-                    type="button"
-                    aria-label={`${SKILLS[kind].label} (${SKILL_KEYS[kind].key}), 게이지 ${SKILLS[kind].cost} 필요`}
-                    aria-disabled={!ready}
-                    aria-keyshortcuts={SKILL_KEYS[kind].key}
-                    onClick={() => requestSkill(kind)}
-                    className={cn(
-                      "flex size-11 cursor-pointer touch-manipulation flex-col items-center justify-center rounded-full bg-black/40 text-white transition-opacity focus-visible:outline-2 focus-visible:outline-warning",
-                      !ready && "opacity-40",
-                      active && "ring-2 ring-warning",
-                    )}
-                  >
-                    <Icon aria-hidden="true" className="size-5" />
-                    <span className="text-caption-3 leading-none font-bold tabular-nums">{SKILLS[kind].cost}</span>
-                  </button>
-                );
-              })}
+              <button
+                type="button"
+                aria-label="카피바라 광선 발사 (C)"
+                aria-keyshortcuts="C"
+                disabled={hud.skillGauge < SKILL_GAUGE_MAX}
+                onClick={fireUltimate}
+                className="hidden min-h-11 touch-manipulation items-center gap-2 rounded-full bg-warning px-4 font-bold text-neutral-950 shadow-lg transition-[opacity,transform] hover:scale-105 focus-visible:outline-2 focus-visible:outline-white disabled:opacity-35 md:flex"
+              >
+                광선 발사
+              </button>
+              <label
+                className={cn(
+                  "flex min-h-11 w-40 items-center gap-2 rounded-full bg-black/55 px-3 md:hidden",
+                  hud.skillGauge < SKILL_GAUGE_MAX && "opacity-35",
+                )}
+              >
+                <span className="sr-only">카피바라 광선 발사 슬라이드</span>
+                <input
+                  type="range"
+                  min="0"
+                  max="100"
+                  value={ultimateSlide}
+                  disabled={hud.skillGauge < SKILL_GAUGE_MAX}
+                  aria-label="오른쪽으로 밀어 카피바라 광선 발사"
+                  onChange={(event) => setUltimateSlide(Number(event.currentTarget.value))}
+                  onPointerUp={() => (ultimateSlide >= 85 ? fireUltimate() : setUltimateSlide(0))}
+                  className="h-11 min-w-0 flex-1 cursor-ew-resize accent-warning"
+                />
+                <span aria-hidden="true" className="text-caption-3 whitespace-nowrap text-white">밀기 ›</span>
+              </label>
             </div>
           )}
         </div>

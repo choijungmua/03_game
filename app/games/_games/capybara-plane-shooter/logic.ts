@@ -167,10 +167,10 @@ export const BOSS_STUN_MS = 4000;
 export const BOSS_STUN_DAMAGE = 3;
 export const BOSS_STUN_LABEL = "기절 · 약점 3배";
 /** 레이저: 경고선만 긋는 예고 시간(실제 0.55초는 남긴다), 쏘며 휩쓰는 시간, 빔 반폭(px), 휩쓰는 속도(px/초) */
-export const LASER_WINDUP_MS = 1100;
+export const LASER_WINDUP_MS = 1800;
 export const LASER_BEAM_MS = 1600;
 export const LASER_HALF_WIDTH = 13;
-export const LASER_SWEEP_SPEED = 220;
+export const LASER_SWEEP_SPEED = 150;
 /** 앞 방패: 보스 반경 대비 이 비율 안쪽(정면)으로 들어온 총알은 튕겨 나간다 — 옆으로 돌아가 쏴야 한다 */
 export const BOSS_GUARD_WIDTH = 0.55;
 /** 돌격 전에 경로를 붉게 예고하는 시간 (옆으로 비켜날 여유, 실제 0.5초) */
@@ -204,7 +204,7 @@ export const SKILL_PER_BOSS_FILL = 150;
 export const SKILLS: Record<SkillKind, { label: string; cost: number; ms: number }> = {
   barrier: { label: "방어막", cost: 50, ms: 6000 },
   overdrive: { label: "폭주", cost: 70, ms: 10000 },
-  bomb: { label: "폭탄", cost: 100, ms: 1200 },
+  bomb: { label: "카피바라 광선", cost: 100, ms: 1600 },
 };
 /** 폭주 동안 무기 레벨에 더하는 값 (최대 레벨은 넘지 않는다) */
 export const OVERDRIVE_LEVELS = 3;
@@ -213,7 +213,7 @@ export const BARRIER_RADIUS = 34;
 /** 폭탄이 일반 적에게 주는 피해 (방패도 무시한다) */
 export const BOMB_DAMAGE = 40;
 /** 폭탄이 보스에게 주는 피해 = 보스 최대 체력 × 이 비율 */
-export const BOMB_BOSS_RATIO = 0.08;
+export const BOMB_BOSS_RATIO = 0.25;
 
 /** 적 종류별 크기(반경 px)와 스테이지 기준 속도·체력에 곱하는 배수 */
 const ENEMY_TRAITS: Record<Exclude<EnemyKind, "boss">, { r: number; speed: number; hp: number }> = {
@@ -756,9 +756,10 @@ function updateBoss(state: GameState, boss: Enemy, dt: number, random: () => num
   } else if (pattern === "laser") {
     const t = state.bossPatternMs;
     if (t < LASER_WINDUP_MS) {
-      // 예고하는 동안 보스 앞에 경고선을 긋고, 비행기가 있는 쪽으로 휩쓸 방향을 정한다
-      state.bossLaserX = boss.x;
-      state.bossLaserDir = state.planeX >= boss.x ? 1 : -1;
+      if (t < LASER_WINDUP_MS / 2) {
+        state.bossLaserX = state.planeX;
+        state.bossLaserDir = state.planeX < state.width / 2 ? -1 : 1;
+      }
     } else if (t < LASER_WINDUP_MS + LASER_BEAM_MS) {
       const next = state.bossLaserX + state.bossLaserDir * LASER_SWEEP_SPEED * seconds;
       state.bossLaserX = Math.min(state.width - LASER_HALF_WIDTH, Math.max(LASER_HALF_WIDTH, next));

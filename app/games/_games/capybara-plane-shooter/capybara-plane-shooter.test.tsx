@@ -45,6 +45,13 @@ describe("CapybaraPlaneShooter 일시정지", () => {
     expect(gameScreen()).toHaveAttribute("data-paused", "false");
   });
 
+  it("시작 화면은 카피바라 광선 조작을 안내하고 기존 스킬 버튼을 보여 주지 않는다", () => {
+    render(<CapybaraPlaneShooter />);
+
+    expect(screen.getByText(/PC에서는 버튼, 모바일에서는 밀어서 카피바라 광선을 발사/)).toBeVisible();
+    expect(screen.queryByRole("button", { name: /방어막|폭주|폭탄/ })).toBeNull();
+  });
+
   it("멈춘 상태에서 처음부터를 누르면 카운트다운부터 다시 한다", async () => {
     await startPlaying();
     fireEvent.click(screen.getByRole("button", { name: "일시정지" }));
