@@ -409,6 +409,10 @@ function drawChunk(
         TILE,
         TILE,
       );
+      if (kind === "deck") {
+        ctx.fillStyle = "rgba(63,38,24,0.5)";
+        ctx.fillRect(x, y, TILE, TILE);
+      }
     } else {
       ctx.fillStyle = GROUND_BY_ID.get(kind)?.fallbackColor ?? "#8cbf3f";
       ctx.fillRect(x, y, TILE, TILE);
