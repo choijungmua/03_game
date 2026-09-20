@@ -1209,8 +1209,7 @@ function facingOf(dx: number, dy: number): Facing {
   return OCTANTS[Math.round(Math.atan2(dy, dx) / (Math.PI / 4)) + 4];
 }
 
-/** games: 맵에 오두막으로 세울 게임, listGames: 오두막 없이 왼쪽 위 게임 목록에서만 고르는 게임 */
-export function Lobby({ games, listGames }: { games: DoorGame[]; listGames: DoorGame[] }) {
+export function Lobby({ games }: { games: DoorGame[] }) {
   const router = useRouter();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   /** Space(앉기·목욕·낚시 버튼): 통나무 앞이면 앉기·일어나기, 온천 둘레면 목욕·나오기, 물가면 계속 낚기 시작·그만하기 */
@@ -2730,28 +2729,6 @@ export function Lobby({ games, listGames }: { games: DoorGame[]; listGames: Door
           {heardChat}
         </p>
       </form>
-
-      {/* 채팅창 아래: 오두막 없이 목록에서만 들어가는 게임 */}
-      {listGames.length > 0 && (
-        <details className="group/list absolute left-[max(0.75rem,env(safe-area-inset-left))] top-[calc(max(0.75rem,env(safe-area-inset-top))+2.5rem)] text-caption-1">
-          <summary className="flex h-8 w-fit cursor-pointer list-none items-center rounded-full bg-black/25 px-3 font-semibold text-white focus-visible:outline-2 focus-visible:outline-primary [&::-webkit-details-marker]:hidden">
-            게임 목록
-          </summary>
-          <ul className="mt-1 flex flex-col rounded-xl bg-card/90 p-1 shadow-md">
-            {listGames.map((game) => (
-              <li key={game.slug}>
-                <Link
-                  href={`/games/${game.slug}`}
-                  onClick={() => markLobbyExit(`/games/${game.slug}`)}
-                  className="flex min-h-11 items-center rounded-lg px-3 text-body-2 text-text-strong hover:bg-black/10 focus-visible:outline-2 focus-visible:outline-primary"
-                >
-                  {game.title}
-                </Link>
-              </li>
-            ))}
-          </ul>
-        </details>
-      )}
 
       {/* 오른쪽 위 "내 카피바라" 메뉴: 버튼 하나로 열고 옷장·가방·소리·이름 탭을 오간다 */}
       <LobbyMenu
