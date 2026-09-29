@@ -14,6 +14,8 @@ interface GuidePageProps {
 
 const dateFormat = new Intl.DateTimeFormat("ko-KR", { dateStyle: "long", timeZone: "Asia/Seoul" });
 
+export const dynamicParams = false;
+
 function guideTitle(gameTitle: string) {
   return `${gameTitle} 하는 법·공략 가이드`;
 }
