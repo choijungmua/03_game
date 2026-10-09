@@ -3,15 +3,18 @@ import { CONTACT_EMAIL } from "@/app/contact/constants";
 /**
  * 운영 주체 공시 정보. /about 페이지와 Organization JSON-LD가 같이 쓴다.
  * 스타트업 프로그램·광고 심사는 이 값으로 회사를 검증하므로 사업자등록증과 글자 그대로 맞춘다.
- * 아직 모르는 값은 빈 문자열로 두면 화면에 그 줄이 나오지 않는다 (가짜 값 넣지 말 것).
+ * 2026-10 기준 GGPLI는 사업자 미등록 (Claude Startups 신청서에도 unincorporated로 기재).
+ * 등록 전에는 legalName·registrationNumber·foundedAt·address를 빈 문자열로 둔다 → 화면에 그 줄이 나오지 않는다.
+ * 사업자등록(홈택스 개인사업자면 당일 발급) 후 등록증 보고 채우고 배포하면 표와 JSON-LD에 바로 반영된다.
  */
 export const COMPANY = {
-  /** 사업자등록증 상호 (영문 표기는 신청서와 동일하게) */
+  /** 상호. 스타트업 신청서의 Company name과 동일 */
   name: "GGPLI",
   legalName: "",
-  representative: "",
+  /** 신청서의 Founder & Developer */
+  representative: "최정무",
   registrationNumber: "",
-  /** 설립일(사업자등록일) YYYY-MM-DD */
+  /** 설립일(사업자등록일) YYYY-MM-DD. 서비스 시작일(launchedAt)과 다르다 */
   foundedAt: "",
   address: "",
   country: "KR",

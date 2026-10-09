@@ -63,10 +63,10 @@ export default function AboutPage() {
       <section className="space-y-2" lang="en">
         <h2 className="text-base font-semibold text-foreground">About ggpli (English)</h2>
         <p>
-          ggpli.com is a free browser-game service built and operated by {COMPANY.name}, an early-stage startup based in
-          South Korea. We build install-free mini games such as reaction and click-speed tests, shooters, and real-time
-          multiplayer board games (Go, Gomoku, Alkkagi), all sharing one capybara-village lobby. The service launched in
-          September 2026 and is funded by advertising. Business inquiries:{" "}
+          ggpli.com is a free browser-game service built and operated by {COMPANY.name}, a two-person team based in
+          South Korea, founded by {COMPANY.representative} in September 2026. We build install-free mini games such as
+          reaction and click-speed tests, shooters, and real-time multiplayer board games (Go, Gomoku, Alkkagi), all
+          sharing one capybara-village lobby. The service is funded by advertising. Business inquiries:{" "}
           <a href={`mailto:${COMPANY.email}`} className="underline underline-offset-2">
             {COMPANY.email}
           </a>
