@@ -1,3 +1,4 @@
+import { COMPANY } from "@/app/about/company";
 import type { GameEntry, GameSeo } from "@/lib/games/types";
 
 import { absoluteUrl, SITE_DESCRIPTION, SITE_NAME, SITE_URL } from "./site";
@@ -27,6 +28,26 @@ export function websiteJsonLd(): JsonLdObject {
     inLanguage: "ko",
     publisher,
   };
+}
+
+/** 운영 주체 공시 (/about). 빈 값은 넣지 않는다 */
+export function organizationJsonLd(): JsonLdObject {
+  const data: JsonLdObject = {
+    "@context": "https://schema.org",
+    "@type": "Organization",
+    name: COMPANY.name,
+    url: SITE_URL,
+    logo: absoluteUrl("/icon.png"),
+    email: COMPANY.email,
+    address: { "@type": "PostalAddress", addressCountry: COMPANY.country },
+    brand: { "@type": "Brand", name: SITE_NAME },
+  };
+  if (COMPANY.legalName) data.legalName = COMPANY.legalName;
+  if (COMPANY.foundedAt) data.foundingDate = COMPANY.foundedAt;
+  if (COMPANY.address) data.address = { "@type": "PostalAddress", streetAddress: COMPANY.address, addressCountry: COMPANY.country };
+  if (COMPANY.registrationNumber) data.taxID = COMPANY.registrationNumber;
+  if (COMPANY.representative) data.founder = { "@type": "Person", name: COMPANY.representative };
+  return data;
 }
 
 export function breadcrumbJsonLd(items: { name: string; path: string }[]): JsonLdObject {
