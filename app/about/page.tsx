@@ -42,6 +42,12 @@ export default function AboutPage() {
 
       <section className="space-y-2">
         <h2 className="text-base font-semibold text-foreground">운영 주체</h2>
+        {!COMPANY.registrationNumber && (
+          <p>
+            {COMPANY.name}는 {COMPANY.representative}가 이끄는 2인 개발팀으로, 2026년 9월부터 ggpli를 운영하고 있습니다.
+            아직 법인·사업자 등록 전인 초기 단계 팀이며, 등록이 완료되면 이 페이지에 등록 정보를 공시합니다.
+          </p>
+        )}
         <dl className="grid grid-cols-[max-content_1fr] gap-x-4 gap-y-1">
           {COMPANY_ROWS.map(({ label, value }) => (
             <div key={label} className="contents">
