@@ -43,6 +43,11 @@ export default function ContactPage() {
         <h2 className="text-base font-semibold text-foreground">함께 보기</h2>
         <ul className="space-y-1">
           <li>
+            <Link href="/about" className="inline-flex min-h-8 items-center text-foreground underline underline-offset-2">
+              회사 소개
+            </Link>
+          </li>
+          <li>
             <Link href="/privacy" className="inline-flex min-h-8 items-center text-foreground underline underline-offset-2">
               개인정보처리방침
             </Link>
