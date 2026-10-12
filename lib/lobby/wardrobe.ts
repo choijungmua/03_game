@@ -1,12 +1,10 @@
 import { BAKED_FRAMES, type BakedFrame, OUTFIT_SHEET } from "./capybara-3d";
 import { drawCharacterGlasses, drawCharacterHat } from "./character-accessories";
-import { drawCharacterClothes } from "./character-clothes";
 import { characterBaseBounds } from "./character-base";
 import { characterFit } from "./character-fit";
 import { LOBBY_CHARACTER_BASE } from "./character-style";
 
-// 칸을 늘리려면(상의·신발…) 여기와 items.js에 넣고 다시 굽는다. 겹치는 순서는 LAYER_ORDER
-export const WARDROBE_SLOTS = ["hat", "glasses", "onepiece"] as const;
+export const WARDROBE_SLOTS = ["hat", "glasses"] as const;
 export type WardrobeSlot = (typeof WARDROBE_SLOTS)[number];
 export type Outfit = Partial<Record<WardrobeSlot, string>>;
 
@@ -37,21 +35,9 @@ export const SLOT_INFO: Record<WardrobeSlot, { label: string; items: readonly Wa
       { id: "heart", label: "하트 안경" },
     ],
   },
-  onepiece: {
-    label: "한벌옷",
-    items: [
-      { id: "dino", label: "공룡 잠옷", special: true },
-      { id: "shark", label: "상어 잠옷", special: true },
-      { id: "strawberry", label: "딸기 옷", special: true },
-      { id: "raincoat", label: "개구리 우비" },
-      { id: "overalls", label: "멜빵바지" },
-      { id: "yukata", label: "유카타" },
-    ],
-  },
 };
 
-/** 겹치는 순서: 한벌옷 → 안경 → 모자 */
-const LAYER_ORDER: readonly WardrobeSlot[] = ["onepiece", "glasses", "hat"];
+const LAYER_ORDER: readonly WardrobeSlot[] = ["glasses", "hat"];
 
 export const CHARACTER_3D = "/assets/images/characters/capybara-3d";
 /** 옷 시트 (모든 프레임) */
@@ -96,7 +82,6 @@ export function drawDressed(
     ctx.save();
     ctx.translate(baseLeft, baseTop);
     ctx.scale(baseSize, baseSize);
-    if (outfit.onepiece) drawCharacterClothes(ctx, base, { id: outfit.onepiece, fit });
     if (outfit.glasses) drawCharacterGlasses(ctx, { id: outfit.glasses, fit });
     let complete = true;
     if (outfit.hat) {

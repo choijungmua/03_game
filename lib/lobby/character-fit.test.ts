@@ -25,7 +25,7 @@ describe("PNG character fitting", () => {
     expect(characterFit("pick-2-down").raised).toBe(true);
   });
   it("does not download mismatched 3D garments or glasses for a PNG character", () => {
-    expect(pngOutfitSources({ onepiece: "overalls", glasses: "wood" })).toEqual([]);
+    expect(pngOutfitSources({ glasses: "wood" })).toEqual([]);
     expect(pngOutfitSources({ hat: "straw", glasses: "wood" })).toHaveLength(1);
   });
 });

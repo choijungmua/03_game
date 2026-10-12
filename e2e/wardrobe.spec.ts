@@ -27,7 +27,6 @@ test("제거한 모자는 숨기고 남은 옷은 오류 없이 전환한다", a
   const catalog = {
     모자: ["없음", "황금 왕관 특별한 옷", "유자 온천 수건 특별한 옷", "밀짚모자"],
     안경: ["없음", "별 선글라스 특별한 옷", "무지개 파티 안경 특별한 옷", "물안경 특별한 옷", "나무테 안경", "선글라스", "하트 안경"],
-    한벌옷: ["없음", "공룡 잠옷 특별한 옷", "상어 잠옷 특별한 옷", "딸기 옷 특별한 옷", "개구리 우비", "멜빵바지", "유카타"],
   } as const;
   for (const [tab, options] of Object.entries(catalog)) {
     await page.getByRole("button", { name: tab, exact: true }).click();
@@ -68,7 +67,7 @@ test("탭 줄은 맨 아래에 그대로 있고 패널은 그 위 메뉴 폭 안
     const panel = menu.getByRole("tabpanel", { name });
     await expect(panel).toBeVisible();
     await expect(menu.getByRole("tabpanel")).toHaveCount(1);
-    const box = await panel.boundingBox();
+    const box = await panel.locator("..").boundingBox();
     // 패널은 탭 줄 위에 있고 겹치지 않는다 (탭 줄은 메뉴 맨 아래라 메뉴 높이에 따라 같이 움직인다)
     const tabs = await tablist.boundingBox();
     expect((box?.y ?? 0) + (box?.height ?? 0)).toBeLessThanOrEqual((tabs?.y ?? 0) + 1);

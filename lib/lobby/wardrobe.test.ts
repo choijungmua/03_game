@@ -80,12 +80,12 @@ describe("로비 옷장 (3D로 구운 옷)", () => {
     expect(outfitCell(BAKED_FRAMES[cols + 1])).toEqual([cell, cell, cell]);
   });
 
-  it("몸 → 한벌옷 → 안경 → 모자 순서로 같은 칸을 겹치고, 덜 받은 시트는 건너뛰며 알려 준다", () => {
+  it("몸 → 안경 → 모자 순서로 같은 칸을 겹치고, 덜 받은 시트는 건너뛰며 알려 준다", () => {
     const drawn: string[] = [];
     const ctx = { drawImage: (image: { src: string }, ...args: number[]) => drawn.push(`${image.src}:${args.join(",")}`) } as unknown as CanvasRenderingContext2D;
     const loaded = (src: string) => ({ src, complete: true, naturalWidth: 1 }) as HTMLImageElement;
     const base = loaded(`${CHARACTER_3D}/capybara-stand-right.webp`);
-    const outfit = { hat: "crown", glasses: "star", onepiece: "dino" };
+    const outfit = { hat: "crown", glasses: "star" };
     const [sx, sy, cell] = outfitCell("stand-right");
 
     expect(drawDressed(ctx, base, outfit, [0, 0, 150], loaded)).toBe(true);
@@ -93,7 +93,7 @@ describe("로비 옷장 (3D로 구운 옷)", () => {
       `${base.src}:0,0,150,150`,
       ...outfitSheets(outfit).map((src) => `${src}:${sx},${sy},${cell},${cell},0,0,150,150`),
     ]);
-    expect(outfitSheets(outfit)).toEqual([outfitSheetSrc("onepiece", "dino"), outfitSheetSrc("glasses", "star"), outfitSheetSrc("hat", "crown")]);
+    expect(outfitSheets(outfit)).toEqual([outfitSheetSrc("glasses", "star"), outfitSheetSrc("hat", "crown")]);
 
     drawn.length = 0;
     const loading = (src: string) => ({ src, complete: false, naturalWidth: 0 }) as HTMLImageElement;
@@ -102,12 +102,12 @@ describe("로비 옷장 (3D로 구운 옷)", () => {
   });
 
   it("입으면 그 칸만 바뀌고, 벗으면 그 칸만 빠진다", () => {
-    expect(wear({ hat: "straw" }, "onepiece", "yukata")).toEqual({ hat: "straw", onepiece: "yukata" });
+    expect(wear({ hat: "straw" }, "glasses", "wood")).toEqual({ hat: "straw", glasses: "wood" });
     expect(wear({ hat: "straw", glasses: "wood" }, "hat", null)).toEqual({ glasses: "wood" });
   });
 
   it("저장값에서 모르는 칸·옷·깨진 JSON은 버린다 (보류한 상의·신발 저장값도)", () => {
-    expect(parseOutfit('{"hat":"straw","glasses":"nope","wings":"x","top":"hoodie","shoes":"geta"}')).toEqual({ hat: "straw" });
+    expect(parseOutfit('{"hat":"straw","glasses":"nope","onepiece":"dino","wings":"x","top":"hoodie","shoes":"geta"}')).toEqual({ hat: "straw" });
     expect(parseOutfit("{broken")).toEqual({});
     expect(parseOutfit(null)).toEqual({});
   });
