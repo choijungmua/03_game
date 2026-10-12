@@ -11,8 +11,8 @@ export const COMPANY = {
   /** 상호. 스타트업 신청서의 Company name과 동일 */
   name: "GGPLI",
   legalName: "",
-  /** 신청서의 Founder & Developer */
-  representative: "최정무",
+  /** 개인정보라 비워 둔다 → 대표자 줄·JSON-LD founder가 빠진다 */
+  representative: "",
   registrationNumber: "",
   /** 설립일(사업자등록일) YYYY-MM-DD. 서비스 시작일(launchedAt)과 다르다 */
   foundedAt: "",

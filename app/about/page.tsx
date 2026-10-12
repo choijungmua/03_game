@@ -35,7 +35,7 @@ export default function AboutPage() {
       <section className="space-y-2">
         <h2 className="text-base font-semibold text-foreground">팀</h2>
         <p>
-          두 명이 함께 만듭니다. 운영자가 기획·프론트엔드·운영을 맡고, 백엔드 담당자가 게임 서버와 실시간 기능을 개발합니다.
+          기획·프론트엔드·운영부터 게임 서버와 실시간 기능까지 직접 개발합니다.
           게임 그래픽과 공략 문서 제작에는 생성형 AI를 적극적으로 활용합니다.
         </p>
       </section>
@@ -44,7 +44,7 @@ export default function AboutPage() {
         <h2 className="text-base font-semibold text-foreground">운영 주체</h2>
         {!COMPANY.registrationNumber && (
           <p>
-            {COMPANY.name}는 {COMPANY.representative}가 이끄는 2인 개발팀으로, 2026년 9월부터 ggpli를 운영하고 있습니다.
+            {COMPANY.name}는 2026년 9월부터 ggpli를 운영하고 있습니다.
             아직 법인·사업자 등록 전인 초기 단계 팀이며, 등록이 완료되면 이 페이지에 등록 정보를 공시합니다.
           </p>
         )}
@@ -69,8 +69,8 @@ export default function AboutPage() {
       <section className="space-y-2" lang="en">
         <h2 className="text-base font-semibold text-foreground">About ggpli (English)</h2>
         <p>
-          ggpli.com is a free browser-game service built and operated by {COMPANY.name}, a two-person team based in
-          South Korea, founded by {COMPANY.representative} in September 2026. We build install-free mini games such as
+          ggpli.com is a free browser-game service built and operated by {COMPANY.name}, a team based in South Korea,
+          since September 2026. We build install-free mini games such as
           reaction and click-speed tests, shooters, and real-time multiplayer board games (Go, Gomoku, Alkkagi), all
           sharing one capybara-village lobby. The service is funded by advertising. Business inquiries:{" "}
           <a href={`mailto:${COMPANY.email}`} className="underline underline-offset-2">
