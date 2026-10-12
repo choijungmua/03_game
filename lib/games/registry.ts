@@ -97,6 +97,17 @@ export const GAMES: GameEntry[] = [
     component: dynamic(() => import("@/app/games/_games/watermelon-game")),
     seo: () => import("@/app/games/_games/watermelon-game/seo"),
   },
+  {
+    slug: "capybara-volleyball",
+    title: GAME_TITLES["capybara-volleyball"],
+    description: "피카츄 배구처럼 네트 너머 상대 바닥에 공을 떨어뜨리는 카피바라 배구. 컴퓨터와, 한 키보드로 둘이, 초대 코드로 친구와 온라인 대전",
+    tier: "A",
+    playDifficulty: "보통",
+    pageName: "volleyball",
+    component: dynamic(() => import("@/app/games/_games/capybara-volleyball")),
+    seo: () => import("@/app/games/_games/capybara-volleyball/seo"),
+    hideAbout: true,
+  },
   // 새 게임은 여기에 한 줄씩 추가 (제목은 constants.ts GAME_TITLES에, CLAUDE.md "새 게임 추가 절차" 참고)
 ];
 
