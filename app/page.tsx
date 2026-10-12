@@ -9,14 +9,14 @@ import { Lobby } from "./_lobby/lobby";
 
 export const metadata: Metadata = {
   ...pageMetadata({
-    title: "무료 미니게임",
+    title: "카피바라 마을 · 무료 카피바라 게임",
     description:
-      "카피바라를 걸어 다니며 온천 습지 마을의 오두막에 들어가 반응속도 테스트, 클릭 속도 테스트, 바둑, 오목, 알까기 등 무료 게임을 하는 오픈월드 로비. 설치·로그인 없이 브라우저에서 바로 플레이",
+      "카피바라가 되어 온천 습지 마을을 산책하고 낚시와 옷 꾸미기를 즐겨 보세요. 오두막에서 카피바라 런·배구·슈팅 등 무료 게임을 시작하거나 친구와 온라인 대전을 할 수 있습니다. 설치·로그인 없이 바로 플레이하세요.",
     path: "/",
-    keywords: ["무료 게임", "미니게임", "웹게임", "카피바라 게임", ...GAMES.map((game) => game.title)],
+    keywords: ["카피바라", "카피바라 게임", "카피바라 마을", "무료 게임", "웹게임", ...GAMES.map((game) => game.title)],
   }),
   // 레이아웃 title.template은 같은 폴더의 page에는 적용되지 않아 전체 제목을 직접 둔다
-  title: { absolute: siteTitle("무료 미니게임") },
+  title: { absolute: siteTitle("카피바라 마을 · 무료 카피바라 게임") },
 };
 
 export default function Home() {

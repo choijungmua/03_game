@@ -2,9 +2,9 @@ import type { Metadata } from "next";
 
 export const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://ggpli.com";
 export const SITE_NAME = "ggpli";
-export const SITE_TAGLINE = "무료 미니게임 모음";
+export const SITE_TAGLINE = "카피바라 게임 모음";
 export const SITE_DESCRIPTION =
-  "설치·로그인 없이 브라우저에서 바로 하는 무료 미니게임 모음. 반응속도 테스트, 클릭 속도 테스트, 카피바라 슈팅·통나무 피하기, 친구와 초대 코드로 하는 온라인 바둑·오목·알까기까지.";
+  "설치·로그인 없이 즐기는 무료 카피바라 게임 모음. 카피바라 런·배구·슈팅·통나무 피하기와 수박 게임을 골라 하고, 초대 코드로 친구와 바둑·오목·알까기를 즐겨 보세요. PC와 모바일 브라우저에서 바로 시작할 수 있습니다.";
 
 /** 모든 페이지 제목 형식. 레이아웃 title.template과 같은 모양이다 */
 export function siteTitle(pageName: string) {

@@ -5,10 +5,10 @@ import { absoluteUrl, pageMetadata, SITE_DESCRIPTION, SITE_TAGLINE } from "@/lib
 import { breadcrumbJsonLd, JsonLd } from "@/lib/seo/json-ld";
 
 export const metadata = pageMetadata({
-  title: "전체 게임",
+  title: "카피바라 게임 모음 · 무료로 바로 하기",
   description: SITE_DESCRIPTION,
   path: "/games",
-  keywords: ["무료 게임", "미니게임", "웹게임", "브라우저 게임", "설치 없는 게임", ...GAMES.map((game) => game.title)],
+  keywords: ["카피바라 게임", "무료 카피바라 게임", "무료 게임", "웹게임", "설치 없는 게임", ...GAMES.map((game) => game.title)],
 });
 
 export default function GamesPage() {
