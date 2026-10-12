@@ -4,7 +4,7 @@ import { pageMetadata } from "@/lib/seo/site";
 import { TermsContent } from "./terms-content";
 
 export const metadata = pageMetadata({
-  title: "terms",
+  title: "이용약관",
   description: "ggpli 서비스 이용약관",
   path: "/terms",
 });

@@ -308,6 +308,9 @@ export function ReactionTime() {
             <p data-testid="result-summary" className="text-title-3 font-semibold text-balance">
               {tier.label} {result.ms}ms, {tier.description}
             </p>
+            <p className="text-caption-1 opacity-90">
+              게임 안의 재미용 등급입니다. 기기와 입력 지연에 따라 달라지며 건강·능력 평가가 아닙니다.
+            </p>
 
             <div
               className="flex cursor-default items-center gap-3 rounded-full bg-black/10 py-1.5 pr-1.5 pl-5"

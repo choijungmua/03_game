@@ -4,7 +4,7 @@ import { pageMetadata } from "@/lib/seo/site";
 import { PrivacyContent } from "./privacy-content";
 
 export const metadata = pageMetadata({
-  title: "privacy",
+  title: "개인정보처리방침",
   description: "ggpli 개인정보처리방침",
   path: "/privacy",
 });

@@ -14,7 +14,7 @@ const SITE_ICON = "app/icon.png";
 /** 게임 아이콘 원본 PNG. 공유 이미지 렌더러는 webp를 못 읽어서 assets-src 원본을 쓰고, 없으면 사이트 아이콘 */
 export function gameIconPath(slug: string) {
   const path = `assets-src/games/${slug}/icon.png`;
-  return existsSync(join(process.cwd(), path)) ? path : SITE_ICON;
+  return existsSync(join(process.cwd(), "assets-src/games", slug, "icon.png")) ? path : SITE_ICON;
 }
 
 /**
@@ -45,7 +45,9 @@ interface OgImageInput {
 export async function renderOgImage({ title, subtitle, icon = SITE_ICON }: OgImageInput) {
   const [font, iconData] = await Promise.all([
     loadFont(`${SITE_NAME}${title}${subtitle}`),
-    readFile(join(process.cwd(), icon), "base64"),
+    readFile(icon === SITE_ICON
+      ? join(process.cwd(), "app/icon.png")
+      : join(process.cwd(), "assets-src/games", icon.slice("assets-src/games/".length)), "base64"),
   ]);
 
   return new ImageResponse(

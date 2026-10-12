@@ -4,13 +4,18 @@ import Link from "next/link";
 export function TermsContent() {
   return (
     <>
-      <p className="text-xs">시행일: 2026년 9월 14일</p>
+      <p className="text-xs">시행일: 2026년 10월 8일</p>
 
       <section className="space-y-2">
         <h2 className="text-base font-semibold text-foreground">제1조 (목적)</h2>
         <p>
-          이 약관은 ggpli(이하 “서비스”)가 제공하는 웹 게임 및 관련 기능을 이용하는 데 필요한 조건과 절차를
-          정합니다.
+          이 약관은 ggpli 운영팀(이하 “운영자”)이 ggpli.com에서 제공하는 웹게임과 관련 기능
+          (이하 “서비스”)을 이용하는 데 필요한 조건과 절차를 정합니다.
+          ggpli는 서비스 이름이며, 운영팀 소개와 연락처는{" "}
+          <Link href="/contact" className="text-foreground underline underline-offset-2">
+            문의 페이지
+          </Link>
+          에서 확인할 수 있습니다.
         </p>
       </section>
 
@@ -25,8 +30,12 @@ export function TermsContent() {
       <section className="space-y-2">
         <h2 className="text-base font-semibold text-foreground">제3조 (게임 기록)</h2>
         <p>
-          게임 기록과 순위는 이용자의 브라우저에만 저장됩니다. 브라우저 데이터를 삭제하거나 다른 기기·브라우저를
-          사용하면 기록이 보이지 않을 수 있으며, 서비스는 이를 복구할 수 없습니다.
+          개인 순위와 기록 일부는 이용자의 브라우저에 저장됩니다. 브라우저 데이터를 삭제하거나 다른 기기·브라우저를
+          사용하면 이 기록이 보이지 않을 수 있으며, 서비스는 브라우저에서 삭제한 기록을 복구할 수 없습니다.
+          서비스 운영과 개선을 위해 게임 방문, 점수, 플레이 결과와 이용 통계는 서버로 전송될 수 있습니다.
+          자세한 데이터 처리 안내는{" "}
+          <Link href="/privacy" className="text-foreground underline underline-offset-2">개인정보처리방침</Link>
+          에서 확인할 수 있습니다.
         </p>
       </section>
 
@@ -59,11 +68,11 @@ export function TermsContent() {
       <section className="space-y-2">
         <h2 className="text-base font-semibold text-foreground">제8조 (문의)</h2>
         <p>
-          서비스 이용과 관련한 문의·신고는{" "}
+          서비스 이용과 관련한 문의·신고는 ggpli 운영팀이 접수합니다.{" "}
           <Link href="/contact" className="text-foreground underline underline-offset-2">
             문의 페이지
           </Link>
-          에서 안내하는 메일 주소로 보내 주세요.
+          에서 안내하는 운영 메일로 게임 오류, 이용 중 불편, 저작권과 개인정보 관련 요청을 보내 주세요.
         </p>
       </section>
     </>

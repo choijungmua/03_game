@@ -14,7 +14,7 @@ export default async function Image({ params }: { params: Promise<{ slug: string
   const { slug } = await params;
   const game = getGame(slug);
   return renderOgImage({
-    title: `${game?.pageName ?? SITE_NAME} guide`,
+    title: game ? `${game.title} 공략` : SITE_NAME,
     subtitle: game ? `${game.title} 공략` : "게임 공략",
     icon: gameIconPath(slug),
   });

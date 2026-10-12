@@ -31,7 +31,7 @@ export async function generateMetadata({ params }: GuidePageProps): Promise<Meta
 
   const { seo } = await game.seo();
   return pageMetadata({
-    title: `${game.pageName} guide`,
+    title: guideTitle(game.title),
     description: seo.guideDescription,
     path: `/games/${slug}/guide`,
     keywords: seo.keywords,

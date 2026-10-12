@@ -31,7 +31,10 @@ export const metadata: Metadata = {
   // 구글 서치 콘솔·네이버 서치어드바이저 소유 확인
   verification: {
     google: process.env.GOOGLE_SITE_VERIFICATION,
-    other: { "naver-site-verification": naverVerification },
+    other: {
+      "naver-site-verification": naverVerification,
+      "google-adsense-account": "ca-pub-1459138523237889",
+    },
   },
 };
 
@@ -47,18 +50,16 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     // 폰트 변수는 html에 둔다: globals.css가 html에 font-sans(var(--font-pretendard))를 걸어서, body에만 두면 html에서 변수가 비어 기본 폰트로 떨어진다
     <html lang="ko" className={`${pretendard.variable} dark`} suppressHydrationWarning>
-      <head>
-        {/* 애드센스 사이트 확인·광고 로더. next/script는 data-nscript 속성을 붙여 애드센스가 경고하므로 일반 script를 쓴다 */}
-        <script
-          async
-          src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-1459138523237889"
-          crossOrigin="anonymous"
-        />
-      </head>
       <body>
+        <a
+          href="#main-content"
+          className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-[max(1rem,env(safe-area-inset-top))] focus:z-[100] focus:rounded-md focus:bg-background focus:px-4 focus:py-3 focus:text-foreground focus:outline-2 focus:outline-ring"
+        >
+          본문으로 이동
+        </a>
         <JsonLd data={websiteJsonLd()} />
         <Providers>
-          {children}
+          <div id="main-content" tabIndex={-1}>{children}</div>
           <Toaster />
         </Providers>
       </body>

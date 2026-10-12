@@ -3,8 +3,8 @@ import { siteTitle } from "@/lib/seo/site";
 
 export const size = OG_SIZE;
 export const contentType = "image/png";
-export const alt = siteTitle("privacy");
+export const alt = siteTitle("개인정보처리방침");
 
 export default function Image() {
-  return renderOgImage({ title: "privacy", subtitle: "ggpli 개인정보처리방침" });
+  return renderOgImage({ title: "개인정보처리방침", subtitle: "ggpli 개인정보처리방침" });
 }

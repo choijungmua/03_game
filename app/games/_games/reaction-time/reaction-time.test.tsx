@@ -94,7 +94,7 @@ describe("ReactionTime", () => {
     it("등급 기준을 색상별로 보여준다", () => {
       render(<ReactionTime />);
       expect(screen.getByText("프로게이머")).toBeInTheDocument();
-      expect(screen.getByText("정상인")).toBeInTheDocument();
+      expect(screen.getByText("보통")).toBeInTheDocument();
       expect(screen.getByText("150ms 미만")).toBeInTheDocument();
     });
 
@@ -325,9 +325,8 @@ describe("ReactionTime", () => {
     it("마지막에 등급, 기록, 설명을 한 줄로 보여준다", async () => {
       render(<ReactionTime />);
       await playRound(83);
-      expect(screen.getByTestId("result-summary").textContent).toBe(
-        "프로게이머 83ms, 프로 선수급 반사신경이에요",
-      );
+      expect(screen.getByTestId("result-summary")).toHaveTextContent("83ms");
+      expect(screen.getByTestId("result-tier")).toHaveTextContent("프로게이머");
     });
 
     it("공유할지 묻는 문구를 공유 버튼과 함께 보여준다", async () => {

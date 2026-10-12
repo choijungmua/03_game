@@ -1,5 +1,5 @@
 /** 백엔드(04_game_b, NestJS) 주소. 운영은 https://api.ggpli.com, 로컬 PC에서는 4000 포트로 띄운다 */
-export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
+export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? (process.env.NODE_ENV === "production" ? "https://api.ggpli.com" : "http://localhost:4000");
 
 export const OFFLINE_MESSAGE = "인터넷 연결이 끊겼어요. 연결되면 다시 시도해 주세요";
 export const UNREACHABLE_MESSAGE = "게임 서버에 연결할 수 없어요. 잠시 후 다시 시도해 주세요";
