@@ -23,6 +23,7 @@ import {
   BOARD_SIZE,
   BURST_AT_MS,
   COMBO_PITCH_STEPS,
+  COMBO_WARN_MS,
   COMBO_WINDOW_MS,
   DRAG_THRESHOLD,
   FAIL_TIER_INDEX,
@@ -36,6 +37,7 @@ import {
   PANG_SOUNDS,
   POP_MS,
   POP_SPARKS,
+  RESULT_COUNT_MS,
   RESULT_SOUND_DELAY_MS,
   RESULT_TAP_GUARD_MS,
   ROUND_SECONDS,
@@ -163,6 +165,32 @@ function BurstOverlay({ burst }: { burst: Burst }) {
           {burst.combo} 콤보!
         </span>
       )}
+    </span>
+  );
+}
+
+/** 지금 점수 바로 위의 목표: 다음 등급과 내 최고 기록 중 더 가까운 것. 다 넘었으면 null */
+export function nextGoal(score: number, bestScore: number) {
+  const goals = [
+    ...PANG_TIERS.map((tier) => ({ label: tier.label, score: tier.minScore })),
+    { label: "내 최고 기록", score: bestScore },
+  ].filter((goal) => goal.score > score);
+  return goals.length ? goals.reduce((near, goal) => (goal.score < near.score ? goal : near)) : null;
+}
+
+/** 결과 점수가 0부터 촤라락 올라간다 (끝으로 갈수록 느려짐). 움직임 줄이기면 바로 최종 점수 */
+function CountUpScore({ score, className }: { score: number; className: string }) {
+  const ref = useRef<HTMLSpanElement>(null);
+  const startRef = useRef(0);
+  useFrameText(ref, () => {
+    if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return score.toLocaleString("ko-KR");
+    startRef.current ||= performance.now();
+    const t = Math.min((performance.now() - startRef.current) / RESULT_COUNT_MS, 1);
+    return Math.round(score * (1 - (1 - t) ** 3)).toLocaleString("ko-KR");
+  });
+  return (
+    <span ref={ref} data-testid="result-score" className={className}>
+      {score.toLocaleString("ko-KR")}
     </span>
   );
 }
@@ -628,6 +656,8 @@ export function CapybaraPang() {
       delay: BURST_AT_MS,
       easing: "ease-out",
     });
+    // 폰에선 펑 하는 순간 손에도 톡 (많이 터지면 더 길게). 아이폰 사파리엔 vibrate가 없어 조용히 넘어간다
+    setTimeout(() => navigator.vibrate?.(power > 1 ? 35 : 12), BURST_AT_MS);
   }
 
   /** 터진 칸들 가운데에 +점수·콤보 글씨를 띄운다 */
@@ -639,12 +669,20 @@ export function CapybaraPang() {
     setBurst({ id: Date.now(), x: center(colOf), y: center(rowOf), points, combo: comboCount, big: cells.size > SHAKE_CLEAR_COUNT });
   }
 
-  // 콤보 시간이 지나면 콤보 표시를 지운다
+  // 콤보가 끊기기 직전엔 째깍으로 재촉하고, 시간이 지나면 콤보 표시를 지운다 (길게 이은 콤보가 끊기면 툭 떨어지는 소리)
   useEffect(() => {
     if (combo.count === 0) return;
-    const timer = setTimeout(() => setCombo({ count: 0, at: Date.now() }), COMBO_WINDOW_MS);
-    return () => clearTimeout(timer);
-  }, [combo]);
+    const timers = [
+      setTimeout(() => {
+        if (combo.count >= 2) playGameSound(PANG_SOUNDS.tick);
+      }, COMBO_WINDOW_MS - COMBO_WARN_MS),
+      setTimeout(() => {
+        if (combo.count >= 3 && phase === "playing") playGameSound(PANG_SOUNDS.comboBreak);
+        setCombo({ count: 0, at: Date.now() });
+      }, COMBO_WINDOW_MS),
+    ];
+    return () => timers.forEach(clearTimeout);
+  }, [combo, phase]);
 
   useEffect(() => {
     if (feverUntil === 0) return;
@@ -895,6 +933,8 @@ export function CapybaraPang() {
   const tier = result ? getPangTier(result.score) : null;
   const resultScore = result?.score.toLocaleString("ko-KR") ?? "";
   const fever = feverUntil > 0;
+  // 이번 판 시작 전 최고 기록 (판이 끝나 기록이 저장돼도 목표가 바뀌지 않게 결과 화면에선 안 쓴다)
+  const bestScore = records.reduce((best, record) => Math.max(best, record.score), 0);
 
   const screenClass =
     phase === "countdown"
@@ -1002,6 +1042,7 @@ export function CapybaraPang() {
             combo={combo.count}
             fever={fever}
             lastBonus={lastBonus}
+            goal={nextGoal(score, bestScore)}
           />
 
           <p
@@ -1079,8 +1120,8 @@ export function CapybaraPang() {
                 {tier.label}
               </p>
               <p className="flex max-w-full flex-nowrap items-baseline gap-2 whitespace-nowrap font-black tabular-nums">
-                <span
-                  data-testid="result-score"
+                <CountUpScore
+                  score={result.score}
                   className={cn(
                     "leading-none",
                     resultScore.length <= 5
@@ -1089,9 +1130,7 @@ export function CapybaraPang() {
                         ? "text-[clamp(2.25rem,10vw,5rem)]"
                         : "text-[clamp(1.75rem,8vw,3.5rem)]",
                   )}
-                >
-                  {resultScore}
-                </span>
+                />
                 <span className="text-title-1">점</span>
               </p>
               <p data-testid="result-rank" className="text-title-2 font-bold tabular-nums">

@@ -33,6 +33,10 @@ export const COMBO_MULTIPLIER_STEP = 5;
 export const COMBO_MULTIPLIER_CAP = 1_024;
 /** 마지막으로 터진 뒤 이 시간 안에 또 터뜨려야 콤보가 이어진다 */
 export const COMBO_WINDOW_MS = 2000;
+/** 콤보가 끊기기 이만큼 전부터 콤보 글씨가 빨갛게 깜빡이고 째깍 (globals.css pang-warn 시작과 같게) */
+export const COMBO_WARN_MS = 600;
+/** 결과 점수가 0부터 올라가는 시간 */
+export const RESULT_COUNT_MS = 1200;
 /** 콤보가 이 수의 배수가 될 때마다 피버 */
 export const FEVER_COMBO = 10;
 export const FEVER_MS = 8000;
@@ -113,6 +117,11 @@ export const PANG_SOUNDS = {
     { kind: "tone", wave: "sine", from: 90, to: 38, ms: 360, level: 0.26 },
     { kind: "tone", wave: "sine", from: 400, to: 1800, ms: 90, level: 0.12, at: 20 },
     { kind: "tone", wave: "triangle", from: 1760, to: 2640, ms: 160, level: 0.06, at: 120 },
+  ],
+  /** 뚜우: 길게 이은 콤보가 끊김 */
+  comboBreak: [
+    { kind: "tone", wave: "triangle", from: 660, to: 220, ms: 260, level: 0.1 },
+    { kind: "tone", wave: "sine", from: 330, to: 110, ms: 260, level: 0.08, at: 40 },
   ],
   /** 째깍: 마지막 10초 동안 초마다 (3·2·1은 카운트다운 삐가 대신한다) */
   tick: [{ kind: "tone", wave: "sine", from: 1500, to: 1300, ms: 45, level: 0.07 }],
