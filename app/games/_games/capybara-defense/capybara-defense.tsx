@@ -1,727 +1,214 @@
 "use client";
 
-import { type KeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, useEffect, useMemo, useRef, useState } from "react";
-
+import { useEffect, useEffectEvent, useRef, useState } from "react";
+import { GameControls } from "@/components/games/game-controls/game-controls";
 import { Dialog } from "@/components/overlay/dialog";
 import { Button } from "@/components/ui/button";
-
-import { resolveAttack } from "./combat";
-import type { CombatState } from "./combat";
-import { CLASS_WEIGHTS, DEFENSE_RULES, EQUIPMENT_RARITY_WEIGHTS, EQUIPMENT_SLOTS, EQUIPMENT_SLOT_WEIGHTS, GACHA_WEIGHTS, getRoundConfig, HERO_CLASSES, HERO_TIERS, SKILLS } from "./constants";
-import { collectEquipment, compareEquipment, createEmptyInventory, createEmptyLoadout, equipEquipment, rollEquipmentDrop } from "./equipment";
-import type { EquipmentState } from "./equipment-types";
-import { createHeroInventory, drawHero, purchaseHeroUpgrade } from "./heroes";
-import { acquireMonster, activeMonsterCount, advanceDefenseEngine, createDefenseEngine, setDefenseClockSpeed } from "./logic";
-import { damageMonster, getNextWavePreview, getPopulationAlert } from "./monsters";
-import { clearDefenseSave, readDefenseSave, shouldAutosaveRound, writeDefenseSave } from "./persistence";
-import type { DefenseCheckpoint } from "./persistence";
-import { changeTargetPriority, confirmPlacementMerge, createPlacementState, PLACEMENT_ZONES, previewPlacementMerge, sellPlacedUnit, undoPlacementMerge } from "./placement";
-import type { PlacementMergeUndo, PlacementState } from "./placement";
-import { DEFENSE_ARENA_HEIGHT, DEFENSE_ARENA_WIDTH, getClassAttackPresentation, getMonsterRenderPoint, getUnitRenderPoint, renderDefenseFrame, validateUnitPlacement } from "./renderer";
-import type { UnitPlacementPoint } from "./renderer";
-import { aggregateDefenseResults } from "./results";
-import type { DefenseCombatEvent } from "./results";
-import { DEFAULT_DEFENSE_SETTINGS, readDefenseSettings, writeDefenseSettings } from "./settings";
-import type { DefenseSettings } from "./settings";
-import { beginSkillTargeting, confirmSkillCast, createSkillState, SKILL_IDS } from "./skills";
-import type { SkillEffect, SkillEnemy, SkillTarget } from "./skills";
-import { advanceTutorial, createTutorialState, readDefenseTutorial, skipTutorial, writeDefenseTutorial } from "./tutorial";
-import type { TutorialState, TutorialStep } from "./tutorial";
-import type { DefenseEngine, DefensePhase, EquipmentSlot, HeroClass, HeroInventory, HeroTier, TargetPriority } from "./types";
-
+import { advanceGame, applyCommand, CELLS, CLASSES, createGame, DAMAGE_MATCHUPS, getCollectionProgress, getUnitPoint, getUnitStats, getUpgradeCost, getWaveInfo, KILL_MILESTONES, RARITIES, RULES, startGame } from "./engine";
+import type { DefenseClass, DefenseCommand, DefenseState, DefenseUnit } from "./engine";
+import { createDefenseRenderer } from "./renderer";
+import { createDefenseAudio } from "./audio";
+import { useDefenseTeam } from "./use-defense-team";
+import { getDefenseReward, getNextDefenseGoal } from "./defense-feedback";
+import { CAPYBARA_SPRITE, getBattlePressure, getDefenderVisual } from "./defense-visuals";
 import styles from "./capybara-defense.module.css";
 
-const MAPS = [
-  { id: "reed-marsh", name: "갈대 습지", detail: "느려지는 물길을 따라 방어해요." },
-  { id: "hot-spring", name: "온천 계곡", detail: "마나 샘을 활용해 스킬을 자주 써요." },
-  { id: "moonlit-orchard", name: "달빛 과수원", detail: "치명타 숲의 긴 갈림길을 지켜요." },
-] as const;
-const CLASS_NAMES: Readonly<Record<HeroClass, string>> = { warrior: "전사", archer: "궁수", rogue: "도적", mage: "마법사" };
-function equipmentLabel(id: string): string {
-  if (id.includes("reed-bow")) return "갈대 활";
-  if (id.includes("moss-armor")) return "이끼 갑옷";
-  if (id.includes("spring")) return "온천 부적";
-  if (id.includes("moon")) return "달빛 장비";
-  return "카피바라 장비";
-}
+const number = new Intl.NumberFormat("ko-KR", { maximumFractionDigits: 2 });
+const percent = new Intl.NumberFormat("ko-KR", { style: "percent", maximumFractionDigits: 4 });
+const classLabel = (id: DefenseClass) => CLASSES.find(item => item.id === id)?.label ?? id;
+const rarityLabel = (id: string) => RARITIES.find(item => item.id === id)?.label ?? id;
+const unitLabel = (unit: DefenseUnit) => `${rarityLabel(unit.rarity)} ${classLabel(unit.classId)} #${unit.id}`;
+const abilityLabel = { lockdown: "락다운", ensnare: "인스네어", emp: "EMP" };
+const sizeLabel = { small: "소형", medium: "중형", large: "대형" };
+type Panel = "commands" | "economy" | "collection" | "stats" | "team" | null;
 
-const RARITY_NAMES: Readonly<Record<HeroTier, string>> = { common: "일반", rare: "희귀", epic: "영웅", legendary: "전설", mythic: "신화", primordial: "태초" };
-const EQUIPMENT_SLOT_NAMES: Readonly<Record<EquipmentSlot, string>> = { weapon: "무기", armor: "갑옷", accessory: "장신구" };
-const WAVE_TRAIT_NAMES: Readonly<Record<string, string>> = { splitting: "분열", swift: "신속", shielded: "보호막", armored: "중장갑", swarm: "무리" };
-const TUTORIAL_NAMES: Readonly<Record<TutorialStep, string>> = { draw: "뽑기", place: "배치", merge: "합성", upgrade: "강화" };
-
-type TimedCombatEffects = {
-  warCry: { until: number; attackMultiplier: number; attackSpeedMultiplier: number } | null;
-  focusedShot: { until: number; damageMultiplier: number } | null;
-  armorBreak: Record<string, { until: number; reduction: number }>;
-  weakPoint: Record<string, { until: number; damageMultiplier: number }>;
-  slows: Record<string, { until: number; multiplier: number }>;
-};
-
-function createTimedCombatEffects(): TimedCombatEffects {
-  return { warCry: null, focusedShot: null, armorBreak: {}, weakPoint: {}, slows: {} };
-}
-
-function monsterPosition(engine: DefenseEngine, progress: number): { x: number; y: number } {
-  const [x, y] = getMonsterRenderPoint(engine.map.id, progress / engine.map.pathLength);
-  return { x: x * DEFENSE_ARENA_WIDTH, y: y * DEFENSE_ARENA_HEIGHT };
-}
-const SKILL_NAMES = ["함성", "방어 파괴", "화살비", "집중 사격", "연쇄 표창", "약점 포착", "속박장", "별똥별"] as const;
-const PANELS = ["영웅", "장비", "강화"] as const;
-type PanelName = (typeof PANELS)[number];
-type ScreenPhase = "idle" | DefensePhase;
-type PlacedUnits = Readonly<Record<number, number>>;
-type CapybaraDefenseProps = Readonly<{ random?: () => number }>;
-
-function randomMapIndex(random: () => number): number {
-  return Math.min(MAPS.length - 1, Math.floor(Math.max(0, random()) * MAPS.length));
-}
-
-function secondsLeft(engine: DefenseEngine, phase: DefensePhase): number {
-  const duration = phase === "combat" ? DEFENSE_RULES.combatMs : DEFENSE_RULES.preparationMs;
-  return Math.max(0, Math.ceil((duration - engine.phaseElapsedMs) / 1_000));
-}
-
-export function CapybaraDefense({ random = Math.random }: CapybaraDefenseProps) {
-  const [mapIndex, setMapIndex] = useState(() => randomMapIndex(random));
-  const [phase, setPhase] = useState<ScreenPhase>("preparation");
-  const [inventory, setInventory] = useState<HeroInventory>(() => createHeroInventory());
-  const [panel, setPanel] = useState<PanelName>("영웅");
-  const [selectedUnit, setSelectedUnit] = useState<number | null>(null);
-  const [placed, setPlaced] = useState<PlacedUnits>({});
-  const [feedback, setFeedback] = useState("지도를 고르고 방어를 시작하세요.");
-  const [speed, setSpeed] = useState<1 | 2>(1);
-  const [skillState, setSkillState] = useState(() => createSkillState(100, 65));
-  const [skillClock, setSkillClock] = useState(0);
-  const [targetPriorities, setTargetPriorities] = useState<Readonly<Record<string, TargetPriority>>>({});
-  const [investedCosts, setInvestedCosts] = useState<Readonly<Record<string, number>>>({});
-  const [unitRanges, setUnitRanges] = useState<Readonly<Record<string, number>>>({});
-  const [mergeUndo, setMergeUndo] = useState<PlacementMergeUndo | null>(null);
-  const [equipmentState, setEquipmentState] = useState<EquipmentState>(() => ({ inventory: createEmptyInventory(), loadout: createEmptyLoadout() }));
-  const [unitPositions, setUnitPositions] = useState<Readonly<Record<string, UnitPlacementPoint>>>({});
-  const [draggingUnit, setDraggingUnit] = useState<number | null>(null);
-  const [placementGhost, setPlacementGhost] = useState<(UnitPlacementPoint & { valid: boolean }) | null>(null);
-  const [managementOpen, setManagementOpen] = useState(true);
-  const [attackCue, setAttackCue] = useState("전투 효과 대기");
-  const [attackEffect, setAttackEffect] = useState<{ heroClass: HeroClass; position: readonly [number, number] } | null>(null);
-  const [reducedMotion] = useState(() => typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches === true);
-  const [combatEvents, setCombatEvents] = useState<readonly DefenseCombatEvent[]>([]);
-  const [settings, setSettings] = useState<DefenseSettings>(DEFAULT_DEFENSE_SETTINGS);
-  const [tutorial, setTutorial] = useState<TutorialState>(() => createTutorialState());
-  const [resume, setResume] = useState<DefenseCheckpoint | null>(null);
-  const [recovery, setRecovery] = useState("");
-  const [fixtureCount, setFixtureCount] = useState<number | null>(null);
-  const [hud, setHud] = useState({ lives: 20, round: 1, liveCount: 0, remaining: 50 });
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const engineRef = useRef<DefenseEngine | null>(null);
-  const lastFrame = useRef(0);
-  const lastAttack = useRef(0);
-  const combatStates = useRef<Readonly<Record<string, CombatState>>>({});
-  const timedCombatEffects = useRef<TimedCombatEffects>(createTimedCombatEffects());
-  const map = MAPS[mapIndex];
-  const mana = skillState.mana.current;
-  const targeting = skillState.targeting !== null;
-  const { liveCount, round } = hud;
-  const displayedCount = fixtureCount ?? liveCount;
-  const population = getPopulationAlert(displayedCount);
-  const preview = getNextWavePreview(round);
-  const slots = useMemo(() => PLACEMENT_ZONES[map.id].filter((zone) => zone.kind === "slot"), [map.id]);
-  const resultStats = aggregateDefenseResults(combatEvents);
-
-  useEffect(() => {
-    if (engineRef.current !== null) return;
-    engineRef.current = createDefenseEngine(map.id);
-    setFeedback(`${map.name} 준비: 영웅 뽑기 → 영웅을 끌기/선택 → 경기장 빈 곳에 놓기`);
-  }, [map.id, map.name]);
-
-  const renderUnits = useMemo(() => Object.entries(placed).flatMap(([slot, unitIndex]) => {
-    const unit = inventory.units[unitIndex];
-    const position = unit === undefined ? undefined : unitPositions[unit.id];
-    return unit === undefined ? [] : [{ heroClass: unit.heroClass, slot: Number(slot), selected: selectedUnit === unitIndex, ...(position === undefined ? {} : { position: [position.x, position.y] as const }) }];
-  }), [inventory.units, placed, selectedUnit, unitPositions]);
-
-  function placementState(): PlacementState {
-    return createPlacementState(map.id, inventory.units.map((unit, index) => ({
-      unitId: unit.id,
-      slotId: slots[Number(Object.entries(placed).find(([, placedIndex]) => placedIndex === index)?.[0] ?? -1)]?.id ?? null,
-      priority: targetPriorities[unit.id] ?? "first",
-      range: unitRanges[unit.id] ?? 160,
-      investedCost: investedCosts[unit.id] ?? DEFENSE_RULES.drawCost,
-    })), inventory.economy.money);
+export function CapybaraDefense({ seed }: Readonly<{ seed?: number }>) {
+  const [solo, setSolo] = useState(() => createGame(seed ?? 1));
+  const engine = useRef(solo);
+  const team = useDefenseTeam();
+  const [teamMode, setTeamMode] = useState(false);
+  const state = team.view?.state ?? solo;
+  const teamActive = teamMode || team.inRoom || team.view !== null || team.status === "connecting";
+  const runtime = useRef({ state, teamActive });
+  const canvas = useRef<HTMLCanvasElement>(null);
+  const audio = useRef<ReturnType<typeof createDefenseAudio> | null>(null);
+  const [selectedIds, setSelectedIds] = useState<number[]>([]);
+  const selectedRef = useRef<number[]>([]);
+  const [additive, setAdditive] = useState(false);
+  const [groups, setGroups] = useState<number[][]>([[], [], []]);
+  const [panel, setPanel] = useState<Panel>(null);
+  const [feedback, setFeedback] = useState("10원으로 뽑으면 중앙에 나타납니다. 수비대를 선택해 이동하세요.");
+  const [reward, setReward] = useState<ReturnType<typeof getDefenseReward>>(null);
+  const room = team.view?.code ?? null;
+  useEffect(() => { if (!reward) return; const timer = setTimeout(() => setReward(null), 2400); return () => clearTimeout(timer); }, [reward]);
+  const observed = useRef({ state, room, connection: team.status });
+  const observeRewards = useEffectEvent(() => {
+    const before = observed.current;
+    observed.current = { state, room, connection: team.status };
+    if (before.room !== room || before.connection !== team.status) setReward(null);
+    else {
+      const received = getDefenseReward(before.state, state);
+      if (received) { setReward(received); const newest = received.units.at(-1); if (team.view?.mode === "survival" && newest) { selectedRef.current = [newest.id]; setSelectedIds([newest.id]); } }
+    }
+  });
+  useEffect(() => { observeRewards(); }, [state, room, team.status]);
+  const [saleOpen, setSaleOpen] = useState(false);
+  const [leaveOpen, setLeaveOpen] = useState(false);
+  const [wasFinished, setWasFinished] = useState(false);
+  const [targetId, setTargetId] = useState("");
+  const [exchangeClass, setExchangeClass] = useState<DefenseClass>("warrior");
+  const [roomCode, setRoomCode] = useState("");
+  const [x, setX] = useState("360");
+  const [y, setY] = useState("240");
+  const [gasAmount, setGasAmount] = useState("1");
+  const retry = useRef<HTMLButtonElement>(null);
+  const summonButton = useRef<HTMLButtonElement>(null);
+  const saleButton = useRef<HTMLButtonElement>(null);
+  const active = state.phase === "playing";
+  const finished = state.phase === "won" || state.phase === "lost";
+  if (finished !== wasFinished) {
+    setWasFinished(finished);
+    if (finished) { setPanel(null); setSaleOpen(false); }
   }
-
-  function placedFromState(nextInventory: HeroInventory, nextPlacement: PlacementState): PlacedUnits {
-    return Object.fromEntries(nextPlacement.units.flatMap((unit) => {
-      if (unit.slotId === null) return [];
-      const slotIndex = slots.findIndex((slot) => slot.id === unit.slotId);
-      const unitIndex = nextInventory.units.findIndex((hero) => hero.id === unit.unitId);
-      return slotIndex < 0 || unitIndex < 0 ? [] : [[slotIndex, unitIndex]];
-    }));
+  const selected = state.units.find(unit => unit.id === selectedIds[0]);
+  const stats = selected ? getUnitStats(state, selected) : null;
+  const saleValue = RARITIES.find(item => item.id === selected?.rarity)?.sellGold ?? 0;
+  const wave = getWaveInfo(state.round);
+  const pressure = getBattlePressure(state.enemies.length, RULES.enemyLimit);
+  const nextGoal = getNextDefenseGoal(state.round);
+  const collections = getCollectionProgress(state);
+  const readyCollections = collections.filter(collection => collection.ready).length;
+  const rewardMessage = reward ? [
+    reward.bossDefeated ? "보스 처치" : "",
+    ...reward.milestones.map(kills => `${number.format(kills)}마리 처치 보상`),
+    ...reward.collections.map(id => `${collections.find(collection => collection.id === id)?.label ?? id} 등록 완료`),
+    ...reward.units.map(unit => `${unitLabel(unit)} 획득`),
+    ...reward.tickets.map(ticket => `${rarityLabel(ticket.rarity)} 선택권 획득`),
+    reward.units.length ? "전장 중앙에 등장 · 선택해 이동하세요." : "",
+  ].filter(Boolean).join(" · ") : feedback;
+  if (targetId && !state.enemies.some(enemy => String(enemy.id) === targetId && enemy.hp > 0)) setTargetId("");
+  const bossDeadline = Math.min(...state.enemies.flatMap(enemy => enemy.deadlineMs === null ? [] : [enemy.deadlineMs]));
+  const host = team.view !== null && team.view.you === team.view.host;
+  const connected = (team.view?.players.length ?? 0) >= 2 && team.view?.players.every(player => player.connected);
+  const ready = connected && team.view?.players.every(player => player.ready);
+  const standing = team.view?.players.find(player => player.slot === team.view?.you);
+  const matchFinished = team.view?.matchPhase === "finished";
+  useEffect(() => { runtime.current = { state, teamActive }; }, [state, teamActive]);
+  function publish(next: DefenseState) { engine.current = next; runtime.current.state = next; setSolo(next); }
+  function select(ids: number[]) { setReward(null); selectedRef.current = ids; setSelectedIds(ids); }
+  function choose(id: number, extend = additive) { select(extend ? selectedIds.includes(id) ? selectedIds.filter(value => value !== id) : [...selectedIds, id] : [id]); }
+  function unlock() { audio.current ??= createDefenseAudio(); audio.current.unlock(); }
+  function command(value: DefenseCommand, message = "명령을 실행했습니다.") {
+    unlock();
+    setReward(null);
+    if (teamActive) { void team.send(value).then(() => setFeedback(message)).catch(() => setFeedback("명령을 보내지 못했어요. 연결 상태를 확인해 주세요.")); return; }
+    const before = engine.current;
+    const result = applyCommand(before, value);
+    publish(result.state); setFeedback(result.error ?? message);
+    const newest = result.state.units.at(-1);
+    if ((value.type === "summon" || value.type === "ticket") && !result.error && newest) select([newest.id]);
+    if (value.type === "exchange" && !result.error) {
+      const prior = before.units.find(unit => unit.id === value.unitId);
+      const next = result.state.units.find(unit => unit.id === value.unitId);
+      setFeedback(prior === next ? "교환 실패 · 비용만 사용하고 기존 수비대와 배치는 유지됩니다." : "교환 성공 · 같은 등급의 수비대로 교환했습니다.");
+    }
   }
-
-  function skillEnemies(): readonly SkillEnemy[] {
-    const engine = engineRef.current;
-    if (engine === null) return [];
-    const config = getRoundConfig(engine.round);
-    return engine.monsters.filter((monster) => monster.active).map((monster) => {
-      const armorBreak = timedCombatEffects.current.armorBreak[monster.id.toString()];
-      return {
-        id: monster.id.toString(),
-        position: monsterPosition(engine, monster.progress),
-        boss: monster.kind === "boss",
-        armor: Math.max(0, config.armor - (armorBreak !== undefined && armorBreak.until > engine.totalElapsedMs ? armorBreak.reduction : 0)),
-        shield: monster.shield,
-        health: monster.health,
-      };
-    });
+  function begin() { unlock(); publish(startGame(createGame(seed ?? crypto.getRandomValues(new Uint32Array(1))[0]))); select([]); setGroups([[], [], []]); setReward(null); setFeedback("수비대를 소환하고 배치하세요."); setPanel(null); }
+  function move(px: number, py: number) { command({ type: "move", unitIds: selectedIds, x: px, y: py }, `${selectedIds.length}마리 이동 · ${Math.round(px)}, ${Math.round(py)}`); }
+  function group(index: number, save: boolean) {
+    setReward(null);
+    if (save) { setGroups(current => current.map((ids, i) => i === index ? [...selectedIds] : ids)); setFeedback(`${index + 1}번 부대에 ${selectedIds.length}마리를 저장했습니다.`); }
+    else { select(groups[index].filter(id => state.units.some(unit => unit.id === id))); setFeedback(`${index + 1}번 부대를 선택했습니다.`); }
   }
-
+  const keyboard = useEffectEvent((event: KeyboardEvent) => {
+    if (event.target instanceof HTMLElement && (event.target.matches("input,select,textarea") || event.target.isContentEditable) || event.altKey || event.metaKey) return;
+    if (event.key.toLowerCase() === "c") { event.preventDefault(); setPanel(current => current === "stats" ? null : "stats"); }
+    const groupKey = /^Digit[123]$/.test(event.code) ? event.code.slice(-1) : event.key;
+    if (["1", "2", "3"].includes(groupKey) && active) { event.preventDefault(); group(Number(groupKey) - 1, event.ctrlKey || event.shiftKey); }
+  });
+  useEffect(() => { window.addEventListener("keydown", keyboard); return () => window.removeEventListener("keydown", keyboard); }, []);
   useEffect(() => {
-    if (!settings.bgm || phase === "idle" || phase === "result" || window.AudioContext === undefined) return;
-    const context = new AudioContext();
-    const tone = context.createOscillator();
-    const gain = context.createGain();
-    tone.type = "sine";
-    tone.frequency.value = 146;
-    gain.gain.value = 0.012;
-    tone.connect(gain).connect(context.destination);
-    tone.start();
-    return () => { tone.stop(); void context.close(); };
-  }, [phase, settings.bgm]);
-
-  useEffect(() => {
-    const timeout = window.setTimeout(() => {
-      setSettings(readDefenseSettings(window.localStorage));
-      setTutorial(readDefenseTutorial(window.localStorage));
-      const saved = readDefenseSave(window.localStorage);
-      if (saved.kind === "resume") setResume(saved.checkpoint);
-      if (saved.kind === "discarded") setRecovery("저장 데이터를 복구할 수 없어 새 게임으로 시작합니다.");
-    }, 0);
-    return () => window.clearTimeout(timeout);
+    const body = document.body.style.overflow, root = document.documentElement.style.overflow;
+    document.body.style.overflow = "hidden"; document.documentElement.style.overflow = "hidden";
+    return () => { document.body.style.overflow = body; document.documentElement.style.overflow = root; };
   }, []);
-
   useEffect(() => {
-    if (process.env.NODE_ENV === "production") return;
-    const fixture = new URLSearchParams(window.location.search).get("defenseFixture");
-    const fixtureRound = fixture === "boss" ? 10 : fixture === "dense" ? 55 : fixture === "result" ? 100 : null;
-    if (fixtureRound === null) return;
-    const timeout = window.setTimeout(() => {
-      const fixtureEngine = createDefenseEngine(map.id, fixtureRound);
-      if (fixture === "result") { fixtureEngine.phase = "result"; fixtureEngine.outcome = "clear"; }
-      if (fixture !== "result") {
-        const config = getRoundConfig(fixtureRound);
-        const count = fixture === "dense" ? 120 : 1;
-        for (let index = 0; index < count; index += 1) {
-          const monster = acquireMonster(fixtureEngine, config, index % config.spawnCount);
-          monster.progress = fixtureEngine.map.pathLength * ((index + 0.5) / count);
-          monster.baseSpeed = 0;
-          monster.targetSpeed = 0;
-          monster.speed = 0;
-        }
-        fixtureEngine.spawnIndex = config.spawnCount;
-        fixtureEngine.phase = "combat";
-      }
-      engineRef.current = fixtureEngine;
-      setFixtureCount(fixture === "dense" ? 120 : fixture === "boss" ? 1 : 0);
-      setHud({ lives: 12, round: fixtureRound, liveCount: 0, remaining: fixture === "result" ? 0 : 32 });
-      setPhase(fixture === "result" ? "result" : "combat");
-      setFeedback(fixture === "dense" ? "몬스터 120마리: 매우 위험 단계입니다." : "검증 장면을 불러왔습니다.");
-    }, 0);
-    return () => window.clearTimeout(timeout);
-  }, [map.id]);
-
-  useEffect(() => {
-    if (phase !== "preparation" || !shouldAutosaveRound(round) || engineRef.current === null) return;
-    writeDefenseSave(window.localStorage, {
-      mapId: map.id, round, phase: "preparation", lives: hud.lives, mana, heroInventory: inventory,
-      placement: createPlacementState(map.id, inventory.units.map((unit, index) => ({
-        unitId: unit.id, slotId: slots[Number(Object.entries(placed).find(([, unitIndex]) => unitIndex === index)?.[0] ?? -1)]?.id ?? null,
-        priority: targetPriorities[unit.id] ?? "first", range: unitRanges[unit.id] ?? 160, investedCost: investedCosts[unit.id] ?? DEFENSE_RULES.drawCost,
-      })), inventory.economy.money),
-      equipment: equipmentState,
-    });
-  }, [equipmentState, hud.lives, inventory, investedCosts, mana, map.id, phase, placed, round, slots, targetPriorities, unitRanges]);
-
-  useEffect(() => {
-    if (phase === "idle" || engineRef.current === null) return;
-    let frame = 0;
-    const update = (time: number) => {
-      const current = engineRef.current;
-      if (current === null) return;
-      if (phase === "combat" && lastFrame.current > 0) {
-        const elapsed = Math.min(time - lastFrame.current, 250);
-        advanceDefenseEngine(current, targeting ? elapsed * 0.35 : elapsed);
-      }
-      const effects = timedCombatEffects.current;
-      if (effects.warCry !== null && effects.warCry.until <= current.totalElapsedMs) effects.warCry = null;
-      if (effects.focusedShot !== null && effects.focusedShot.until <= current.totalElapsedMs) effects.focusedShot = null;
-      for (const monster of current.monsters.filter((candidate) => candidate.active)) {
-        const slow = effects.slows[monster.id.toString()];
-        if (slow !== undefined && slow.until > current.totalElapsedMs) {
-          monster.targetSpeed = monster.baseSpeed * slow.multiplier;
-          monster.speed = Math.min(monster.speed, monster.baseSpeed * slow.multiplier);
-        } else if (slow !== undefined) {
-          delete effects.slows[monster.id.toString()];
-          monster.targetSpeed = monster.baseSpeed;
-        }
-      }
-      const warCry = effects.warCry !== null && effects.warCry.until > current.totalElapsedMs ? effects.warCry : null;
-      const attackInterval = 750 / (warCry?.attackSpeedMultiplier ?? 1);
-      if (phase === "combat" && time - lastAttack.current >= attackInterval) {
-        lastAttack.current = time;
-        const roundConfig = getRoundConfig(current.round);
-        const targets = current.monsters.filter((monster) => monster.active).map((monster) => {
-          const armorBreak = effects.armorBreak[monster.id.toString()];
-          return {
-            id: monster.id.toString(), position: monsterPosition(current, monster.progress), progress: monster.progress,
-            health: monster.health, maxHealth: monster.maxHealth,
-            armor: Math.max(0, roundConfig.armor - (armorBreak !== undefined && armorBreak.until > current.totalElapsedMs ? armorBreak.reduction : 0)),
-            boss: monster.kind === "boss", active: monster.active,
-          };
-        });
-        Object.entries(placed).forEach(([slotIndexText, unitIndex]) => {
-          const slotIndex = Number(slotIndexText);
-        const unit = inventory.units[unitIndex];
-        if (unit === undefined) return;
-        const [unitX, unitY] = getUnitRenderPoint(slotIndex);
-        const customPosition = unitPositions[unit.id];
-        const position = {
-          x: (customPosition?.x ?? unitX) * DEFENSE_ARENA_WIDTH,
-          y: (customPosition?.y ?? unitY) * DEFENSE_ARENA_HEIGHT,
-        };
-          const equippedAttackBonus = Object.values(equipmentState.loadout).reduce((sum, item) => sum + (item?.requiredClass === unit.heroClass ? item.effect.attackBonus : 0), 0);
-          const prior = combatStates.current[unit.id] ?? { warriorTargetId: null, warriorRampHits: 0 };
-          const attack = resolveAttack({
-          id: unit.id, heroClass: unit.heroClass, tier: unit.tier, position, priority: targetPriorities[unit.id] ?? "first",
-            classUpgradeLevel: inventory.economy.classUpgradeLevels[unit.heroClass],
-            tierUpgradeLevel: inventory.economy.tierUpgradeLevels[unit.tier],
-            equipmentAttackBonus: unit.stats.attackBonus + equippedAttackBonus, criticalChance: 0.1,
-          }, targets, prior, { criticalRoll: Math.random(), damageNumbers: settings.damageNumbers });
-          combatStates.current = { ...combatStates.current, [unit.id]: attack.state };
-          let total = 0;
-          const defeated: DefenseCombatEvent[] = [];
-          for (const hit of attack.hits) {
-            const monster = current.monsters.find((candidate) => candidate.id.toString() === hit.targetId && candidate.active);
-            if (monster === undefined) continue;
-            const weakPoint = effects.weakPoint[hit.targetId];
-            const focusedShot = effects.focusedShot !== null && effects.focusedShot.until > current.totalElapsedMs && unit.heroClass === "archer" ? effects.focusedShot : null;
-            const amount = hit.damage * (warCry?.attackMultiplier ?? 1) * (focusedShot?.damageMultiplier ?? 1) * (weakPoint !== undefined && weakPoint.until > current.totalElapsedMs ? weakPoint.damageMultiplier : 1);
-            total += amount;
-            damageMonster(monster, { amount, kind: "normal" });
-            if (!monster.active) {
-              defeated.push({ kind: "kill", unitId: unit.id });
-              const drop = rollEquipmentDrop({ id: `equipment-${current.round}-${monster.id}`, enemyKind: monster.kind === "boss" ? "boss" : "normal", round: current.round, random: Math.random });
-              if (drop !== null) {
-                setEquipmentState((state) => {
-                  const collected = collectEquipment({ drop, currentRound: current.round, inventory: state.inventory });
-                  return collected.kind === "collected" ? { ...state, inventory: collected.inventory } : state;
-                });
-                setFeedback(`${equipmentLabel(drop.item.id)} 장비를 획득했습니다.`);
-              }
-            }
-          }
-        const damageEvent: DefenseCombatEvent = { kind: "damage", heroClass: unit.heroClass, unitId: unit.id, amount: total };
-        if (attack.kind === "hit") {
-          setCombatEvents((events) => [...events, damageEvent, ...defeated]);
-          const presentation = getClassAttackPresentation(unit.heroClass);
-          setAttackCue(presentation.cue);
-          setAttackEffect({ heroClass: unit.heroClass, position: [position.x / DEFENSE_ARENA_WIDTH, position.y / DEFENSE_ARENA_HEIGHT] });
-        }
-        });
-      }
-      lastFrame.current = time;
-      if (current.phase === "result" && phase !== "result") {
-        setPhase("result");
-        if (current.leakCount > 0) setCombatEvents((events) => [...events, { kind: "leak", count: current.leakCount }]);
-      }
-      else if (phase === "combat" && current.phase === "preparation") setPhase("preparation");
-      setHud({ lives: current.lives, round: current.round, liveCount: activeMonsterCount(current), remaining: secondsLeft(current, current.phase) });
-      setSkillClock(time);
-      frame = window.requestAnimationFrame(update);
-    };
-    frame = window.requestAnimationFrame(update);
-    return () => window.cancelAnimationFrame(frame);
-  }, [equipmentState.loadout, inventory, phase, placed, settings.damageNumbers, targetPriorities, targeting, unitPositions]);
-
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (canvas === null || phase === "idle") return;
-    const engine = engineRef.current;
-    const monsters = engine?.monsters.filter((monster) => monster.active).map((monster) => ({
-      progress: monster.progress / engine.map.pathLength,
-      health: monster.health,
-      maxHealth: monster.maxHealth,
-      boss: monster.kind === "boss",
-    })) ?? [];
-    renderDefenseFrame(canvas, {
-      mapId: map.id, round, monsters, units: renderUnits, damageNumbers: settings.damageNumbers, screenShake: settings.screenShake,
-      reducedMotion: window.matchMedia === undefined ? false : window.matchMedia("(prefers-reduced-motion: reduce)").matches, targeting,
-      attackEffects: attackEffect === null ? [] : [attackEffect],
-    });
-  }, [attackEffect, displayedCount, map.id, phase, renderUnits, round, settings.damageNumbers, settings.screenShake, targeting]);
-
-  function startGame(): void {
-    const nextMapIndex = randomMapIndex(random);
-    const nextMap = MAPS[nextMapIndex];
-    setMapIndex(nextMapIndex);
-    engineRef.current = createDefenseEngine(nextMap.id);
-    setHud({ lives: 20, round: 1, liveCount: 0, remaining: 10 });
-    setInventory(createHeroInventory());
-    setEquipmentState({ inventory: createEmptyInventory(), loadout: createEmptyLoadout() });
-    setUnitPositions({});
-    setSkillState(createSkillState(100, 65));
-    setTargetPriorities({});
-    setInvestedCosts({});
-    setUnitRanges({});
-    setMergeUndo(null);
-    timedCombatEffects.current = createTimedCombatEffects();
-    setCombatEvents([]);
-    setPlaced({});
-    setPhase("preparation");
-    setFeedback(`${nextMap.name} 준비: 영웅 뽑기 → 영웅을 끌기/선택 → 경기장 빈 곳에 놓기`);
-  }
-
-  function resumeGame(checkpoint: DefenseCheckpoint): void {
-    const nextEngine = createDefenseEngine(checkpoint.mapId, checkpoint.round);
-    nextEngine.lives = checkpoint.lives;
-    nextEngine.phase = "preparation";
-    nextEngine.phaseElapsedMs = 0;
-    engineRef.current = nextEngine;
-    setMapIndex(MAPS.findIndex((candidate) => candidate.id === checkpoint.mapId));
-    setInventory(checkpoint.heroInventory);
-    setEquipmentState(checkpoint.equipment);
-    setUnitPositions({});
-    setPlaced(Object.fromEntries(checkpoint.placement.units.flatMap((unit) => {
-      const slotIndex = PLACEMENT_ZONES[checkpoint.mapId].findIndex((slot) => slot.id === unit.slotId);
-      const unitIndex = checkpoint.heroInventory.units.findIndex((hero) => hero.id === unit.unitId);
-      return slotIndex < 0 || unitIndex < 0 ? [] : [[slotIndex, unitIndex]];
-    })));
-    setSkillState(createSkillState(100, checkpoint.mana));
-    setTargetPriorities(Object.fromEntries(checkpoint.placement.units.map((unit) => [unit.unitId, unit.priority])));
-    setInvestedCosts(Object.fromEntries(checkpoint.placement.units.map((unit) => [unit.unitId, unit.investedCost])));
-    setUnitRanges(Object.fromEntries(checkpoint.placement.units.map((unit) => [unit.unitId, unit.range])));
-    setMergeUndo(null);
-    timedCombatEffects.current = createTimedCombatEffects();
-    setHud({ lives: checkpoint.lives, round: checkpoint.round, liveCount: 0, remaining: 10 });
-    setPhase("preparation");
-    setFeedback(`${checkpoint.round}라운드 준비 상태를 불러왔습니다.`);
-  }
-
-  function completeTutorialStep(step: TutorialStep): void {
-    const next = advanceTutorial(tutorial, step);
-    setTutorial(next);
-    writeDefenseTutorial(window.localStorage, next);
-  }
-
-  function toggleSetting(key: keyof DefenseSettings): void {
-    const next = { ...settings, [key]: !settings[key] };
-    setSettings(next);
-    writeDefenseSettings(window.localStorage, next);
-  }
-
-  function playSfx(frequency: number): void {
-    if (!settings.sfx || window.AudioContext === undefined) return;
-    const context = new AudioContext();
-    const tone = context.createOscillator();
-    const gain = context.createGain();
-    tone.frequency.value = frequency;
-    gain.gain.setValueAtTime(0.035, context.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.001, context.currentTime + 0.08);
-    tone.connect(gain).connect(context.destination);
-    tone.start();
-    tone.stop(context.currentTime + 0.08);
-    tone.addEventListener("ended", () => { void context.close(); }, { once: true });
-  }
-
-  function startCombat(): void {
-    setManagementOpen(false);
-    setPhase("combat");
-    setFeedback(`${round}라운드 전투를 시작합니다.`);
-  }
-
-  function handleDraw(): void {
-    const result = drawHero(inventory, random);
-    if (!result.ok) { setFeedback(result.reason === "insufficient-currency" ? "도토리가 부족합니다. 다음 라운드 보상을 기다리거나 영웅을 판매하세요." : "영웅 보관함이 가득 찼습니다. 합성하거나 판매하세요."); return; }
-    setInventory(result.state);
-    setSelectedUnit(result.state.units.length - 1);
-    setManagementOpen(true);
-    setFeedback(`${CLASS_NAMES[result.unit.heroClass]} 영웅을 뽑았습니다. 영웅을 끌거나 선택한 뒤 경기장 빈 곳에 놓으세요.`);
-    playSfx(420);
-    completeTutorialStep("draw");
-  }
-
-  function placeUnit(slotIndex: number): void {
-    if (selectedUnit === null) { setFeedback("먼저 영웅을 선택하세요."); return; }
-    if (Object.values(placed).includes(selectedUnit)) setFeedback("이 영웅을 새 칸으로 이동합니다.");
-    setPlaced((current) => Object.fromEntries([
-      ...Object.entries(current).filter(([slot, unitIndex]) => Number(slot) !== slotIndex && unitIndex !== selectedUnit),
-      [slotIndex, selectedUnit],
-    ]));
-    setFeedback(`영웅을 빈 배치 칸 ${slotIndex + 1}에 배치했습니다.`);
-    playSfx(520);
-    completeTutorialStep("place");
-  }
-
-  function placeSelectedAt(point: UnitPlacementPoint): void {
-    if (selectedUnit === null) { setFeedback("영웅을 먼저 끌거나 선택하세요."); return; }
-    const unit = inventory.units[selectedUnit];
-    if (unit === undefined) return;
-    const occupied = Object.entries(unitPositions).flatMap(([unitId, position]) => unitId === unit.id ? [] : [position]);
-    const validation = validateUnitPlacement(point, occupied);
-    setPlacementGhost({ ...point, valid: validation.kind === "valid" });
-    if (validation.kind === "invalid") { setFeedback(validation.reason); return; }
-    const currentSlot = Number(Object.entries(placed).find(([, unitIndex]) => unitIndex === selectedUnit)?.[0] ?? -1);
-    const openSlot = slots.findIndex((_, slotIndex) => placed[slotIndex] === undefined);
-    const slotIndex = currentSlot >= 0 ? currentSlot : openSlot;
-    if (slotIndex < 0) { setFeedback("배치 공간이 가득 찼습니다. 영웅을 판매하거나 합성하세요."); return; }
-    placeUnit(slotIndex);
-    setUnitPositions((current) => ({ ...current, [unit.id]: point }));
-    setPlacementGhost(null);
-    setFeedback(`${CLASS_NAMES[unit.heroClass]} 영웅을 경기장 빈 곳에 배치했습니다.`);
-  }
-
-  function pointerPoint(clientX: number, clientY: number): UnitPlacementPoint {
-    const rect = canvasRef.current?.getBoundingClientRect();
-    if (rect === undefined || rect.width === 0 || rect.height === 0) return { x: -1, y: -1 };
-    return { x: (clientX - rect.left) / rect.width, y: (clientY - rect.top) / rect.height };
-  }
-
-  function beginHeroDrag(event: ReactPointerEvent<HTMLButtonElement>, unitIndex: number): void {
-    event.currentTarget.setPointerCapture(event.pointerId);
-    setSelectedUnit(unitIndex);
-    setDraggingUnit(unitIndex);
-    setFeedback("영웅을 경기장 빈 곳으로 끌어 놓으세요.");
-  }
-
-  function moveHeroDrag(event: ReactPointerEvent<HTMLButtonElement>): void {
-    if (draggingUnit === null) return;
-    const point = pointerPoint(event.clientX, event.clientY);
-    const validation = validateUnitPlacement(point, Object.values(unitPositions));
-    setPlacementGhost({ ...point, valid: validation.kind === "valid" });
-  }
-
-  function finishHeroDrag(event: ReactPointerEvent<HTMLButtonElement>): void {
-    if (draggingUnit === null) return;
-    placeSelectedAt(pointerPoint(event.clientX, event.clientY));
-    setDraggingUnit(null);
-  }
-
-  function upgradeWarrior(): void {
-    const result = purchaseHeroUpgrade(inventory, { kind: "class", heroClass: "warrior" });
-    if (result.kind !== "purchased") { setFeedback(result.message); return; }
-    setInventory(result.state);
-    setFeedback("전사 공격력을 강화했습니다. 강화 효과음이 재생됩니다.");
-    playSfx(680);
-    completeTutorialStep("upgrade");
-  }
-
-  function applySkillEffect(effect: SkillEffect): void {
-    const engine = engineRef.current;
-    if (engine === null) return;
-    const hit = (id: string, amount: number, kind: "normal" | "shield-break" = "normal") => {
-      const monster = engine.monsters.find((candidate) => candidate.active && candidate.id.toString() === id);
-      if (monster !== undefined) damageMonster(monster, { amount, kind });
-    };
-    if (effect.kind === "arrow-rain") effect.targetIds.forEach((id) => hit(id, effect.volleys * effect.damagePerVolley));
-    if (effect.kind === "chain-shuriken") effect.targetIds.forEach((id, index) => hit(id, effect.damages[index] ?? 0));
-    if (effect.kind === "meteor") effect.targets.forEach((target) => hit(target.id, target.damage + target.shieldDamage, "shield-break"));
-    if (effect.kind === "war-cry") timedCombatEffects.current.warCry = { until: engine.totalElapsedMs + effect.durationMs, attackMultiplier: effect.attackMultiplier, attackSpeedMultiplier: effect.attackSpeedMultiplier };
-    if (effect.kind === "focused-shot") timedCombatEffects.current.focusedShot = { until: engine.totalElapsedMs + effect.durationMs, damageMultiplier: 1 + effect.projectileBonus };
-    if (effect.kind === "armor-break") effect.targets.forEach((target) => {
-      hit(target.id, target.shieldDamage, "shield-break");
-      timedCombatEffects.current.armorBreak[target.id] = { until: engine.totalElapsedMs + effect.durationMs, reduction: target.armorReduction };
-    });
-    if (effect.kind === "weak-point") timedCombatEffects.current.weakPoint[effect.targetId] = { until: engine.totalElapsedMs + effect.durationMs, damageMultiplier: effect.damageTakenMultiplier };
-    if (effect.kind === "binding-field") effect.targets.forEach((target) => {
-      timedCombatEffects.current.slows[target.id] = { until: engine.totalElapsedMs + effect.durationMs, multiplier: target.speedMultiplier };
-    });
-  }
-
-  function finishSkill(target: SkillTarget, nowMs: number): void {
-    const result = confirmSkillCast(skillState, { target, enemies: skillEnemies(), nowMs });
-    if (result.kind !== "cast") { setFeedback("선택한 위치에는 스킬을 사용할 수 없습니다."); return; }
-    applySkillEffect(result.effect);
-    setSkillState(result.state);
-    setFeedback(`${SKILL_NAMES[SKILL_IDS.indexOf(result.effect.kind)] ?? "스킬"}을 사용했습니다.`);
-    playSfx(760);
-  }
-
-  function castSkill(index: number, nowMs: number): void {
-    const skillId = SKILL_IDS[index];
-    if (skillId === undefined) return;
-    const result = beginSkillTargeting(skillState, {
-      skillId,
-      roster: inventory.units.map((unit) => ({ heroClass: unit.heroClass, tier: unit.tier })),
-      upgradeLevel: inventory.economy.classUpgradeLevels[skillId === "war-cry" || skillId === "armor-break" ? "warrior" : skillId === "arrow-rain" || skillId === "focused-shot" ? "archer" : skillId === "chain-shuriken" || skillId === "weak-point" ? "rogue" : "mage"],
-      effectMultiplier: 1,
-      cooldownMultiplier: 1,
-      clockSpeed: speed,
-      origin: { x: DEFENSE_ARENA_WIDTH / 2, y: DEFENSE_ARENA_HEIGHT / 2 },
-      nowMs,
-    });
-    if (result.kind === "locked") { setFeedback("해당 직업 영웅을 먼저 뽑아야 합니다."); return; }
-    if (result.kind === "cooldown") { setFeedback(`재사용까지 ${Math.ceil(result.remainingMs / 1_000)}초 남았습니다.`); return; }
-    if (result.kind === "insufficient-mana") { setFeedback(`마나가 ${result.requiredMana - result.currentMana} 부족합니다.`); return; }
-    setSkillState(result.state);
-    if (result.preview.targetKind === "self") {
-      const cast = confirmSkillCast(result.state, { target: { kind: "self" }, enemies: skillEnemies(), nowMs });
-      if (cast.kind === "cast") { applySkillEffect(cast.effect); setSkillState(cast.state); playSfx(760); setFeedback(`${SKILL_NAMES[index]}을 사용했습니다.`); }
-      return;
+    const element = canvas.current, ctx = element?.getContext("2d"), dpr = Math.min(window.devicePixelRatio || 1, 2);
+    if (element && ctx) { element.width = RULES.boardWidth * dpr; element.height = RULES.boardHeight * dpr; ctx.scale(dpr, dpr); }
+    const draw = ctx ? createDefenseRenderer(ctx) : null, motion = window.matchMedia?.("(prefers-reduced-motion: reduce)");
+    let frame = 0, last = 0, published = 0;
+    function animate(now: number) {
+      const current = runtime.current, before = current.teamActive ? current.state : engine.current;
+      const next = current.teamActive ? before : advanceGame(before, last === 0 ? 0 : Math.min(now - last, 100)); last = now;
+      if (!current.teamActive) engine.current = next;
+      draw?.(next, selectedRef.current, motion?.matches ?? false); audio.current?.observe(next, now);
+      if (!current.teamActive && next !== before && (now - published >= 200 || next.phase !== before.phase)) { setSolo(next); published = now; }
+      frame = requestAnimationFrame(animate);
     }
-    setFeedback(`${SKILL_NAMES[index]} 대상을 전장에서 선택하세요. 조준 중에는 시간이 느려집니다.`);
-  }
+    frame = requestAnimationFrame(animate);
+    return () => { cancelAnimationFrame(frame); audio.current = null; };
+  }, []);
+  useEffect(() => { if (finished) retry.current?.focus(); }, [finished]);
+  const asyncTeam = (action: () => Promise<void>) => { unlock(); void action().catch(() => setFeedback("팀 연결을 확인한 뒤 다시 시도해 주세요.")); };
+  const connectTeam = (action: () => Promise<void>) => { setTeamMode(true); runtime.current.teamActive = true; select([]); setGroups([[], [], []]); asyncTeam(action); };
+  const panelTitle = panel === "commands" ? "수비대 명령" : panel === "economy" ? "자원과 선택권" : panel === "collection" ? "컬렉션과 처치 보상" : panel === "stats" ? "통계와 확률" : "생존 경쟁전";
 
-  function handleArenaTarget(event: ReactMouseEvent<HTMLCanvasElement>): void {
-    const normalizedPoint = pointerPoint(event.clientX, event.clientY);
-    if (phase === "preparation" && selectedUnit !== null && skillState.targeting === null) {
-      placeSelectedAt(normalizedPoint);
-      return;
-    }
-    const pending = skillState.targeting;
-    if (pending === null) return;
-    const rect = event.currentTarget.getBoundingClientRect();
-    const position = {
-      x: ((event.clientX - rect.left) / rect.width) * DEFENSE_ARENA_WIDTH,
-      y: ((event.clientY - rect.top) / rect.height) * DEFENSE_ARENA_HEIGHT,
-    };
-    if (pending.targetKind === "point") { finishSkill({ kind: "point", position }, event.timeStamp); return; }
-    const enemies = skillEnemies();
-    const nearest = enemies.toSorted((left, right) => Math.hypot(left.position.x - position.x, left.position.y - position.y) - Math.hypot(right.position.x - position.x, right.position.y - position.y))[0];
-    if (nearest === undefined) { setFeedback("선택할 몬스터가 없습니다."); return; }
-    finishSkill({ kind: "enemy", enemyId: nearest.id }, event.timeStamp);
-  }
-
-  function handleArenaKey(event: KeyboardEvent<HTMLCanvasElement>): void {
-    if (event.key !== "Enter" && event.key !== " ") return;
-    event.preventDefault();
-    placeSelectedAt({ x: 0.5, y: 0.5 });
-  }
-
-  function sellSelected(): void {
-    const unit = selectedUnit === null ? undefined : inventory.units[selectedUnit];
-    if (unit === undefined) { setFeedback("판매할 영웅을 먼저 선택하세요."); return; }
-    const sold = sellPlacedUnit(placementState(), unit.id);
-    if (!sold.ok) { setFeedback("이 영웅은 지금 판매할 수 없습니다."); return; }
-    const nextInventory: HeroInventory = { ...inventory, units: inventory.units.filter((hero) => hero.id !== unit.id), economy: { ...inventory.economy, money: sold.state.money } };
-    setInventory(nextInventory);
-    setPlaced(placedFromState(nextInventory, sold.state));
-    setInvestedCosts(Object.fromEntries(sold.state.units.map((managed) => [managed.unitId, managed.investedCost])));
-    setUnitRanges(Object.fromEntries(sold.state.units.map((managed) => [managed.unitId, managed.range])));
-    setSelectedUnit(null);
-    setUnitPositions((current) => Object.fromEntries(Object.entries(current).filter(([unitId]) => unitId !== unit.id)));
-    setFeedback(`${sold.refund} 도토리를 돌려받았습니다.`);
-  }
-
-  function mergeOrUndo(): void {
-    const current = placementState();
-    if (mergeUndo !== null) {
-      const undone = undoPlacementMerge(current, inventory, mergeUndo, Date.now());
-      if (!undone.ok) { setFeedback("되돌릴 수 있는 시간이 지났습니다."); setMergeUndo(null); return; }
-      setInventory(undone.inventory); setPlaced(placedFromState(undone.inventory, undone.placement)); setInvestedCosts(Object.fromEntries(undone.placement.units.map((unit) => [unit.unitId, unit.investedCost]))); setUnitRanges(Object.fromEntries(undone.placement.units.map((unit) => [unit.unitId, unit.range]))); setMergeUndo(null); setFeedback("합성을 되돌렸습니다."); return;
-    }
-    const group = inventory.units.find((unit) => inventory.units.filter((candidate) => candidate.tier === unit.tier).length >= 3);
-    if (group === undefined) { setFeedback("같은 등급 영웅 3명이 필요합니다."); return; }
-    const ids = inventory.units.filter((unit) => unit.tier === group.tier).slice(0, 3).map((unit) => unit.id);
-    const preview = previewPlacementMerge(current, inventory, ids);
-    if (!preview.ok) { setFeedback("지금은 합성할 수 없습니다."); return; }
-    const merged = confirmPlacementMerge(current, inventory, preview.preview, Date.now(), Math.random);
-    if (!merged.ok) { setFeedback("합성 상태가 바뀌었습니다. 다시 시도하세요."); return; }
-    setInventory(merged.inventory); setPlaced(placedFromState(merged.inventory, merged.placement)); setInvestedCosts(Object.fromEntries(merged.placement.units.map((unit) => [unit.unitId, unit.investedCost]))); setUnitRanges(Object.fromEntries(merged.placement.units.map((unit) => [unit.unitId, unit.range]))); setMergeUndo(merged.undo); setSelectedUnit(null);
-    setFeedback("합성했습니다. 5초 안에 다시 누르면 되돌립니다."); completeTutorialStep("merge");
-  }
-
-  function cycleTargetPriority(): void {
-    const unit = selectedUnit === null ? undefined : inventory.units[selectedUnit];
-    if (unit === undefined) { setFeedback("우선순위를 바꿀 영웅을 선택하세요."); return; }
-    const priorities: readonly TargetPriority[] = ["first", "last", "strongest", "nearest"];
-    const current = targetPriorities[unit.id] ?? "first";
-    const next = priorities[(priorities.indexOf(current) + 1) % priorities.length] ?? "first";
-    const changed = changeTargetPriority(placementState(), unit.id, next);
-    if (!changed.ok) return;
-    setTargetPriorities((values) => ({ ...values, [unit.id]: next }));
-    setFeedback(`타깃 우선순위를 ${next === "first" ? "선두" : next === "last" ? "후미" : next === "strongest" ? "강한 적" : "가까운 적"}으로 바꿨습니다.`);
-  }
-
-  function equipFirstItem(): void {
-    const item = equipmentState.inventory.items[0];
-    if (item === undefined) { setFeedback("보관 중인 장비가 없습니다."); return; }
-    const comparison = compareEquipment({ heroClass: item.requiredClass, tier: item.rarity, classUpgradeLevel: 0, tierUpgradeLevel: 0, base: { attackIntervalMs: 1_000, range: 160, maxMana: 100, skillEffect: 1, shield: 0 }, loadout: equipmentState.loadout, candidate: item });
-    const equipped = equipEquipment({ ...equipmentState, heroClass: item.requiredClass, itemId: item.id });
-    if (equipped.kind !== "equipped") { setFeedback("이 장비는 선택한 직업에 장착할 수 없습니다."); return; }
-    setEquipmentState({ inventory: equipped.inventory, loadout: equipped.loadout });
-    const attackDelta = comparison.kind === "comparison" ? Math.round(comparison.delta.attack) : 0;
-    setFeedback(`${equipmentLabel(item.id)} 장착 완료 · 공격 ${attackDelta >= 0 ? "+" : ""}${attackDelta}`);
-  }
-
-  function skillCooldownLabel(id: (typeof SKILL_IDS)[number], index: number): string | number {
-    const seconds = Math.max(0, Math.ceil(((skillState.cooldownReadyAt[id] ?? 0) - skillClock) / 1_000));
-    return seconds > 0 ? `${seconds}초` : SKILLS[index]?.manaCost ?? 0;
-  }
-
-  const shownPhase = phase === "preparation" ? "배치 준비" : phase === "combat" ? "전투 중" : "전투 결과";
-  return (
-    <main className={styles.screen} data-phase={phase} data-viewport-fit="true" data-reduced-motion={String(reducedMotion)}>
-      <section className={styles.shell} role="application" aria-label="카피바라 디펜스 전장">
-        <div className={styles.hud} role="status" aria-label="전투 현황" data-hud="strip">{[["생명", hud.lives], ["도토리", inventory.economy.money], ["라운드", `${round} / 100`], ["남은 시간", `${hud.remaining}초`], ["마나", `${mana} / 100`], ["속도", `${speed}×`]].map(([label, value]) => <div className={styles.hudMetric} key={label}><span>{label}</span><strong>{value}</strong></div>)}</div>
-        {phase !== "result" && round % 10 === 0 && <div className={styles.bossBar}><div className="flex justify-between"><strong>보스 · {preview?.boss?.name ?? "습지의 큰발"}</strong><span>{preview?.boss?.warningText ?? "공격 범위를 피하세요"}</span></div><div className={styles.bossTrack}><div className={styles.bossFill} /></div></div>}
-        <div className={styles.gameGrid}>
-          <div className={styles.arenaColumn}>
-            <div className={styles.arena}>
-              <canvas ref={canvasRef} tabIndex={0} aria-label={`${map.name} 전장 화면`} onClick={handleArenaTarget} onKeyDown={handleArenaKey} />
-              {placementGhost !== null && <span className={styles.placementGhost} data-valid={String(placementGhost.valid)} style={{ left: `${placementGhost.x * 100}%`, top: `${placementGhost.y * 100}%` }}><span className={styles.rangePreview} /></span>}
-              <span className={styles.phaseBadge} data-motion="round">{shownPhase}</span>
-              <span className={styles.drawMotion} data-motion="draw" data-active={String(selectedUnit !== null)} aria-hidden="true" />
-              <span className={styles.placeMotion} data-motion="place" data-active={String(Object.keys(unitPositions).length > 0)} aria-hidden="true" />
-              <span className={styles.attackMotion} data-motion="attack" data-active={String(attackEffect !== null)} aria-hidden="true" />
-              <span className={styles.monsterMotion} data-motion="monster" data-active={String(displayedCount > 0)} aria-hidden="true" />
-            </div>
-          <div className={`${styles.notice} ${population.level === "safe" ? "" : styles.warning}`}><strong>다음 웨이브 {preview?.round ?? "완료"}</strong> · {preview?.keyTraits.map((trait) => WAVE_TRAIT_NAMES[trait] ?? trait).join(" · ") ?? "마지막 라운드"}{population.level === "safe" ? null : <span className={styles.noWrap}> · {population.text}</span>}</div>
-          <div className={styles.skills} aria-label="액티브 스킬">{SKILL_IDS.map((id, index) => <button key={id} type="button" className={styles.skill} aria-label={`${SKILL_NAMES[index]} 스킬, 마나 ${SKILLS[index]?.manaCost ?? 0}`} onClick={(event) => castSkill(index, event.timeStamp)}><span className={styles.skillArt} style={{ backgroundPositionX: `${-(index % 8) * 100}%` }} aria-hidden="true" /><span className={styles.skillCost}>{skillCooldownLabel(id, index)}</span></button>)}</div>
-            <div className={styles.toolbar}>
-              <Button className={styles.action} onClick={handleDraw}>영웅 뽑기 · 3</Button>
-              <Button className={styles.action} variant="secondary" onClick={startCombat} disabled={phase !== "preparation"}>전투 시작</Button>
-              <Button className={styles.action} variant="outline" onClick={() => { const next = speed === 1 ? 2 : 1; setSpeed(next); if (engineRef.current !== null) setDefenseClockSpeed(engineRef.current, next); }}>속도 {speed}×</Button>
-              <Button className={styles.action} variant="outline" onClick={sellSelected}>판매</Button>
-              <Button className={styles.action} variant="outline" aria-label="수비대 관리 열기" onClick={() => setManagementOpen(true)}>수비대 관리…</Button>
-          <Button className={styles.action} variant="outline" onClick={mergeOrUndo}>{mergeUndo === null ? "합성" : "합성 되돌리기"}</Button>
-          <Button className={styles.action} variant="outline" onClick={cycleTargetPriority}>타깃 우선순위</Button>
-            </div>
-            <p className={styles.notice} role="status" aria-live="polite">{feedback}</p>
-            <p className="sr-only" aria-live="polite">{attackCue}</p>
-          </div>
-          {(managementOpen || phase === "result") && <aside className={styles.panel} role="dialog" aria-label="수비대 관리 패널">
-            {phase !== "result" && <Button size="sm" variant="ghost" className={styles.panelClose} onClick={() => setManagementOpen(false)}>관리 닫기</Button>}
-            <div className={styles.panelTabs}>{PANELS.map((name) => <Button key={name} type="button" size="sm" variant={panel === name ? "default" : "ghost"} aria-label={`${name} 패널 열기`} onClick={() => setPanel(name)}>{name}</Button>)}</div>
-            <div className={styles.panelActions}>
-              {phase === "preparation" && (
-                <Dialog>
-                  <Dialog.Trigger asChild><Button size="sm" variant="outline">확률 보기</Button></Dialog.Trigger>
-                  <Dialog.Content showCloseButton={false} className={styles.probabilityDialog}>
-                    <Dialog.Header><Dialog.Title>확률 안내</Dialog.Title><Dialog.Description>영웅, 장비, 티켓 확률을 한곳에서 확인하세요.</Dialog.Description></Dialog.Header>
-                    <section className={styles.probabilitySection}><h3>영웅 등급 확률</h3><dl>{HERO_TIERS.map((tier) => <div key={tier}><dt>{RARITY_NAMES[tier]}</dt><dd>{GACHA_WEIGHTS[tier]}%</dd></div>)}</dl></section>
-                    <section className={styles.probabilitySection}><h3>영웅 직업 확률</h3><dl>{HERO_CLASSES.map((heroClass) => <div key={heroClass}><dt>{CLASS_NAMES[heroClass]}</dt><dd>{CLASS_WEIGHTS[heroClass]}%</dd></div>)}</dl></section>
-                    <section className={styles.probabilitySection}><h3>장비 등급 확률</h3><dl>{HERO_TIERS.map((tier) => <div key={tier}><dt>{RARITY_NAMES[tier]}</dt><dd>{EQUIPMENT_RARITY_WEIGHTS[tier]}%</dd></div>)}</dl></section>
-                    <section className={styles.probabilitySection}><h3>장비 슬롯 확률</h3><dl>{EQUIPMENT_SLOTS.map((slot) => <div key={slot}><dt>{EQUIPMENT_SLOT_NAMES[slot]}</dt><dd>{EQUIPMENT_SLOT_WEIGHTS[slot]}%</dd></div>)}</dl></section>
-                    <section className={styles.probabilitySection}><h3>장비 획득 확률</h3><dl><div><dt>일반 몬스터</dt><dd>{DEFENSE_RULES.normalEquipmentDropChance * 100}%</dd></div><div><dt>보스</dt><dd>확정</dd></div></dl></section>
-                    <section className={styles.probabilitySection}><h3>티켓</h3><dl><div><dt>지급 주기</dt><dd>{DEFENSE_RULES.ticketEveryRounds}라운드</dd></div><div><dt>티켓 도전 성공</dt><dd>{DEFENSE_RULES.ticketChallengeSuccessChance * 100}%</dd></div></dl></section>
-                    <Dialog.Footer><Dialog.Close asChild><Button>닫기</Button></Dialog.Close></Dialog.Footer>
-                  </Dialog.Content>
-                </Dialog>
-              )}
-              {resume !== null && phase === "preparation" && <Button size="sm" variant="secondary" onClick={() => resumeGame(resume)}>저장된 {resume.round}라운드 이어하기</Button>}
-              {resume !== null && phase === "preparation" && <Button size="sm" variant="ghost" onClick={() => { clearDefenseSave(window.localStorage); setResume(null); }}>저장 기록 지우기</Button>}
-            </div>
-            {recovery !== "" && <p className={styles.notice}>{recovery}</p>}
-            <h2>{panel} 관리</h2>
-            {panel === "영웅" && <div className={styles.panelGrid}>{inventory.units.length === 0 ? <p className="col-span-full text-sm text-muted-foreground">영웅을 뽑으면 여기에 나타납니다.</p> : inventory.units.map((unit, index) => <button type="button" key={unit.id} className={styles.panelCard} aria-label={`${CLASS_NAMES[unit.heroClass]} 영웅 끌기 또는 선택`} aria-pressed={selectedUnit === index} data-min-target="44" onClick={() => { setSelectedUnit(index); setFeedback("선택한 영웅을 경기장 빈 곳에 놓으세요."); }} onPointerDown={(event) => beginHeroDrag(event, index)} onPointerMove={moveHeroDrag} onPointerUp={finishHeroDrag}><strong>{CLASS_NAMES[unit.heroClass]} · {RARITY_NAMES[unit.tier]}</strong><span>{Object.values(placed).includes(index) ? "배치됨 · 이동 가능" : "끌기/선택 후 놓기"}</span></button>)}</div>}
-          {panel === "장비" && <div className={styles.panelGrid}><div className={styles.panelCard}><strong>{equipmentState.loadout.weapon === null ? "장착 장비 없음" : equipmentLabel(equipmentState.loadout.weapon.id)}</strong><span>공격 +{Math.round((equipmentState.loadout.weapon?.effect.attackBonus ?? 0) * 100)}%</span><Button className="mt-3 min-h-11 w-full" onClick={equipFirstItem}>비교 후 장착</Button></div>{equipmentState.inventory.items.map((item) => <div className={styles.panelCard} key={item.id}><strong>{equipmentLabel(item.id)}</strong><span>{RARITY_NAMES[item.rarity]} · {EQUIPMENT_SLOT_NAMES[item.slot]} · 보관 중</span></div>)}</div>}
-            {panel === "강화" && <div className={styles.panelCard}><strong>전사 공격 훈련</strong><span>현재 +{inventory.economy.classUpgradeLevels.warrior * 10}% → 다음 +{Math.min(100, (inventory.economy.classUpgradeLevels.warrior + 1) * 10)}%</span><span>비용 4 · 부족 {Math.max(0, 4 - inventory.economy.money)}</span><Button className="mt-3 min-h-11 w-full" onClick={upgradeWarrior}>강화하기</Button></div>}
-          {!tutorial.completed && <div className={`${styles.notice} mt-3`}><strong>첫 수비 안내 · {TUTORIAL_NAMES[tutorial.step]}</strong><p>뽑기 → 배치 → 합성 → 강화 순서로 익혀 보세요.</p><Button size="sm" variant="ghost" onClick={() => { const next = skipTutorial(tutorial); setTutorial(next); writeDefenseTutorial(window.localStorage, next); }}>튜토리얼 건너뛰기</Button></div>}
-            <div className={`${styles.settingsGrid} mt-3`} aria-label="게임 설정">{(["bgm", "sfx", "damageNumbers", "screenShake"] as const).map((key) => <Button key={key} size="sm" variant="outline" aria-pressed={settings[key]} onClick={() => toggleSetting(key)}>{{ bgm: "배경음", sfx: "효과음", damageNumbers: "피해 숫자", screenShake: "화면 흔들림" }[key]} {settings[key] ? "켬" : "끔"}</Button>)}</div>
-            {phase === "result" && <div className={`${styles.panelCard} mt-3`}><strong>전투 통계</strong><span>총 피해 {resultStats.totalDamage}</span><span>전사 피해 {resultStats.classDamage.warrior}</span><span>궁수 피해 {resultStats.classDamage.archer}</span><span>도적 피해 {resultStats.classDamage.rogue}</span><span>마법사 피해 {resultStats.classDamage.mage}</span><span>처치 {resultStats.kills} · 놓침 {resultStats.leaks}</span><span>최고 영웅 {resultStats.topUnit?.unitId ?? "없음"}</span><Button className="mt-3 w-full" onClick={startGame}>다시 도전</Button></div>}
-          </aside>}
-        </div>
-      </section>
-    </main>
-  );
+  return <section className={`${styles.shell} dark`} aria-label="카피바라 디펜스" data-phase={state.phase} data-mode={teamActive ? "team" : "solo"} onPointerDownCapture={unlock} onKeyDownCapture={unlock}>
+    <GameControls leaveConfirm={active || state.phase === "paused" ? "진행 중인 수비에서 나갈까요?" : undefined} pause={!teamActive && (active || state.phase === "paused") ? { paused: state.phase === "paused", onPause: () => command({ type: "pause" }), onResume: () => command({ type: "resume" }), onRestart: begin } : undefined} />
+    <header className={styles.hud} aria-label="전투 현황">
+      <div><span>라운드</span><strong data-testid="round">{state.round}<small> / 120</small></strong></div><div><span>금화</span><strong data-testid="gold">{number.format(state.gold)}</strong></div><div><span>가스</span><strong data-testid="gas">{number.format(state.gas)}</strong></div><div className={styles.pressure} data-pressure={pressure.level}><span>{pressure.label}</span><strong>{state.enemies.length}<small> / {RULES.enemyLimit}</small></strong><meter aria-label="전장에 누적된 적" min={0} max={RULES.enemyLimit} value={state.enemies.length} low={32} high={60} optimum={0} /></div>
+      <div className={styles.waveClock}><span>{wave.bonus ? "보너스 · 처치 수입 증가" : wave.bossCount ? `${wave.bossName} · ${wave.bossCount}마리` : wave.name}</span><small>{Number.isFinite(bossDeadline) ? `보스 ${Math.max(0, Math.ceil((bossDeadline - state.elapsedMs) / 1000))}초` : state.round === 120 ? "마지막 적까지 처치" : `다음 ${Math.max(0, Math.ceil((RULES.roundDurationMs - state.roundElapsedMs) / 1000))}초`}</small>{nextGoal && <small className={styles.nextGoal} data-testid="next-goal">{nextGoal.round}라운드 {nextGoal.bonus ? "보너스 · 처치 수입 증가" : `${nextGoal.bossName} ${nextGoal.bossCount}마리 · ${rarityLabel(nextGoal.rewardRarity)} 선택권`}</small>}</div>
+    </header>
+    <main className={styles.stage}><div className={styles.board} data-testid="battlefield" onClick={event => {
+      if (!active || !selectedIds.length || event.target !== event.currentTarget && event.target !== canvas.current) return;
+      const rect = event.currentTarget.getBoundingClientRect(); move((event.clientX - rect.left) / rect.width * RULES.boardWidth, (event.clientY - rect.top) / rect.height * RULES.boardHeight);
+    }}><canvas ref={canvas} aria-hidden="true" /><div className={styles.unitBadges} aria-hidden="true">{state.units.map(unit => { const point = getUnitPoint(unit); if (!point) return null; const visual = getDefenderVisual(unit.rarity); return <span key={unit.id} className={styles.unitBadge} data-rarity={unit.rarity} data-selected={selectedIds.includes(unit.id)} style={{ left: `${point.x / RULES.boardWidth * 100}%`, top: `${(point.y + 14 - visual.size) / RULES.boardHeight * 100}%`, borderColor: visual.color }} title={unitLabel(unit)}>{rarityLabel(unit.rarity)}</span>; })}</div><div className={styles.cells} aria-label="수비대 배치" inert={!active}>
+      {CELLS.map(cell => { const units = state.units.filter(unit => { const p = getUnitPoint(unit); return p?.x === cell.x && p.y === cell.y; }); const unit = units[0];
+        return <button key={cell.index} type="button" data-cell={cell.index} data-unit-id={unit?.id} data-selected={unit && selectedIds.includes(unit.id)} data-available={selectedIds.length > 0} className={styles.cell} style={{ left: `${cell.x / RULES.boardWidth * 100}%`, top: `${cell.y / RULES.boardHeight * 100}%` }} aria-label={`${cell.index + 1}번 배치 칸${unit ? ` · ${unitLabel(unit)}${units.length > 1 ? ` 외 ${units.length - 1}마리` : ""}` : " · 비어 있음"}`} onClick={event => { event.stopPropagation(); if (selectedIds.length) move(cell.x, cell.y); else if (unit) choose(unit.id, event.shiftKey); else { setReward(null); setFeedback("먼저 수비대를 소환하거나 선택하세요."); } }}><span aria-hidden="true">{unit && selectedIds.includes(unit.id) ? "✓" : "+"}</span></button>;
+      })}
+    </div>{(state.phase === "idle" || finished || teamActive && state.phase === "paused") && <div className={styles.overlay}><div className={styles.message}>
+      <h1>{teamActive ? finished ? matchFinished ? standing?.rank === 1 && state.phase === "won" ? "생존전 우승" : `생존전 ${standing?.rank ?? "—"}위` : state.phase === "won" ? "120라운드 생존 성공" : "탈락 · 경기 진행 중" : "생존 경쟁전 대기" : finished ? state.phase === "won" ? "120라운드 클리어" : "수비 종료" : "카피바라 디펜스"}</h1>
+      <p>{finished ? state.resultReason : teamActive ? "2~4명이 각자의 전장에서 경쟁합니다. 모두 준비하면 방장이 시작하세요." : "10원으로 수비대를 뽑고, 배치·강화로 120라운드를 지키세요."}</p>
+      {finished && <p>{state.round}라운드 · {number.format(state.kills)}마리 처치 · {Math.floor(state.elapsedMs / 60000)}분 {Math.floor(state.elapsedMs / 1000) % 60}초</p>}
+      {teamActive ? <><p>방 코드 <strong>{team.view?.code ?? "연결 중…"}</strong></p>{state.phase === "idle" && team.view && <><p className={styles.teamSeats}>{team.view.players.map(player => <span key={player.slot}>{player.slot === team.view?.you ? "나" : `${player.slot + 1}번`} · {player.connected ? player.ready ? "준비 완료" : "준비 전" : "연결 끊김"}</span>)}{team.view.players.length < 2 && <span>참가자를 기다리는 중…</span>}</p><Button onClick={() => asyncTeam(() => team.send({ type: "ready" }))}>준비 {team.view.players.find(player => player.slot === team.view?.you)?.ready ? "취소" : "완료"}</Button>{host && <Button disabled={!ready} onClick={() => command({ type: "start" }, "생존전 시작")}>생존전 시작</Button>}</>}<Button ref={retry} variant="outline" onClick={() => setPanel("team")}>참가자 · 순위</Button></> : <><Button ref={retry} className={styles.start} onClick={begin}>{finished ? "다시 도전" : "수비 시작"}</Button><Button variant="outline" onClick={() => setPanel("team")}>생존 경쟁전</Button><small>2~4명이 각자의 전장에서 끝까지 살아남기</small></>}
+    </div></div>}{reward && !team.error && active && <div className={styles.drawResult} data-celebration={reward.celebrated} role="status">{reward.units.length > 0 && <span className={styles.drawPortrait} aria-hidden="true" style={{ backgroundImage: `url(${CAPYBARA_SPRITE})` }} />}<strong>{rewardMessage}</strong></div>}</div></main>
+    <footer className={styles.deck}>
+      {teamActive && team.view && <div className={styles.standings} aria-label="생존전 순위">{team.view.players.map(player => <span key={player.slot} data-you={player.slot === team.view?.you}>{player.slot === team.view?.you ? "나" : `${player.slot + 1}번`} · {player.rank ? `${player.rank}위` : player.phase === "won" ? "생존 성공" : player.phase === "lost" ? "탈락" : `${player.round ?? 0}R · 적 ${player.enemies ?? 0}`}{!player.connected ? " · 연결 끊김" : ""}</span>)}</div>}
+      <div className={styles.commandRow}><Button ref={summonButton} className={styles.summon} disabled={!active || state.gold < RULES.summonCost || state.units.length >= RULES.maxUnits} onClick={() => command({ type: "summon" })}>랜덤 소환 <span>{RULES.summonCost} G</span></Button><div className={styles.selection}><strong>{selectedIds.length > 1 ? `${selectedIds.length}마리 선택` : selected ? unitLabel(selected) : "수비대 선택"}</strong><span>{stats ? `공격 ${number.format(stats.damage)} · 사거리 ${stats.range}` : `${state.units.length} / ${RULES.maxUnits}마리`}</span></div><Button ref={saleButton} variant="outline" disabled={!active || !selected || saleValue === 0} onClick={() => setSaleOpen(true)}>판매<span className={styles.salePrice}> +{saleValue} G</span></Button></div>
+      <div className={styles.reserves} aria-label="수비대 목록">{state.units.length === 0 ? <span className={styles.empty}>10원으로 뽑은 수비대가 중앙에 등장합니다.</span> : state.units.map(unit => <button type="button" key={unit.id} className={styles.reserve} data-unit-id={unit.id} data-rarity={unit.rarity} aria-pressed={selectedIds.includes(unit.id)} disabled={!active} onClick={event => choose(unit.id, additive || event.shiftKey)}><strong>{classLabel(unit.classId)} #{unit.id}{getUnitPoint(unit) ? " · 배치" : " · 대기"}</strong><span>{rarityLabel(unit.rarity)}</span></button>)}</div>
+      <div className={styles.toolbar}><Button variant="outline" disabled={!active || !state.gas} onClick={() => command({ type: "convert", amount: state.gas }, "모든 가스를 전환했습니다.")}>가스 모두 전환</Button><Button variant="outline" onClick={() => setPanel("commands")}>명령 · {selectedIds.length}</Button><Button variant="outline" onClick={() => setPanel("economy")}>자원 · 선택권 {state.tickets.length}</Button><Button variant="outline" onClick={() => setPanel("collection")}>컬렉션{readyCollections > 0 ? ` · 등록 ${readyCollections}` : ""}</Button><Button variant="outline" onClick={() => setPanel("stats")}>통계 · 확률</Button><Button variant="outline" onClick={() => setPanel("team")}>{teamActive ? `생존전 ${team.view?.code ?? "연결 중"}` : "생존전"}</Button><div className={styles.speed} aria-label="배속" hidden={teamActive}>{([1, 2, 4] as const).map(speed => <button key={speed} aria-pressed={state.speed === speed} disabled={!active} onClick={() => command({ type: "speed", speed }, `${speed}배속`)}>{speed}배속</button>)}</div></div>
+      <p className={styles.feedback} role={reward && !team.error ? undefined : "status"}>{team.error ?? (reward ? "수비대를 선택해 이동하거나 강화하세요." : feedback)}</p>
+    </footer>
+    <Dialog open={panel !== null} onOpenChange={open => { if (!open) setPanel(null); }}><Dialog.Content className={styles.panel} onCloseAutoFocus={event => { if (finished) { event.preventDefault(); retry.current?.focus(); } }}><Dialog.Title>{panelTitle}</Dialog.Title><Dialog.Description>{panel === "commands" ? "Shift로 추가 선택 · Ctrl 또는 Shift+1~3 저장 · 1~3 부대 선택" : panel === "team" ? "각자 전장과 자원으로 경쟁합니다. 동일한 시작 자원·적 난이도 · 배속·일시정지 없음 · 연결 끊김 30초 후 탈락 · 120라운드 생존자는 공동 우승" : "이 게임의 규칙과 현재 진행 상황입니다."}</Dialog.Description>
+      {panel === "commands" && <>
+        <div className={styles.cluster}><Button variant="outline" aria-pressed={additive} onClick={() => setAdditive(!additive)}>여러 마리 선택 {additive ? "켜짐" : "꺼짐"}</Button><Button variant="outline" onClick={() => select(state.units.map(unit => unit.id))}>전체 선택</Button><Button variant="outline" onClick={() => select([])}>선택 해제</Button></div>
+        {groups.map((ids, i) => <div className={styles.cluster} key={i}><span>{i + 1}번 부대 · {ids.filter(id => state.units.some(unit => unit.id === id)).length}마리</span><Button variant="outline" disabled={!selectedIds.length} onClick={() => group(i, true)}>{i + 1}번 저장</Button><Button variant="outline" disabled={!ids.length} onClick={() => { group(i, false); setPanel(null); }}>{i + 1}번 선택</Button></div>)}
+        <form className={styles.cluster} onSubmit={event => { event.preventDefault(); move(Number(x), Number(y)); }}><label>X 좌표<input name="x" type="number" min="0" max={RULES.boardWidth} value={x} onChange={event => setX(event.target.value)} /></label><label>Y 좌표<input name="y" type="number" min="0" max={RULES.boardHeight} value={y} onChange={event => setY(event.target.value)} /></label><Button type="submit" disabled={!active || !selectedIds.length}>선택 부대 이동</Button></form>
+        <p className={styles.help}>창을 닫고 전장의 원하는 위치를 눌러도 이동합니다. 같은 위치에 여러 마리를 배치할 수 있어요.</p>
+        <label className={styles.field}>공격 대상<select name="enemy" value={targetId} onChange={event => setTargetId(event.target.value)}><option value="">대상을 선택하세요</option>{state.enemies.map(enemy => <option key={enemy.id} value={enemy.id}>{enemy.name} #{enemy.id} · {sizeLabel[enemy.size]} · HP {Math.ceil(enemy.hp)} · 실드 {Math.ceil(enemy.shield)} · 방어 {enemy.armor}</option>)}</select></label>
+        <div className={styles.cluster}><Button disabled={!active || !targetId || !selectedIds.length} onClick={() => command({ type: "focus", unitIds: selectedIds, enemyId: Number(targetId) }, "선택한 적을 집중 공격합니다.")}>집중 공격</Button><Button variant="outline" disabled={!active || !selectedIds.length} onClick={() => command({ type: "focus", unitIds: selectedIds, enemyId: null }, "자동 공격으로 돌아갑니다.")}>자동 공격</Button></div>
+        {selected && stats && <div className={styles.details}><h2>{unitLabel(selected)}</h2><p>공격 {number.format(stats.damage)} · 사거리 {stats.range} · 공격 간격 {stats.attackMs}ms · 범위 {stats.splashRadius} · {stats.attackType === "normal" ? "일반형" : stats.attackType === "explosive" ? "폭발형" : "진동형"}</p><p>마나 {Math.floor(selected.mana)} / {RULES.maxMana} · {stats.bypassArmor ? "방어 무시" : "방어 적용"}</p><p>{stats.ability ? `${abilityLabel[stats.ability]} · 마나 ${RULES.abilityMana} · ${stats.ability === "emp" ? "대상의 실드를 제거합니다." : stats.ability === "lockdown" ? "대상의 이동을 멈춥니다." : "대상의 이동을 느리게 합니다."}` : "에픽 등급부터 계열 지원 기술을 사용합니다."}</p><Button disabled={!active || !stats.ability || selected.mana < RULES.abilityMana || !targetId} onClick={() => command({ type: "ability", unitId: selected.id, enemyId: Number(targetId) }, "지원 기술을 사용했습니다.")}>{stats.ability ? abilityLabel[stats.ability] : "지원 기술"} 사용</Button></div>}
+      </>}
+      {panel === "economy" && <>
+        <h2>계열 강화</h2><div className={styles.upgrades}>{CLASSES.map(item => <Button key={item.id} variant="outline" disabled={!active || state.gold < getUpgradeCost(state, item.id) || state.classLevels[item.id] >= RULES.maxUpgradeLevel} onClick={() => command({ type: "upgrade", classId: item.id }, `${item.label} 계열 강화 완료`)}><span>{item.label} +{state.classLevels[item.id]}</span><small>{getUpgradeCost(state, item.id)} G</small></Button>)}</div>
+        <h2>가스 전환</h2><p>가스 1 → 금화 {RULES.gasGoldRate} · 보유 가스 {state.gas}</p><form className={styles.cluster} onSubmit={event => { event.preventDefault(); command({ type: "convert", amount: Number(gasAmount) }, "가스를 금화로 전환했습니다."); }}><label>전환할 가스<input name="gas" type="number" min="1" max={state.gas} value={gasAmount} onChange={event => setGasAmount(event.target.value)} /></label><Button type="submit" disabled={!active || state.gas === 0}>가스 전환</Button><Button type="button" variant="outline" disabled={!active || state.gas === 0} onClick={() => command({ type: "convert", amount: state.gas }, "모든 가스를 전환했습니다.")}>모두 전환</Button></form>
+        <h2>동급 교환</h2><p>{selected ? unitLabel(selected) : "먼저 수비대를 선택하세요."} · {RULES.exchangeCost} G · 성공 {percent.format(RULES.exchangeChance)}</p><p className={styles.help}>실패하면 비용만 사용하고 기존 수비대와 배치는 유지됩니다. 전설 이상은 판매할 수 없으며 교환을 이용하세요.</p><div className={styles.cluster}><label>교환 계열<select name="exchange-class" value={exchangeClass} onChange={event => { const item = CLASSES.find(item => item.id === event.target.value); if (item) setExchangeClass(item.id); }}>{CLASSES.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}</select></label><Button disabled={!active || !selected || state.gold < RULES.exchangeCost} onClick={() => selected && command({ type: "exchange", unitId: selected.id, classId: exchangeClass }, "교환 결과를 확인하세요. 실패 시 기존 수비대가 유지됩니다.")}>동급 교환</Button></div>
+        <h2>보스 선택권 · {state.tickets.length}장</h2><p className={styles.help}>계열 선택은 표시 등급 확정. 도박은 {percent.format(RULES.ticketGambleChance)} 확률로 한 등급 상승하며 계열은 무작위입니다.</p>{state.tickets.length === 0 && <p>보스 처치·컬렉션·처치 보상으로 선택권을 얻습니다.</p>}{state.tickets.map(ticket => <div className={styles.details} key={ticket.id}><strong>{rarityLabel(ticket.rarity)} 선택권 #{ticket.id}</strong><div className={styles.cluster}>{CLASSES.map(item => <Button key={item.id} variant="outline" disabled={!active || state.units.length >= RULES.maxUnits} onClick={() => command({ type: "ticket", ticketId: ticket.id, classId: item.id }, "선택권을 사용했습니다.")}>{item.label} 선택</Button>)}<Button disabled={!active || state.units.length >= RULES.maxUnits} onClick={() => command({ type: "ticket", ticketId: ticket.id, classId: "gamble" }, "선택권 도박 결과를 확인하세요.")}>등급 도박</Button></div></div>)}
+      </>}
+      {panel === "collection" && <><h2>컬렉션 등록</h2>{collections.map(collection => <div key={collection.id} className={styles.details}><strong>{collection.label} · {collection.current} / {collection.required}</strong><p>{RARITIES[collection.minimumRank].label} 이상 계열별 1마리 · {CLASSES.map(item => `${item.label} ${collection.classes.includes(item.id) ? "충족" : "필요"}`).join(" · ")}</p><p>보상 {collection.gold} G + {rarityLabel(collection.ticket)} 선택권 · 유닛은 유지됩니다.</p><Button disabled={!active || !collection.ready} onClick={() => command({ type: "collection", collectionId: collection.id }, "컬렉션 등록 완료 · 보상을 받았습니다.")}>{collection.registered ? "등록 완료" : `${collection.label} 등록`}</Button></div>)}<h2>누적 처치 · {state.kills}마리</h2>{KILL_MILESTONES.map(milestone => <p key={milestone.kills}>{milestone.kills}마리 · {milestone.gold} G + {rarityLabel(milestone.ticket)} 선택권 · {state.killMilestones.includes(milestone.kills) ? "지급 완료" : `${Math.max(0, milestone.kills - state.kills)}마리 남음`}</p>)}</>}
+      {panel === "stats" && <>
+        <h2>수비대 통계 · {state.units.length} / {RULES.maxUnits}</h2><p>{CLASSES.map(item => `${item.label} ${state.units.filter(unit => unit.classId === item.id).length}마리 / 강화 +${state.classLevels[item.id]}`).join(" · ")}</p><div className={styles.tableWrap}><table><caption>등급별 소환 확률과 보유 수</caption><thead><tr><th>등급</th><th>소환 확률</th><th>보유</th><th>판매</th></tr></thead><tbody>{RARITIES.map(item => <tr key={item.id}><th>{item.label}</th><td>{percent.format(item.weight / RARITIES.reduce((sum, rarity) => sum + rarity.weight, 0))}</td><td>{state.units.filter(unit => unit.rarity === item.id).length}</td><td>{item.sellGold ? `${item.sellGold} G` : "교환 전용"}</td></tr>)}</tbody></table></div><p>소환 계열은 각 1/3 확률. 교환 성공 {percent.format(RULES.exchangeChance)} · 선택권 도박 승급 {percent.format(RULES.ticketGambleChance)} (최고 등급 유지).</p>
+        <div className={styles.tableWrap}><table><caption>공격 상성 · 소형 / 중형 / 대형</caption><thead><tr><th>계열</th><th>소형</th><th>중형</th><th>대형</th></tr></thead><tbody>{CLASSES.map(item => <tr key={item.id}><th>{item.label}</th>{(["small", "medium", "large"] as const).map(size => <td key={size}>{percent.format(DAMAGE_MATCHUPS[item.attackType][size])}</td>)}</tr>)}</tbody></table></div>
+        <p className={styles.help}>태초·종말은 모든 계열이 일반형 공격으로 소형·중형·대형에 100% 피해를 줍니다. 선택한 유닛의 실제 공격 유형은 명령 창에서 확인하세요.</p>
+        <h2>현재 적 구성</h2><p>{wave.name} · {sizeLabel[wave.size]} · 방어 {wave.armor} · {wave.bonus ? "보너스 처치 수입" : "일반 처치 수입"}</p>{wave.bossCount > 0 && <p>{wave.bossName} {wave.bossCount}마리 · {wave.bossDurationMs / 1000}초 · {rarityLabel(wave.rewardRarity)} 선택권</p>}<h2>보유 유닛 상세</h2>{state.units.length === 0 && <p>아직 수비대가 없습니다.</p>}{state.units.map(unit => { const spec = getUnitStats(state, unit); return <p key={unit.id}>{unitLabel(unit)} · 공격 {number.format(spec.damage)} / 사거리 {spec.range} / {spec.attackMs}ms / 범위 {spec.splashRadius} / 마나 {Math.floor(unit.mana)}{spec.ability ? ` / ${abilityLabel[spec.ability]}` : ""}{spec.bypassArmor ? " / 방어 무시" : ""}</p>; })}
+      </>}
+      {panel === "team" && <>
+        {team.view ? <><p>방 코드 <strong data-testid="room-code">{team.view.code}</strong> · {host ? "방장" : "참가자"}</p>{team.view.players.map(player => <p key={player.slot}>{player.slot + 1}번 {player.slot === team.view?.you ? "나" : "참가자"} · {player.connected ? "연결됨" : "연결 끊김"} · {player.rank ? `${player.rank}위` : player.ready ? "준비 완료" : "준비 전"}</p>)}{state.phase === "idle" && <div className={styles.cluster}><Button onClick={() => asyncTeam(() => team.send({ type: "ready" }))}>준비 {team.view.players.find(player => player.slot === team.view?.you)?.ready ? "취소" : "완료"}</Button>{host && <Button disabled={!ready} onClick={() => { command({ type: "start" }, "생존전 시작"); setPanel(null); }}>생존전 시작</Button>}</div>}<Button variant="outline" onClick={() => setLeaveOpen(true)}>방 나가기</Button><p className={styles.help}>경기는 계속 진행됩니다. 30초 안에 이 탭으로 재접속하면 복귀할 수 있습니다. 새 판은 방을 나간 뒤 만들어 주세요.</p></> : <><p>2~4인 생존 경쟁전 · 마지막 생존자가 우승합니다.</p><Button disabled={team.status === "connecting" || active || state.phase === "paused"} onClick={() => connectTeam(team.create)}>{team.status === "connecting" ? "연결 중… " : ""}생존전 방 만들기</Button><form className={styles.cluster} onSubmit={event => { event.preventDefault(); connectTeam(() => team.join(roomCode.trim())); }}><label>방 코드<input name="room-code" autoComplete="off" spellCheck={false} value={roomCode} onChange={event => setRoomCode(event.target.value)} placeholder="예: ABCD1234…" /></label><Button type="submit" disabled={team.status === "connecting" || active || state.phase === "paused"}>방 참가</Button></form></>}
+        {team.error && <p role="alert">{team.error}</p>}{!team.view && teamActive && <Button variant="outline" onClick={() => setLeaveOpen(true)}>연결 종료</Button>}
+      </>}
+      <p role="status" className={styles.help} data-celebration={!team.error && reward?.celebrated || undefined}>{team.error ?? rewardMessage}</p>
+    </Dialog.Content></Dialog>
+    <Dialog open={saleOpen && active} onOpenChange={setSaleOpen}><Dialog.Content className={styles.panel} showCloseButton={false} onCloseAutoFocus={event => { event.preventDefault(); (saleButton.current?.disabled ? summonButton.current : saleButton.current)?.focus(); }}><Dialog.Title>선택한 수비대를 판매할까요?</Dialog.Title><Dialog.Description>{selected ? unitLabel(selected) : "수비대"} 판매 시 {saleValue} G를 돌려받습니다.</Dialog.Description><Button variant="outline" onClick={() => setSaleOpen(false)}>취소</Button><Button onClick={() => { if (selected) command({ type: "sell", unitId: selected.id }, "수비대를 판매했습니다."); select([]); setSaleOpen(false); }}>판매 확정</Button></Dialog.Content></Dialog>
+    <Dialog open={leaveOpen} onOpenChange={setLeaveOpen}><Dialog.Content className={styles.panel}><Dialog.Title>생존전에서 나갈까요?</Dialog.Title><Dialog.Description>경기 중 나가면 기권 처리됩니다. 다른 참가자의 경기는 계속됩니다.</Dialog.Description><Button variant="outline" onClick={() => setLeaveOpen(false)}>취소</Button><Button onClick={() => { asyncTeam(async () => { try { await team.leave(); } finally { setTeamMode(false); runtime.current.teamActive = false; publish(createGame(seed ?? 1)); select([]); setGroups([[], [], []]); setSaleOpen(false); setPanel("team"); } }); setLeaveOpen(false); }}>방 나가기 확정</Button></Dialog.Content></Dialog>
+  </section>;
 }

@@ -100,7 +100,7 @@ export const GAMES: GameEntry[] = [
   {
     slug: "capybara-defense",
     title: GAME_TITLES["capybara-defense"],
-    description: "카피바라 수비대를 배치해 세 지도에서 폐쇄된 길을 도는 몬스터와 보스를 막는 디펜스 게임",
+    description: "카피바라 수비대를 소환·배치하고 계열을 강화해 120라운드의 적과 최종 보스를 막는 디펜스 게임",
     tier: "A",
     playDifficulty: "어려움",
     pageName: "defense",

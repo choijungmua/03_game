@@ -1,190 +1,146 @@
-.screen {
-  height: 100dvh;
-  overflow: hidden;
-  color: var(--foreground);
-  background-color: var(--background);
-  background-image:
-    linear-gradient(
-      color-mix(in oklch, var(--background) 58%, transparent),
-      color-mix(in oklch, var(--background) 76%, var(--primary))
-    ),
-    url("/assets/images/games/capybara-plane-shooter/background/swamp-morning.webp");
-  background-position: center;
-  background-size: cover;
-  padding: max(0.75rem, env(safe-area-inset-top)) 0.75rem max(0.75rem, env(safe-area-inset-bottom));
-}
-
 .shell {
-  width: min(100%, 96rem);
-  margin-inline: auto;
+  --field-ink: #152820;
+  --field-light: #fff1ca;
+  --field-earth: #514a39;
+  --field-stone: #827b61;
+  --field-gold: #f7cc71;
+  position: fixed;
+  inset: 0;
+  z-index: 30;
   display: grid;
-  gap: 0.75rem;
-  height: 100%;
-  grid-template-rows: auto minmax(0, 1fr);
-}
-
-.toolbar,
-.hud,
-.skills,
-.panelTabs,
-.panelGrid {
-  display: grid;
-  gap: 0.5rem;
-}
-
-.hud {
-  display: flex;
-  align-items: center;
-  overflow-x: auto;
-  border: 1px solid color-mix(in oklch, var(--primary) 38%, var(--border));
-  border-radius: var(--radius-lg);
-  background: linear-gradient(145deg, color-mix(in oklch, var(--primary) 18%, var(--card)), var(--card));
-  box-shadow: inset 0 1px color-mix(in oklch, var(--primary-foreground) 16%, transparent), var(--shadow-sm);
-}
-.toolbar { grid-template-columns: repeat(7, minmax(0, 1fr)); }
-.skills { grid-template-columns: repeat(8, minmax(2.75rem, 1fr)); }
-.panelTabs { grid-template-columns: repeat(3, 1fr); }
-.panelGrid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-.settingsGrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.5rem; }
-
-.hudItem,
-.panel,
-.notice,
-.bossBar {
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  background: color-mix(in oklch, var(--card) 94%, transparent);
-  box-shadow: var(--shadow-sm);
-}
-
-.panelCard:hover,
-.skill:hover { border-color: color-mix(in oklch, var(--primary) 65%, var(--border)); }
-
-.panelCard:focus-visible,
-.skill:focus-visible {
-  outline: 2px solid var(--ring);
-  outline-offset: 2px;
-}
-
-.hudMetric { display: flex; align-items: baseline; gap: 0.3rem; min-width: max-content; padding: 0.42rem 0.65rem; }
-.hudMetric + .hudMetric { border-left: 1px solid color-mix(in oklch, var(--primary) 24%, var(--border)); }
-.hudMetric span { color: var(--muted-foreground); font-size: 0.7rem; }
-.hudMetric strong { font-variant-numeric: tabular-nums; white-space: nowrap; }
-
-.gameGrid {
-  display: grid;
-  grid-template-columns: minmax(0, 58rem);
-  justify-content: center;
-  align-items: start;
-  gap: 0.75rem;
-  min-height: 0;
-}
-
-.arenaColumn { min-width: 0; min-height: 0; display: grid; grid-template-rows: minmax(0, 1fr) auto auto auto auto; gap: 0.5rem; }
-.arena {
-  position: relative;
-  width: 100%;
-  aspect-ratio: 1;
-  max-height: calc(100dvh - 22rem);
-  justify-self: center;
+  grid-template-rows: 88px minmax(0, 1fr) auto;
+  gap: 8px;
+  padding: max(8px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) max(8px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
+  color: var(--foreground);
+  background: radial-gradient(ellipse at 50% 40%, color-mix(in srgb, var(--field-ink) 90%, var(--field-earth)), var(--background) 85%);
+  color-scheme: dark;
   overflow: hidden;
-  border: 2px solid color-mix(in oklch, var(--primary) 55%, var(--border));
-  border-radius: calc(var(--radius-lg) + 0.35rem);
-  background: var(--muted);
-  box-shadow: var(--shadow-md);
+  overscroll-behavior: none;
+  font-variant-numeric: tabular-nums;
 }
-
-.arena canvas { width: 100%; height: 100%; display: block; }
-
-.phaseBadge {
-  position: absolute;
-  top: 0.7rem;
-  left: 0.7rem;
-  padding: 0.35rem 0.65rem;
-  border-radius: 999px;
-  color: var(--primary-foreground);
-  background: color-mix(in oklch, var(--primary) 88%, transparent);
-  font-weight: 700;
+.hud { display: flex; justify-content: center; align-items: center; gap: clamp(16px, 4vw, 48px); padding-inline: 64px; min-width: 0; }
+.hud > div { display: flex; flex-direction: column; gap: 4px; }
+.hud span, .selection span, .message small { font-size: 12px; color: var(--muted-foreground); }
+.hud strong { font-size: 20px; white-space: nowrap; }
+.hud small { font-size: 12px; font-weight: 400; color: var(--muted-foreground); }
+.stage { min-height: 0; min-width: 0; display: grid; place-items: center; container-type: size; }
+.board { position: relative; width: min(100cqw, 150cqh, 1120px); aspect-ratio: 3 / 2; max-height: 100%; overflow: hidden; border: 1px solid color-mix(in srgb, var(--field-stone) 65%, transparent); border-radius: calc(var(--radius) * 2); background: var(--field-ink); box-shadow: 0 2px 0 var(--field-earth), 0 12px 32px #15282080; }
+.board canvas { display: block; width: 100%; height: 100%; }
+.cells { position: absolute; inset: 0; pointer-events: none; }
+.cell { position: absolute; pointer-events: auto; transform: translate(-50%, -50%); width: 44px; height: 44px; border-radius: var(--radius); touch-action: manipulation; cursor: pointer; color: var(--field-light); border: 1px solid transparent; background: transparent; }
+.cell span { opacity: .18; font-size: 24px; }
+.cell[data-available="true"] { background: #fff1ca0b; border-color: #fff1ca30; }
+.cell[data-selected="true"] { background: #fff1ca18; }
+.cell[data-selected="true"] span { opacity: 1; position: absolute; bottom: 0; right: 4px; font-size: 16px; }
+.cell:hover { background: #fff1ca18; }
+.cell:focus-visible, .reserve:focus-visible { outline: 2px solid var(--field-light); outline-offset: 2px; }
+.overlay { position: absolute; inset: 0; display: grid; place-items: center; background: #152820ab; padding: 16px; }
+.message { width: min(100%, 360px); text-align: center; display: grid; gap: 16px; color: var(--field-light); }
+.message h1 { font-size: 24px; font-weight: 800; text-wrap: balance; }
+.message p { font-size: 14px; line-height: 1.6; text-wrap: balance; }
+.message small { color: var(--field-light); opacity: .8; }
+.message button { min-height: 44px; touch-action: manipulation; }
+.start { min-height: 48px; width: 100%; font-size: 16px; }
+.resultStats { font-variant-numeric: tabular-nums; }
+.deck { width: min(100%, 1120px); justify-self: center; min-width: 0; display: grid; gap: 8px; padding: 12px; border: 1px solid color-mix(in srgb, var(--field-stone) 35%, transparent); border-radius: calc(var(--radius) * 2); background: linear-gradient(150deg, color-mix(in srgb, var(--field-earth) 50%, var(--background)), var(--background)); box-shadow: inset 0 1px 0 #fff1ca18, 0 8px 24px #15282040; }
+.commandRow { display: flex; gap: 12px; align-items: center; }
+.commandRow button { min-height: 44px; touch-action: manipulation; }
+.summon { min-width: 148px; display: flex; flex-direction: column; gap: 0; font-weight: 700; }
+.summon span { font-size: 12px; font-weight: 400; }
+.selection { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.selection strong { font-size: 14px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.selection span { white-space: nowrap; }
+.reserves { display: flex; gap: 8px; height: 48px; overflow-x: auto; overscroll-behavior-inline: contain; padding: 2px; scrollbar-width: thin; }
+.empty { align-self: center; font-size: 12px; color: var(--muted-foreground); }
+.reserve { display: flex; flex-direction: column; justify-content: center; flex-shrink: 0; min-width: 84px; min-height: 44px; border-radius: var(--radius); background: var(--secondary); padding: 4px 12px; text-align: left; cursor: pointer; touch-action: manipulation; }
+.reserve strong { font-size: 12px; }
+.reserve span { font-size: 12px; color: var(--muted-foreground); }
+.reserve[aria-pressed="true"] { background: var(--primary); color: var(--primary-foreground); }
+.reserve[aria-pressed="true"] span { color: inherit; }
+.unitBadges { position: absolute; inset: 0; isolation: isolate; pointer-events: none; }
+.unitBadge { position: absolute; transform: translate(-50%, -50%); z-index: 1; font-size: 12px; line-height: 16px; font-weight: 700; padding: 0 4px; border: 1px solid; border-radius: 4px; color: var(--field-light); background: var(--field-ink); white-space: nowrap; box-shadow: 0 2px 4px #15282080; }
+.unitBadge[data-selected="true"] { z-index: 2; }
+.unitBadge[data-rarity="legendary"], .unitBadge[data-rarity="epic"], .unitBadge[data-rarity="mythic"], .unitBadge[data-rarity="primordial"], .unitBadge[data-rarity="apocalypse"] { background: var(--field-earth); }
+.reserve[data-rarity="legendary"] span, .reserve[data-rarity="epic"] span, .reserve[data-rarity="mythic"] span, .reserve[data-rarity="primordial"] span, .reserve[data-rarity="apocalypse"] span { color: var(--field-gold); }
+.reserve[aria-pressed="true"] span { color: inherit; }
+.pressure meter { width: 100%; min-width: 56px; height: 6px; accent-color: var(--field-gold); }
+.pressure[data-pressure="danger"] strong, .pressure[data-pressure="danger"] > span { color: var(--destructive); }
+.pressure[data-pressure="warning"] > span { color: var(--field-gold); }
+.teamSeats { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
+.teamSeats span { background: var(--field-ink); padding: 4px 8px; border-radius: var(--radius); }
+.drawResult { position: absolute; inset: 0; display: flex; flex-direction: column; justify-content: center; align-items: center; pointer-events: none; text-align: center; padding: 24px; gap: 8px; }
+.drawResult strong { max-width: 320px; font-size: 14px; line-height: 1.5; color: var(--field-light); background: var(--field-ink); border: 1px solid var(--field-stone); border-radius: var(--radius); padding: 8px 12px; }
+.drawResult[data-celebration="true"] strong { border-color: var(--field-gold); color: var(--field-gold); }
+.drawPortrait { width: 72px; height: 72px; background-size: contain; background-position: center; background-repeat: no-repeat; }
+.standings { display: flex; gap: 8px; overflow-x: auto; font-size: 12px; }
+.standings span { flex-shrink: 0; padding: 4px 8px; border-radius: var(--radius); background: var(--field-ink); }
+.standings [data-you="true"] { color: var(--field-gold); }
+.speed[hidden] { display: none; }
+.overlay { overflow-y: auto; overscroll-behavior: contain; }
+.upgrades { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.upgrades button { min-height: 44px; display: flex; gap: 8px; justify-content: space-between; padding-inline: 12px; touch-action: manipulation; }
+.upgrades small { font-size: 12px; color: var(--muted-foreground); }
+.feedback { height: 20px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted-foreground); font-size: 12px; }
+.feedback[data-celebration="true"], .help[data-celebration="true"] { color: var(--foreground); font-weight: 700; background: var(--secondary); border-radius: var(--radius); padding-inline: 8px; }
+.reserve { transition: transform 120ms ease-out, background-color 120ms ease-out; }
+.reserve:active { transform: scale(.97); }
+@media (max-width: 600px) {
+  .shell { padding-inline: max(8px, env(safe-area-inset-left)) max(8px, env(safe-area-inset-right)); grid-template-rows: 112px minmax(0, 1fr) auto; gap: 4px; }
+  .hud { align-content: center; gap: 16px; flex-wrap: wrap; padding: 4px 56px; }
+  .hud > div { gap: 0; }
+  .hud strong { font-size: 16px; }
+  .hud span, .hud small { font-size: 12px; }
+  .waveClock { flex-direction: row !important; align-items: baseline; gap: 8px !important; }
+  .waveClock { flex-wrap: wrap; row-gap: 0 !important; }
+  .nextGoal { flex-basis: 100%; text-align: center; }
+  .feedback { height: 40px; line-height: 20px; white-space: normal; overflow-wrap: anywhere; }
+  .commandRow { gap: 8px; }
+  .summon { min-width: 112px; }
+  .salePrice { display: none; }
+  .selection strong { font-size: 12px; }
+  .upgrades button { flex-direction: column; justify-content: center; gap: 0; padding: 4px; font-size: 12px; }
+  .message { gap: 8px; }
+  .message h1 { font-size: 20px; }
+  .message p { font-size: 12px; }
 }
-
-.bossBar { padding: 0.55rem 0.75rem; }
-.bossTrack,
-.manaTrack { overflow: hidden; height: 0.45rem; border-radius: 999px; background: var(--muted); }
-.bossFill { width: 64%; height: 100%; background: var(--destructive); }
-.manaFill { height: 100%; background: var(--primary); }
-
-.panel { min-height: 20rem; padding: 0.8rem; }
-.panel { position: fixed; z-index: 30; top: max(0.75rem, env(safe-area-inset-top)); right: 0.75rem; width: min(24rem, calc(100% - 1.5rem)); max-height: calc(100dvh - 1.5rem); overflow-y: auto; overscroll-behavior: contain; border-color: color-mix(in oklch, var(--primary) 42%, var(--border)); box-shadow: var(--shadow-xl); }
-.panelClose { position: sticky; top: 0; z-index: 1; float: right; }
-.panel h2 { margin-bottom: 0.75rem; font-weight: 750; }
-.panelActions { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-block: 0.65rem; }
-.panelCard { min-width: 0; padding: 0.65rem; border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--muted); }
-.panelCard strong, .panelCard span { display: block; overflow-wrap: anywhere; }
-.panelCard span { color: var(--muted-foreground); font-size: 0.75rem; }
-
-.probabilityDialog { max-height: min(88dvh, 46rem); overflow-y: auto; overscroll-behavior: contain; }
-.probabilitySection { margin-top: 0.75rem; padding: 0.7rem; border: 1px solid var(--border); border-radius: var(--radius-md); background: color-mix(in oklch, var(--primary) 8%, var(--card)); }
-.probabilitySection h3 { margin-bottom: 0.4rem; font-weight: 750; }
-.probabilitySection dl { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.35rem 0.8rem; }
-.probabilitySection dl div { display: flex; justify-content: space-between; gap: 0.5rem; min-width: 0; }
-.probabilitySection dd { font-variant-numeric: tabular-nums; font-weight: 700; }
-
-.placementGhost { position: absolute; z-index: 4; width: 2.75rem; height: 2.75rem; translate: -50% -50%; border: 2px solid var(--destructive); border-radius: 50%; background: color-mix(in oklch, var(--destructive) 22%, transparent); pointer-events: none; }
-.placementGhost[data-valid="true"] { border-color: var(--primary); background: color-mix(in oklch, var(--primary) 24%, transparent); animation: settle 220ms ease-out; }
-.rangePreview { position: absolute; inset: -2.75rem; border: 1px dashed color-mix(in oklch, var(--primary) 74%, transparent); border-radius: 50%; }
-.drawMotion, .placeMotion, .attackMotion, .monsterMotion { position: absolute; z-index: 3; width: 2.5rem; height: 2.5rem; opacity: 0; pointer-events: none; background-image: url('/assets/images/games/capybara-defense/units-ui.webp'); background-size: 800% 400%; }
-.drawMotion { left: 8%; bottom: 8%; }
-.placeMotion { left: 50%; top: 50%; }
-.attackMotion { left: 35%; top: 35%; }
-.monsterMotion { right: 12%; top: 18%; }
-.drawMotion[data-active="true"], .placeMotion[data-active="true"] { animation: felt-pop 420ms ease-out both; }
-.attackMotion[data-active="true"] { animation: effect-travel 560ms ease-out both; }
-.monsterMotion[data-active="true"] { animation: loop-step 900ms ease-in-out infinite alternate; }
-
-@keyframes felt-pop { from { opacity: 0; transform: scale(0.72) translateY(0.5rem); } to { opacity: 0.88; transform: scale(1) translateY(0); } }
-@keyframes effect-travel { from { opacity: 0; transform: translateX(-1rem) scale(0.8); } 45% { opacity: 1; } to { opacity: 0; transform: translateX(3rem) scale(1); } }
-@keyframes loop-step { from { opacity: 0.55; transform: translateX(-0.3rem); } to { opacity: 0.9; transform: translateX(0.3rem); } }
-@keyframes settle { from { opacity: 0.35; transform: scale(1.18); } to { opacity: 1; transform: scale(1); } }
-
-.skill {
-  position: relative;
-  min-height: 3.25rem;
-  width: min(100%, 3.5rem);
-  aspect-ratio: 1;
-  justify-self: center;
-  padding: 0.25rem;
-  overflow: hidden;
-  border: 1px solid var(--border);
-  border-radius: 50%;
-  background: var(--card);
-  touch-action: manipulation;
+@media (min-width: 500px) and (max-height: 520px) {
+  .shell { grid-template-columns: minmax(0, 1fr) 208px; grid-template-rows: 60px minmax(0, 1fr); }
+  .hud { grid-column: 1 / -1; padding-left: 120px; }
+  .shell [aria-label="효과음"] { left: calc(max(1rem, env(safe-area-inset-left)) + 52px); margin-top: 0; }
+  .stage { grid-row: 2; }
+  .deck { grid-column: 2; grid-row: 2; align-self: center; }
+  .summon { min-width: 0; }
+  .commandRow { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .selection { grid-column: 1 / -1; grid-row: 2; }
+  .commandRow > button:last-child { grid-column: 2; grid-row: 1; }
+  .upgrades button { flex-direction: column; gap: 0; padding-inline: 4px; font-size: 12px; }
+  .salePrice { display: none; }
 }
-
-.skillArt {
-  width: 100%; height: 100%; min-height: 2.7rem; display: block;
-  background-image: url('/assets/images/games/capybara-defense/units-ui.webp');
-  background-size: 800% 400%;
-  background-position-y: -200%;
-}
-
-.skillCost { position: absolute; right: 0.2rem; bottom: 0.1rem; min-width: 1.15rem; border-radius: 999px; background: var(--background); font-size: 0.65rem; font-weight: 750; }
-.notice { min-height: 2.5rem; padding: 0.55rem 0.7rem; color: var(--muted-foreground); }
-.warning { border-color: var(--destructive); color: var(--foreground); }
-.noWrap { white-space: nowrap; }
-.action { min-height: 2.75rem; touch-action: manipulation; }
-
-@media (max-width: 800px) {
-  .screen { padding-inline: 0.5rem; }
-  .hud { grid-template-columns: repeat(3, 1fr); }
-  .gameGrid { grid-template-columns: 1fr; }
-  .arena { min-height: 0; height: auto; }
-  .panel { min-height: 0; }
-  .toolbar { grid-template-columns: repeat(3, 1fr); }
-  .skills { grid-template-columns: repeat(4, 1fr); }
-  .skill { min-height: 2.75rem; width: 2.75rem; }
-  .panelGrid { grid-template-columns: repeat(2, 1fr); }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .screen *, .screen *::before, .screen *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
-}
+@media (prefers-reduced-motion: reduce) { .reserve { transition: none; } .reserve:active { transform: none; } }
+.toolbar { display: flex; gap: 4px; overflow-x: auto; padding-block: 2px; scrollbar-width: thin; }
+.toolbar > * { flex-shrink: 0; }
+.toolbar button, .panel button { min-height: 44px; touch-action: manipulation; }
+.toolbar button { padding-inline: 12px; font-size: 12px; }
+.speed { display: flex; gap: 4px; }
+.speed button { min-width: 44px; border-radius: var(--radius); background: var(--secondary); }
+.speed button[aria-pressed="true"] { background: var(--primary); color: var(--primary-foreground); }
+.speed button:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+.panel { max-height: min(85dvh, 800px); overflow-y: auto; overscroll-behavior: contain; gap: 16px; font-size: 14px; }
+.panel [data-slot="dialog-close"] { min-inline-size: 44px; min-block-size: 44px; display: grid; place-items: center; }
+.panel h2 { font-size: 16px; font-weight: 700; scroll-margin-top: 16px; }
+.panel p { line-height: 1.6; overflow-wrap: anywhere; }
+.panel label { display: grid; gap: 4px; min-width: 0; }
+.panel input, .panel select { min-height: 44px; max-width: 100%; width: 100%; background-color: var(--background); color: var(--foreground); border: 1px solid var(--border); border-radius: var(--radius); padding: 8px; font-size: 16px; }
+.panel input:focus-visible, .panel select:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+.cluster { display: flex; flex-wrap: wrap; align-items: end; gap: 8px; }
+.cluster label { flex: 1; min-width: 96px; }
+.cluster > span { flex: 1; align-self: center; }
+.field { width: 100%; }
+.details { display: grid; gap: 8px; border-top: 1px solid var(--border); padding-block: 12px; }
+.help { color: var(--muted-foreground); font-size: 12px; }
+.tableWrap { overflow-x: auto; }
+.tableWrap table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
+.tableWrap caption { text-align: left; margin-bottom: 8px; font-weight: 700; }
+.tableWrap th, .tableWrap td { text-align: left; padding: 8px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+@media (max-width: 600px) { .hud { gap: 8px 16px; } .waveClock { flex-basis: 100%; justify-content: center; } }
+@media (min-width: 500px) and (max-height: 520px) { .toolbar { max-width: 208px; } }
