@@ -17,7 +17,7 @@ function fakeLobby(received: PresenceRequest[]) {
       received.push(request);
       if (request.name && request.name !== TAKEN_NAME) name = request.name;
       const message: LobbyMessage = {
-        you: { ...request, outfit: {}, id: "me", name, stunMs: 0, attackMs: 0, chat: "", chatMs: 0 },
+        you: { ...request, outfit: {}, id: "me", name, level: 1, stunMs: 0, attackMs: 0, chat: "", chatMs: 0 },
         players: [],
         online: 1,
         hit: null,

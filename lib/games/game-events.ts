@@ -1,6 +1,7 @@
 // 게임 이벤트(입장·한 판 기록·공유)를 백엔드(API_URL)로 한 번씩 보낸다. 저장은 백엔드가 맡는다. 실패해도 게임에는 영향 없음
 
 import { fetchApi } from "@/lib/api-url";
+import { loadLobbyProfile } from "@/lib/lobby/profile";
 
 const SESSION_KEY = "game-session-id";
 /** 통계 전송은 서버가 꺼져 있어도 오래 매달리지 않게 짧게 끊는다 */
@@ -76,10 +77,19 @@ export function submitGameRecord(slug: string, score: number, data: object) {
     post(slug, "records", { score, data }),
     post(slug, "sessions/finish", { score, durationSeconds, clientBuild }),
     post(slug, "telemetry", { eventType: "score", value: score }),
-    post(slug, "telemetry", { eventType: "game_complete", value: score, durationSeconds }),
+    // 로비 카피바라 경험치는 이 프로필 id로 서버가 쌓는다
+    post(slug, "telemetry", { eventType: "game_complete", value: score, durationSeconds, profileId: lobbyProfileId() }),
   ];
   if (progress !== undefined) writes.push(post(slug, "telemetry", { eventType: "map_progress", value: progress }));
   return Promise.all(writes).then(() => undefined);
+}
+
+function lobbyProfileId() {
+  try {
+    return loadLobbyProfile().id;
+  } catch {
+    return undefined;
+  }
 }
 
 export function wasGameCompleted(slug: string) {

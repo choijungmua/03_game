@@ -56,6 +56,7 @@ export const KEYBOARD_ROWS = [
 export const LOBBY_KEY_GUIDE = [
   { keys: ["W", "A", "S", "D", "↑", "←", "↓", "→"], label: "걷기" },
   { keys: ["F", "J"], label: "때리기" },
+  { keys: ["G", "K"], label: "대시 (5Lv부터 · 쿨타임 5초 · 처음 닿은 한 명 기절)" },
   {
     keys: ["Space"],
     label: "통나무 앞에서 앉기 · 온천 앞에서 목욕(한 번 더 누르면 나오기) · 물가에서 계속 낚시(한 번 더 누르면 그만) · 게시판 앞에서 방명록",
