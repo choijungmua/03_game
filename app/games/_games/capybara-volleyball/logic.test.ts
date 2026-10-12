@@ -51,4 +51,29 @@ describe("capybara volleyball logic", () => {
     }
     expect(touches).toBeGreaterThan(0);
   });
+
+  it("dives forward when hit is pressed on the ground", () => {
+    const state = createGame();
+    const result = step(state, [KEY.hit, 0]);
+    expect(result.events).toContain("dive");
+    const later = run(result.state, () => [KEY.hit, 0], 10);
+    expect(later.players[0].x).toBeGreaterThan(state.players[0].x + 30);
+  });
+
+  it("buffers a jump pressed just before landing", () => {
+    let state = createGame();
+    state = { ...state, players: [{ ...state.players[0], y: PLAYER_Y - 4, vy: 3 }, state.players[1]] };
+    state = step(state, [KEY.up, 0]).state;
+    expect(run(state, () => [0, 0], 2).players[0].vy).toBeLessThan(0);
+  });
+
+  it("freezes a few frames after a spike lands", () => {
+    let state = createGame();
+    state = { ...state, players: [{ ...state.players[0], y: PLAYER_Y - 60, vy: -2 }, state.players[1]] };
+    state = step(state, [KEY.hit, 0]).state;
+    const me = state.players[0];
+    state = step({ ...state, ball: { x: me.x + 20, y: me.y - 30, vx: 0, vy: 0 } }, [KEY.hit, 0]).state;
+    expect(state.freeze).toBeGreaterThan(0);
+    expect(step(state, [0, 0]).state.ball).toEqual(state.ball);
+  });
 });

@@ -54,6 +54,7 @@
     --animate-munch: munch 0.18s ease-in-out infinite;
     --animate-plate-shake: plate-shake 0.14s linear infinite;
     --animate-munch-pop: munch-pop 0.6s ease-out infinite;
+    --animate-score-pop: score-pop 0.45s cubic-bezier(0.175, 0.885, 0.32, 1.275);
     --animate-pang-drop: pang-drop 0.3s ease-in;
     --animate-pang-time: pang-time 60s linear forwards;
     --animate-pang-pop: pang-pop 0.46s ease-out forwards;
@@ -427,6 +428,12 @@ html:has([data-hide-page-scrollbar="true"]) body::-webkit-scrollbar {
   0% { transform: translate(-50%, 0) scale(0.6) rotate(-8deg); opacity: 0; }
   20% { transform: translate(-50%, -30%) scale(1.15) rotate(4deg); opacity: 1; }
   100% { transform: translate(-50%, -180%) scale(0.9) rotate(-4deg); opacity: 0; }
+}
+
+@keyframes score-pop {
+  0% { transform: scale(1); }
+  40% { transform: scale(1.6) rotate(-6deg); color: #e05a3a; }
+  100% { transform: scale(1); }
 }
 
 @media (prefers-reduced-motion: reduce) {
