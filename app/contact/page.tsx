@@ -31,8 +31,7 @@ export default function ContactPage() {
       <section className="space-y-2">
         <h2 className="text-base font-semibold text-foreground">만드는 사람들</h2>
         <p>
-          ggpli는 두 명이 함께 개발하는 웹게임 서비스입니다. 운영자가 서비스 개발과 운영을 맡고,
-          백엔드 담당자가 게임 서버와 실시간 기능 개발에 참여합니다.
+          ggpli는 게임 서버와 실시간 기능까지 직접 개발하고 운영하는 웹게임 서비스입니다.
           게임을 직접 만들고 고치며, 이용 중 발견한 문제와 제안을 운영 메일로 받고 있습니다.
         </p>
       </section>
