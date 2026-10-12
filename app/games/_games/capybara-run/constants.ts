@@ -45,6 +45,24 @@ export const RUN_SOUNDS = {
     { kind: "tone", wave: "sine", from: 880, to: 180, ms: 600, level: 0.07, attack: 20 },
     { kind: "noise", filter: "bandpass", q: 1, from: 1600, to: 300, ms: 600, level: 0.05, attack: 40 },
   ],
+  /** 뽀잉: 버섯 점프 */
+  spring: [
+    { kind: "tone", wave: "sine", from: 180, to: 760, ms: 260, level: 0.09, attack: 6 },
+    { kind: "tone", wave: "sine", from: 360, to: 1500, ms: 200, level: 0.03, attack: 6 },
+  ],
+  /** 하트 회복 — 따뜻한 두 음 */
+  heart: [
+    { kind: "tone", wave: "sine", from: 784, to: 784, ms: 140, level: 0.07, attack: 10 },
+    { at: 110, kind: "tone", wave: "sine", from: 1175, to: 1175, ms: 280, level: 0.07, attack: 10 },
+  ],
+  /** 스테이지 시작·보너스 타임 — 밝은 팡파르 */
+  stage: [
+    { kind: "tone", wave: "triangle", from: 784, to: 784, ms: 140, level: 0.07, attack: 8 },
+    { at: 120, kind: "tone", wave: "triangle", from: 988, to: 988, ms: 140, level: 0.07, attack: 8 },
+    { at: 240, kind: "tone", wave: "triangle", from: 1175, to: 1175, ms: 140, level: 0.07, attack: 8 },
+    { at: 360, kind: "tone", wave: "sine", from: 1568, to: 1568, ms: 520, level: 0.08, attack: 8 },
+    { at: 360, kind: "noise", filter: "highpass", q: 0.7, from: 6000, to: 9000, ms: 500, level: 0.03, attack: 60 },
+  ],
   /** 장애물 통과 — 아주 가볍게 */
   pass: [{ kind: "tone", wave: "sine", from: 988, to: 1175, ms: 120, level: 0.035, attack: 8 }],
   /** 게임 끝 — 내려가는 부드러운 세 음 */

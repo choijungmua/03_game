@@ -15,6 +15,9 @@ import {
   type RunInput,
   type RunState,
   SECOND_POINTS,
+  STAGE_BONUS_FRAMES,
+  STAGE_START,
+  STAR_BONUS_FRAMES,
   START_SPEED,
   step,
 } from "./logic";
@@ -22,14 +25,14 @@ import {
 const IDLE: RunInput = { jump: false, down: false };
 
 /** 장애물·코인을 직접 놓은 판 (자동 생성은 멀리 밀어 둔다) */
-function course(hazards: Omit<Hazard, "id" | "passed" | "hit" | "top">[] & { top?: number }[], coins: Omit<Coin, "id" | "taken">[] = []): RunState {
+function course(hazards: Omit<Hazard, "id" | "passed" | "hit" | "top">[] & { top?: number }[], coins: Omit<Coin, "id" | "taken" | "kind">[] = []): RunState {
   const groups: RunState["groups"] = {};
   for (const coin of coins) groups[coin.group] = { total: (groups[coin.group]?.total ?? 0) + 1, taken: 0, missed: false };
   return {
     ...createRun(1),
     nextX: 1e9,
     hazards: hazards.map((hazard, index) => ({ top: 0, ...hazard, id: index + 1, passed: false, hit: false }) as Hazard),
-    coins: coins.map((coin, index) => ({ ...coin, id: 100 + index, taken: false })),
+    coins: coins.map((coin, index) => ({ kind: "coin" as const, ...coin, id: 100 + index, taken: false })),
     groups,
   };
 }
@@ -55,7 +58,9 @@ describe("capybara run logic", () => {
 
   it("speeds up over time but never past the cap", () => {
     expect(run(course([]), 600).state.speed).toBeGreaterThan(START_SPEED);
-    expect(run(course([]), 60 * 60 * 10).state.speed).toBe(MAX_SPEED);
+    let state = course([]);
+    for (let frame = 0; frame < 5000; frame += 1) state = step({ ...state, hearts: 3 }, IDLE).state;
+    expect(state.speed).toBe(MAX_SPEED);
   });
 
   it("a single jump cannot reach the bar, a double jump grabs it and carries the capybara over the pit", () => {
@@ -144,10 +149,74 @@ describe("capybara run logic", () => {
     expect(kinds(42)).toEqual(kinds(42));
     const seen = new Set<string>();
     let state = createRun(7);
-    for (let frame = 0; frame < 60 * 120; frame += 1) {
+    for (let frame = 0; frame < 60 * 150; frame += 1) {
       state = step({ ...state, hearts: 3 }, IDLE).state;
       for (const hazard of state.hazards) seen.add(hazard.kind);
     }
-    expect([...seen].sort()).toEqual(["bar", "branch", "fire", "log", "pit", "step", "thorn"]);
+    expect([...seen].sort()).toEqual(["bar", "branch", "fire", "log", "pit", "spring", "step", "thorn"]);
+  });
+
+  it("moves to stage 2 and 3 over time, each starting with a bonus time", () => {
+    let state = course([]);
+    const stages: number[] = [];
+    for (let frame = 0; frame < STAGE_START[3] + 10; frame += 1) {
+      const result = step({ ...state, hearts: 3 }, IDLE);
+      state = result.state;
+      for (const event of result.events) if (event.type === "stage") stages.push(event.stage);
+      if (frame === STAGE_START[2]) expect(state.bonus).toBeGreaterThan(STAGE_BONUS_FRAMES - 5);
+    }
+    expect(stages).toEqual([2, 3]);
+    expect(state.stage).toBe(3);
+  });
+
+  it("bonus time makes the capybara safe from hazards and pits, and doubles coins", () => {
+    const start = { ...course([{ kind: "fire", x: PLAYER_X + 60, w: 80 }, { kind: "pit", x: PLAYER_X + 200, w: 300 }], [{ x: PLAYER_X + 40, y: GROUND - 18, group: 1 }]), bonus: 200 };
+    const { state, events } = run(start, 70);
+    expect(state.hearts).toBe(3);
+    expect(events.some((event) => event.type === "fall")).toBe(false);
+    expect(state.score).toBeGreaterThanOrEqual(20);
+  });
+
+  it("a star starts bonus time and a heart restores a heart", () => {
+    const start = {
+      ...course([]),
+      hearts: 2,
+      coins: [
+        { id: 1, kind: "heart" as const, x: PLAYER_X + 30, y: GROUND - 18, group: 1, taken: false },
+        { id: 2, kind: "star" as const, x: PLAYER_X + 90, y: GROUND - 18, group: 2, taken: false },
+      ],
+    };
+    const { state, events } = run(start, 20);
+    expect(state.hearts).toBe(3);
+    expect(events.some((event) => event.type === "bonusStart")).toBe(true);
+    expect(state.bonus).toBeGreaterThan(STAR_BONUS_FRAMES - 20);
+  });
+
+  it("a mushroom launches the capybara over a pit too wide to jump", () => {
+    const spring = [
+      { kind: "spring" as const, x: PLAYER_X + 40, w: 36 },
+      { kind: "pit" as const, x: PLAYER_X + 90, w: 7 * 30 },
+    ];
+    const { state, events } = run(course(spring), 90);
+    expect(events.some((event) => event.type === "spring")).toBe(true);
+    expect(state.hearts).toBe(3);
+    expect(state.player.y).toBe(GROUND);
+  });
+
+  it("jumping off one bar catches the next bar over a long pit", () => {
+    const bars = [
+      { kind: "bar" as const, x: PLAYER_X - 10, w: 300 },
+      { kind: "bar" as const, x: PLAYER_X + 290 + 50, w: 400 },
+      { kind: "pit" as const, x: PLAYER_X + 150, w: 600 },
+    ];
+    let jumpedOff = false;
+    const { state } = run(course(bars), 110, (s, frame) => {
+      // 첫 철봉 끝 가까이에서 뛰어내린다
+      const nearEnd = s.player.mode === "hang" && s.distance + PLAYER_X > PLAYER_X + 270;
+      const jump = frame === 0 || frame === 12 || (nearEnd && !jumpedOff);
+      if (nearEnd) jumpedOff = true;
+      return { jump, down: false };
+    });
+    expect(state.hearts).toBe(3);
   });
 });

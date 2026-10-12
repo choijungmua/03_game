@@ -32,9 +32,9 @@ export const COIN_POINTS = 10;
 /** 한 묶음 코인을 하나도 안 놓치고 다 먹으면 코인 하나당 이만큼 더 */
 export const BONUS_PER_COIN = 20;
 
-export type HazardKind = "log" | "branch" | "fire" | "thorn" | "pit" | "bar" | "step";
+export type HazardKind = "log" | "branch" | "fire" | "thorn" | "pit" | "bar" | "step" | "spring";
 
-export const PASS_POINTS: Record<HazardKind, number> = { log: 20, branch: 30, fire: 30, thorn: 60, pit: 40, bar: 120, step: 50 };
+export const PASS_POINTS: Record<HazardKind, number> = { log: 20, branch: 30, fire: 30, thorn: 60, pit: 40, bar: 120, step: 50, spring: 30 };
 export const HAZARD_NAMES: Record<HazardKind, string> = {
   log: "통나무",
   branch: "나뭇가지",
@@ -43,7 +43,17 @@ export const HAZARD_NAMES: Record<HazardKind, string> = {
   pit: "낭떠러지",
   bar: "철봉 완주",
   step: "계단",
+  spring: "버섯 점프",
 };
+
+/** 스테이지가 시작되는 프레임 (1: 처음, 2: 35초, 3: 80초) */
+export const STAGE_START = [0, 0, 60 * 35, 60 * 80] as const;
+export const STAGE_NAMES = ["", "햇살 들판", "노을 언덕", "달빛 숲"] as const;
+/** 보너스 타임 길이: 스테이지 시작 보상 / 별 아이템 */
+export const STAGE_BONUS_FRAMES = 240;
+export const STAR_BONUS_FRAMES = 360;
+/** 버섯을 밟으면 튀어 오르는 속도 (2단 점프보다 높다) */
+const SPRING_SPEED = 17;
 
 export interface Hazard {
   id: number;
@@ -56,8 +66,12 @@ export interface Hazard {
   hit: boolean;
 }
 
+export type ItemKind = "coin" | "heart" | "star";
+
 export interface Coin {
   id: number;
+  /** 코인 말고도 하트(회복)·별(보너스 타임)이 같은 자리에 놓인다 */
+  kind: ItemKind;
   x: number;
   y: number;
   /** 같은 묶음 코인. 묶음을 다 먹으면 보너스 */
@@ -95,6 +109,9 @@ export interface RunState {
   hearts: number;
   hurt: number;
   over: boolean;
+  stage: 1 | 2 | 3;
+  /** 남은 보너스 타임 프레임. 이 동안은 다치지 않고, 낭떠러지가 막히고, 코인이 쏟아지며, 코인 점수 두 배 */
+  bonus: number;
 }
 
 export interface RunInput {
@@ -108,7 +125,8 @@ export type RunEvent =
   | { type: "points"; points: number; label: string }
   | { type: "coin"; x: number; y: number }
   | { type: "bonus"; points: number }
-  | { type: "jump" | "double" | "grab" | "land" | "hurt" | "fall" | "over" };
+  | { type: "stage"; stage: 2 | 3 }
+  | { type: "jump" | "double" | "grab" | "land" | "hurt" | "fall" | "over" | "spring" | "heart" | "bonusStart" | "bonusEnd" };
 
 /** 시드 고정 난수 (mulberry32). 같은 시드면 같은 코스 */
 function random(seed: number): [number, number] {
@@ -136,6 +154,8 @@ export function createRun(seed = Date.now() % 2147483647): RunState {
     hearts: MAX_HEARTS,
     hurt: 0,
     over: false,
+    stage: 1,
+    bonus: 0,
   };
 }
 
@@ -167,8 +187,8 @@ export function playerBox(player: Player, distance: number) {
 }
 
 /** 이 x에서 발을 디딜 높이. 낭떠러지 위면 Infinity */
-function groundAt(hazards: Hazard[], worldX: number, feet: number) {
-  let ground = hazards.some((hazard) => hazard.kind === "pit" && worldX > hazard.x && worldX < hazard.x + hazard.w) ? Infinity : GROUND;
+function groundAt(hazards: Hazard[], worldX: number, feet: number, bonus = false) {
+  let ground = !bonus && hazards.some((hazard) => hazard.kind === "pit" && worldX > hazard.x && worldX < hazard.x + hazard.w) ? Infinity : GROUND;
   for (const hazard of hazards) {
     // 계단 윗면: 발이 윗면보다 조금 아래까지는 올라선 것으로 본다 (옆면 판정과 겹치지 않게)
     if (hazard.kind === "step" && worldX > hazard.x - 8 && worldX < hazard.x + hazard.w + 6 && feet <= hazard.top + 10) ground = Math.min(ground, hazard.top);
@@ -182,6 +202,7 @@ function groundAt(hazards: Hazard[], worldX: number, feet: number) {
 interface Builder {
   add: (kind: HazardKind, x: number, w: number, top?: number) => void;
   coins: (points: [number, number][]) => void;
+  item: (kind: Exclude<ItemKind, "coin">, x: number, y: number) => void;
   roll: () => number;
   speed: number;
 }
@@ -277,7 +298,74 @@ const HARD: Chunk[] = [
     b.coins([...arc(x - b.speed * 8, 60 + b.speed * 16, 85, 5), ...arc(thorn - b.speed * 6, 140 + b.speed * 14, 150, 7), ...arc(fire - b.speed * 8, 60 + b.speed * 16, 85, 5)]);
     return fire + 60;
   },
+  (x, b) => {
+    // 버섯 점프: 밟으면 높이 튀어 올라 넓은 낭떠러지를 건넌다 (그냥 뛰면 못 건넘)
+    b.add("spring", x, 36);
+    const pit = b.speed * 30;
+    b.add("pit", x + 50, pit);
+    b.coins(arc(x + 10, pit + 80, 170, 10));
+    return x + 50 + pit;
+  },
+  (x, b) => {
+    // 가지 밑을 숙여 지나자마자 낭떠러지 점프
+    b.add("branch", x, 54);
+    const pit = x + 54 + b.speed * 14;
+    b.add("pit", pit, 100 + b.speed * 3);
+    b.coins([...line(x - 30, GROUND - 10, 4, 24), ...arc(pit - 10, 120 + b.speed * 3, 90, 6)]);
+    return pit + 100 + b.speed * 3;
+  },
 ];
+
+/** 3스테이지에서 섞이는 조각 */
+const EXPERT: Chunk[] = [
+  (x, b) => {
+    // 철봉 갈아타기: 첫 철봉에서 뛰어내려 공중에서 다음 철봉을 잡는다 (밑은 쭉 낭떠러지)
+    const first = 380 + b.roll() * 120;
+    const gap = b.speed * 7;
+    const second = 360 + b.roll() * 120;
+    b.add("bar", x, first);
+    b.add("bar", x + first + gap, second);
+    b.add("pit", x + 40, first + gap + second - 20);
+    b.coins([...line(x + 50, BAR_Y + HANG_DROP - 16, Math.floor((first - 60) / 32), 32), ...line(x + first + gap + 20, BAR_Y + HANG_DROP - 16, Math.floor((second - 60) / 32), 32)]);
+    return x + first + gap + second + 40;
+  },
+  (x, b) => {
+    // 징검다리: 낭떠러지 - 작은 섬(불길) - 낭떠러지
+    const pit = 90 + b.speed * 3;
+    const island = b.speed * 22;
+    b.add("pit", x, pit);
+    b.add("fire", x + pit + island * 0.55, 40);
+    b.add("pit", x + pit + island, pit);
+    b.coins([...arc(x - 10, pit + 20, 90, 5), ...arc(x + pit + island * 0.4, island * 0.6, 70, 3), ...arc(x + pit + island - 10, pit + 20, 90, 5)]);
+    return x + pit * 2 + island;
+  },
+  (x, b) => {
+    // 계단을 올라 낭떠러지를 뛰어 건너 반대편 계단으로
+    const top = GROUND - 90;
+    const w = b.speed * 26;
+    const pit = b.speed * 20;
+    b.add("step", x, w, top);
+    b.add("pit", x + w, pit);
+    b.add("step", x + w + pit, w, top);
+    b.coins([...line(x + 20, top - 16, Math.floor(w / 40), 32), ...arc(x + w - 20, pit + 40, 110, 6).map(([cx, cy]) => [cx, cy - 90] as [number, number])]);
+    return x + w * 2 + pit;
+  },
+  (x, b) => {
+    // 버섯으로 튀어 올라 공중 별(보너스 타임) 잡기
+    b.add("spring", x, 36);
+    b.item("star", x + b.speed * 18, GROUND - 200);
+    b.coins(arc(x + 10, b.speed * 34, 170, 8));
+    return x + b.speed * 36;
+  },
+];
+
+/** 보너스 타임: 장애물 없이 코인 물결 */
+function coinRain(x: number, b: Builder) {
+  const points: [number, number][] = [];
+  for (let index = 0; index < 18; index += 1) points.push([x + index * 24, GROUND - 40 - Math.sin(index * 0.45) * 50]);
+  b.coins(points);
+  return x + 18 * 24;
+}
 
 /** 다음 조각을 놓는다. 조각 사이 간격은 속도에 비례해 빨라져도 반응할 시간이 비슷하게 남는다 */
 function spawn(state: RunState): RunState {
@@ -296,15 +384,31 @@ function spawn(state: RunState): RunState {
     coins: (points) => {
       const group = id++;
       groups[group] = { total: points.length, taken: 0, missed: false };
-      for (const [x, y] of points) coins.push({ id: id++, x, y, group, taken: false });
+      for (const [x, y] of points) coins.push({ id: id++, kind: "coin", x, y, group, taken: false });
+    },
+    item: (kind, x, y) => {
+      const group = id++;
+      coins.push({ id: id++, kind, x, y, group, taken: false });
     },
     roll,
     speed: state.speed,
   };
-  const pool = state.frame > 60 * 15 && roll() < 0.45 ? HARD : EASY;
+  if (state.bonus > 0) {
+    const end = coinRain(state.nextX, builder);
+    return { ...state, hazards, coins, groups, nextId: id, nextX: end + 30, seed };
+  }
+  // 스테이지가 오를수록 어려운 조각이 자주 나오고 조각 사이 간격이 좁아진다
+  const pick = roll();
+  const pool =
+    state.stage === 3 ? (pick < 0.45 ? EXPERT : pick < 0.8 ? HARD : EASY) : state.stage === 2 ? (pick < 0.6 ? HARD : EASY) : state.frame > 60 * 15 && pick < 0.25 ? HARD : EASY;
   const chunk = pool[Math.floor(roll() * pool.length)];
   const end = chunk(state.nextX, builder);
-  const nextX = end + state.speed * (55 + roll() * 35);
+  // 가끔 하트(회복)·별(보너스 타임)을 조각 위에 띄운다
+  const lucky = roll();
+  if (lucky < 0.07) builder.item("heart", end + state.speed * 10, GROUND - 90);
+  else if (state.stage >= 2 && lucky < 0.15) builder.item("star", end + state.speed * 10, GROUND - 150);
+  const gap = state.stage === 3 ? 38 + roll() * 26 : state.stage === 2 ? 46 + roll() * 30 : 55 + roll() * 35;
+  const nextX = end + state.speed * gap;
   return { ...state, hazards, coins, groups, nextId: id, nextX, seed };
 }
 
@@ -316,10 +420,12 @@ function barAt(hazards: Hazard[], worldX: number) {
   return hazards.find((hazard) => hazard.kind === "bar" && worldX >= hazard.x && worldX <= hazard.x + hazard.w);
 }
 
-function movePlayer(player: Player, input: RunInput, hazards: Hazard[], worldX: number, events: RunEvent[]): Player {
+function movePlayer(player: Player, input: RunInput, hazards: Hazard[], worldX: number, events: RunEvent[], bonus: boolean): Player {
   const next = { ...player, spin: player.spin >= 0 ? player.spin + 1 : -1 };
   if (next.mode === "hang") {
     if (input.jump) {
+      // 뛰어내린 입력은 여기서 다 쓴다 (같은 입력이 2단 점프로 또 쓰이지 않게)
+      input = { ...input, jump: false };
       // 철봉에서 뛰어내리며 점프 (한 번 더 2단 점프 가능)
       Object.assign(next, { mode: "air", vy: -7, jumps: 1 });
       events.push({ type: "jump" });
@@ -330,7 +436,7 @@ function movePlayer(player: Player, input: RunInput, hazards: Hazard[], worldX: 
     }
   }
 
-  const floor = groundAt(hazards, worldX, next.y);
+  const floor = groundAt(hazards, worldX, next.y, bonus);
   // 발밑 땅이 사라지면(낭떠러지·계단 끝) 떨어지기 시작
   if ((next.mode === "run" || next.mode === "slide") && next.y < floor) Object.assign(next, { mode: "air", vy: 0, jumps: 1 });
 
@@ -347,11 +453,12 @@ function movePlayer(player: Player, input: RunInput, hazards: Hazard[], worldX: 
     const before = next.y;
     next.vy += GRAVITY + (input.down ? FAST_FALL : 0);
     next.y += next.vy;
-    if (next.y - PLAYER_H <= BAR_Y + 8 && next.vy < 4 && barAt(hazards, worldX)) {
+    // 꼭대기를 지나 내려오기 시작할 때 잡는다 (뛰어내리자마자 같은 철봉을 다시 잡지 않게)
+    if (next.y - PLAYER_H <= BAR_Y + 8 && next.vy > -2 && next.vy < 4 && barAt(hazards, worldX)) {
       events.push({ type: "grab" });
       return { y: BAR_Y + HANG_DROP, vy: 0, jumps: 0, mode: "hang", spin: -1 };
     }
-    const land = groundAt(hazards, worldX, before);
+    const land = groundAt(hazards, worldX, before, bonus);
     if (next.vy >= 0 && before <= land && next.y >= land) {
       events.push({ type: "land" });
       Object.assign(next, { y: land, vy: 0, jumps: 0, spin: -1, mode: input.down ? "slide" : "run" });
@@ -360,6 +467,11 @@ function movePlayer(player: Player, input: RunInput, hazards: Hazard[], worldX: 
   }
   next.y = floor;
   next.mode = input.down ? "slide" : "run";
+  // 버섯을 밟으면 높이 튀어 오른다 (공중에서 한 번 더 2단 점프 가능)
+  if (next.y >= GROUND - 1 && hazards.some((hazard) => hazard.kind === "spring" && worldX > hazard.x && worldX < hazard.x + hazard.w)) {
+    events.push({ type: "spring" });
+    return { ...next, mode: "air", vy: -SPRING_SPEED, jumps: 1, spin: 0 };
+  }
   return next;
 }
 
@@ -372,22 +484,44 @@ export function step(state: RunState, input: RunInput): { state: RunState; event
     ...state,
     frame: state.frame + 1,
     speed: Math.min(MAX_SPEED, state.speed + ACCELERATION),
-    distance: state.distance + state.speed,
+    // 보너스 타임엔 더 빠르게 내달린다
+    distance: state.distance + state.speed * (state.bonus > 0 ? 1.35 : 1),
     hurt: Math.max(0, state.hurt - 1),
+    bonus: Math.max(0, state.bonus - 1),
   };
+  if (state.bonus === 1) events.push({ type: "bonusEnd" });
+  const startBonus = (frames: number) => {
+    // 앞에 깔린 장애물·코인을 걷어내고 코인 물결로 채운다
+    const ahead = next.distance + PLAYER_X + 60;
+    if (next.bonus === 0) events.push({ type: "bonusStart" });
+    next = {
+      ...next,
+      bonus: Math.max(next.bonus, frames),
+      hazards: next.hazards.filter((hazard) => hazard.x + hazard.w < ahead || hazard.x < ahead),
+      coins: next.coins.filter((coin) => coin.x < ahead),
+      nextX: ahead + 80,
+    };
+  };
+  const stage = next.frame >= STAGE_START[3] ? 3 : next.frame >= STAGE_START[2] ? 2 : 1;
+  if (stage !== next.stage) {
+    next = { ...next, stage };
+    events.push({ type: "stage", stage: stage as 2 | 3 });
+    startBonus(STAGE_BONUS_FRAMES);
+  }
   while (next.nextX < next.distance + WIDTH * 2) next = spawn(next);
 
   const worldX = next.distance + PLAYER_X;
-  let player = movePlayer(next.player, input, next.hazards, worldX, events);
+  let player = movePlayer(next.player, input, next.hazards, worldX, events, next.bonus > 0);
   const body = playerBox(player, next.distance);
   let { score, hearts, hurt, distance, coinCount } = next;
   const groups = { ...next.groups };
+  let starPicked = false;
 
   const hazards = next.hazards
     .filter((hazard) => hazard.x + hazard.w > distance - 200)
     .map((hazard) => {
       const box = hazardBox(hazard);
-      if (box && !hazard.hit && hurt === 0 && overlaps(body, box)) {
+      if (box && !hazard.hit && hurt === 0 && next.bonus === 0 && overlaps(body, box)) {
         hearts -= 1;
         hurt = HURT_FRAMES;
         events.push({ type: "hurt" });
@@ -408,8 +542,15 @@ export function step(state: RunState, input: RunInput): { state: RunState; event
     .map((coin) => {
       if (coin.taken) return coin;
       const near = coin.x + COIN_R > body.left && coin.x - COIN_R < body.right && coin.y + COIN_R > body.top && coin.y - COIN_R < body.bottom;
+      if (near && coin.kind !== "coin") {
+        if (coin.kind === "heart") {
+          hearts = Math.min(MAX_HEARTS, hearts + 1);
+          events.push({ type: "heart" });
+        } else starPicked = true;
+        return { ...coin, taken: true };
+      }
       if (near) {
-        score += COIN_POINTS;
+        score += COIN_POINTS * (next.bonus > 0 ? 2 : 1);
         coinCount += 1;
         const group = { ...groups[coin.group] };
         group.taken += 1;
@@ -422,7 +563,7 @@ export function step(state: RunState, input: RunInput): { state: RunState; event
         }
         return { ...coin, taken: true };
       }
-      if (coin.x < body.left - COIN_R && groups[coin.group] && !groups[coin.group].missed) groups[coin.group] = { ...groups[coin.group], missed: true };
+      if (coin.kind === "coin" && coin.x < body.left - COIN_R && groups[coin.group] && !groups[coin.group].missed) groups[coin.group] = { ...groups[coin.group], missed: true };
       return coin;
     });
 
@@ -442,5 +583,7 @@ export function step(state: RunState, input: RunInput): { state: RunState; event
   }
   const over = hearts <= 0;
   if (over) events.push({ type: "over" });
-  return { state: { ...next, distance, player, hazards, coins, groups, score, coinCount, hearts, hurt, over }, events };
+  next = { ...next, distance, player, hazards, coins, groups, score, coinCount, hearts, hurt, over };
+  if (starPicked) startBonus(STAR_BONUS_FRAMES);
+  return { state: next, events };
 }

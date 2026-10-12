@@ -14,7 +14,7 @@ import { playGameSound } from "@/lib/lobby/settings";
 
 import { RUN_SOUNDS } from "./constants";
 import { BANNER_FRAMES, draw, type Effects, IMAGE_BASE, type Images, POPUP_FRAMES, viewFor } from "./draw";
-import { createRun, GROUND, PLAYER_X, type RunEvent, type RunInput, type RunState, step } from "./logic";
+import { createRun, GROUND, PLAYER_X, type RunEvent, type RunInput, type RunState, STAGE_NAMES, step } from "./logic";
 import { getRank, getRunTier, insertRecord, LEADERBOARD_SIZE, RUN_TIERS, type RunRecord, saveRecords, useRunRecords } from "./records";
 import { SPRITE_SIZES } from "./sprites";
 
@@ -68,7 +68,28 @@ function react(effects: Effects, events: RunEvent[], state: RunState) {
         break;
       case "bonus":
         playGameSound(RUN_SOUNDS.bonus);
-        effects.banner = { points: event.points, age: 0 };
+        effects.banner = { title: `코인 올클리어! +${event.points}`, icon: "crown", age: 0 };
+        break;
+      case "stage":
+        playGameSound(RUN_SOUNDS.stage);
+        effects.banner = { title: `STAGE ${event.stage}`, sub: `${STAGE_NAMES[event.stage]} · 보너스 타임!`, icon: "star", age: 0 };
+        break;
+      case "bonusStart":
+        // 스테이지 시작과 같이 오면 스테이지 배너를 그대로 둔다
+        if (events.some((other) => other.type === "stage")) break;
+        playGameSound(RUN_SOUNDS.stage);
+        effects.banner = { title: "보너스 타임!", sub: "무적 · 코인 두 배", icon: "star", age: 0 };
+        break;
+      case "spring":
+        playGameSound(RUN_SOUNDS.spring);
+        burst(effects, PLAYER_X, feet, 10, "rgba(255,120,110,0.9)", 4, 2);
+        break;
+      case "heart":
+        playGameSound(RUN_SOUNDS.heart);
+        burst(effects, PLAYER_X, feet - 20, 10, "rgba(255,90,110,0.9)", 4, 2.5);
+        effects.popups.push({ text: "+1 하트", x: PLAYER_X, y: feet - 40, big: false, age: 0 });
+        break;
+      case "bonusEnd":
         break;
       case "hurt":
         playGameSound(RUN_SOUNDS.hurt);
@@ -338,6 +359,13 @@ export function CapybaraRun() {
 
       {(phase === "playing" || phase === "countdown") && (
         <canvas ref={canvas} aria-label="카피바라 런 달리기 길" className="absolute inset-0 size-full" />
+      )}
+      {phase === "playing" && (
+        // 터치 화면에서만 보이는 조작 안내 (누르는 건 화면 왼쪽·오른쪽 절반 전체)
+        <div className="pointer-events-none absolute inset-x-0 bottom-[max(1rem,env(safe-area-inset-bottom))] hidden justify-between px-5 text-caption-1 font-bold text-white/80 [@media(pointer:coarse)]:flex">
+          <span className="rounded-full bg-black/25 px-4 py-2 backdrop-blur-sm">◀ 탭: 점프 · 두 번: 2단</span>
+          <span className="rounded-full bg-black/25 px-4 py-2 backdrop-blur-sm">누르고 있기: 숙이기 ▶</span>
+        </div>
       )}
       {phase === "countdown" && (
         <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-success/80">

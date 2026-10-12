@@ -13,6 +13,7 @@ import {
   PLAYER_X,
   type RunState,
   SLIDE_H,
+  STAGE_NAMES,
   START_SPEED,
   WIDTH,
 } from "./logic";
@@ -47,8 +48,8 @@ export interface Popup {
 export interface Effects {
   particles: Particle[];
   popups: Popup[];
-  /** 보너스 배너 (왕관 + 점수) */
-  banner: { points: number; age: number } | null;
+  /** 가운데 배너: 코인 올클리어·스테이지·보너스 타임 */
+  banner: { title: string; sub?: string; icon: "crown" | "star" | null; age: number } | null;
   shake: number;
   /** 다쳤을 때 화면 가장자리 붉은빛 (1→0) */
   flash: number;
@@ -62,6 +63,8 @@ export interface View {
   viewW: number;
   /** 보이는 맨 위 논리 y (0 이하) */
   top: number;
+  /** 보이는 맨 아래 논리 y (HEIGHT 이상, 세로 화면이면 땅 밑을 더 보여준다) */
+  bottom: number;
 }
 
 export const POPUP_FRAMES = 55;
@@ -115,6 +118,43 @@ function drawSky(context: CanvasRenderingContext2D, state: RunState, view: View,
   }
 }
 
+/** 스테이지 분위기: 2 노을, 3 달밤(별 반짝임). 보너스 타임엔 무지갯빛 */
+function drawMood(context: CanvasRenderingContext2D, state: RunState, view: View) {
+  const height = GROUND - view.top;
+  if (state.stage === 2) {
+    const sunset = context.createLinearGradient(0, view.top, 0, GROUND);
+    sunset.addColorStop(0, "rgba(255,120,80,0.28)");
+    sunset.addColorStop(1, "rgba(255,190,90,0.32)");
+    context.fillStyle = sunset;
+    context.fillRect(0, view.top, view.viewW, height);
+  } else if (state.stage === 3) {
+    const night = context.createLinearGradient(0, view.top, 0, GROUND);
+    night.addColorStop(0, "rgba(20,24,70,0.62)");
+    night.addColorStop(1, "rgba(60,50,120,0.42)");
+    context.fillStyle = night;
+    context.fillRect(0, view.top, view.viewW, height);
+    for (let index = 0; index < 40; index += 1) {
+      const x = (hash(index) * view.viewW * 1.5 - state.distance * 0.02) % view.viewW;
+      const y = view.top + hash(index + 50) * height * 0.55;
+      context.fillStyle = `rgba(255,255,230,${0.4 + Math.sin(state.frame * 0.05 + index) * 0.35})`;
+      context.beginPath();
+      context.arc(x < 0 ? x + view.viewW : x, y, 0.6 + hash(index + 9) * 1.1, 0, Math.PI * 2);
+      context.fill();
+    }
+    context.fillStyle = "rgba(255,250,215,0.95)";
+    context.beginPath();
+    context.arc(view.viewW * 0.8, view.top + 40, 16, 0, Math.PI * 2);
+    context.fill();
+  }
+  if (state.bonus > 0) {
+    const shift = (state.frame * 3) % 360;
+    const rainbow = context.createLinearGradient(0, view.top, view.viewW, GROUND);
+    for (let stop = 0; stop <= 4; stop += 1) rainbow.addColorStop(stop / 4, `hsla(${(shift + stop * 70) % 360},90%,70%,0.22)`);
+    context.fillStyle = rainbow;
+    context.fillRect(0, view.top, view.viewW, height);
+  }
+}
+
 /** 가운데 숲: 펠트 같은 둥근 나무들, 중간 속도로 흐른다 */
 function drawForest(context: CanvasRenderingContext2D, state: RunState, view: View) {
   // 땅 바로 뒤 작은 덤불 한 줄 (먼 언덕은 배경 그림이 맡는다)
@@ -145,7 +185,7 @@ function drawForest(context: CanvasRenderingContext2D, state: RunState, view: Vi
 
 /** 땅: 낭떠러지만 비우고 흙·풀을 깐다. 낭떠러지 양쪽엔 흙 기둥 그림 */
 function drawGround(context: CanvasRenderingContext2D, state: RunState, view: View, images: Images) {
-  const bottom = HEIGHT + 10;
+  const bottom = view.bottom + 10;
   const dirt = context.createLinearGradient(0, GROUND, 0, bottom);
   dirt.addColorStop(0, "#b8834c");
   dirt.addColorStop(1, "#6c4628");
@@ -189,8 +229,17 @@ function drawGround(context: CanvasRenderingContext2D, state: RunState, view: Vi
       context.fill();
     }
   }
-  // 낭떠러지: 어두운 구덩이 + 양쪽 흙 기둥
+  // 낭떠러지: 어두운 구덩이 + 양쪽 흙 기둥 (보너스 타임엔 빛나는 구름다리로 막힌다)
   for (const [start, end] of pits) {
+    if (state.bonus > 0) {
+      context.fillStyle = "rgba(255,255,255,0.85)";
+      for (let x = start; x < end; x += 14) {
+        context.beginPath();
+        context.arc(x + 7, GROUND + 4, 9, 0, Math.PI * 2);
+        context.fill();
+      }
+      continue;
+    }
     const hole = context.createLinearGradient(0, GROUND, 0, bottom);
     hole.addColorStop(0, "rgba(40,24,14,0.85)");
     hole.addColorStop(1, "rgba(10,6,4,1)");
@@ -353,15 +402,83 @@ function drawHazard(context: CanvasRenderingContext2D, hazard: Hazard, state: Ru
     case "bar":
       drawBar(context, hazard, state, view);
       break;
+    case "spring": {
+      // 빨간 펠트 버섯: 밟을 때 납작해졌다 튀어 오르는 느낌으로 살짝 출렁인다
+      const squash = 1 + Math.sin(state.frame * 0.3 + hazard.id) * 0.06;
+      const cx = x + w / 2;
+      context.fillStyle = "#f3e6cf";
+      context.beginPath();
+      context.roundRect(cx - 7, GROUND - 16, 14, 16, 4);
+      context.fill();
+      const cap = context.createRadialGradient(cx - 6, GROUND - 26 * squash, 2, cx, GROUND - 18, 22);
+      cap.addColorStop(0, "#ff7a6b");
+      cap.addColorStop(1, "#c7302a");
+      context.fillStyle = cap;
+      context.beginPath();
+      context.ellipse(cx, GROUND - 16, w / 2 + 2, 14 * squash, 0, Math.PI, 0);
+      context.fill();
+      context.fillStyle = "rgba(255,255,255,0.92)";
+      for (const [dx, dy, r] of [
+        [-8, -22, 3.2],
+        [5, -26, 2.6],
+        [11, -18, 2.2],
+      ]) {
+        context.beginPath();
+        context.arc(cx + dx, GROUND + dy * squash + 6, r, 0, Math.PI * 2);
+        context.fill();
+      }
+      // 위로 튀는 화살표 안내
+      context.fillStyle = `rgba(255,255,255,${0.5 + Math.sin(state.frame * 0.25) * 0.3})`;
+      context.font = "bold 10px Pretendard, sans-serif";
+      context.textAlign = "center";
+      context.fillText("▲", cx, GROUND - 36 - Math.abs(Math.sin(state.frame * 0.15)) * 6);
+      break;
+    }
     case "pit":
       break;
   }
+}
+
+function drawStar(context: CanvasRenderingContext2D, x: number, y: number, radius: number, frame: number) {
+  context.save();
+  context.translate(x, y);
+  context.rotate(Math.sin(frame * 0.08) * 0.3);
+  const glow = context.createRadialGradient(0, 0, 2, 0, 0, radius * 2.2);
+  glow.addColorStop(0, "rgba(255,240,140,0.6)");
+  glow.addColorStop(1, "rgba(255,240,140,0)");
+  context.fillStyle = glow;
+  context.fillRect(-radius * 2.2, -radius * 2.2, radius * 4.4, radius * 4.4);
+  const body = context.createLinearGradient(0, -radius, 0, radius);
+  body.addColorStop(0, "#fff59d");
+  body.addColorStop(1, "#ffb300");
+  context.fillStyle = body;
+  context.beginPath();
+  for (let point = 0; point < 10; point += 1) {
+    const r = point % 2 === 0 ? radius : radius * 0.45;
+    const angle = (point * Math.PI) / 5 - Math.PI / 2;
+    context.lineTo(Math.cos(angle) * r, Math.sin(angle) * r);
+  }
+  context.closePath();
+  context.fill();
+  context.strokeStyle = "rgba(180,110,0,0.6)";
+  context.lineWidth = 1.2;
+  context.stroke();
+  context.restore();
 }
 
 function drawCoin(context: CanvasRenderingContext2D, coin: Coin, state: RunState, images: Images) {
   if (coin.taken) return;
   const x = coin.x - state.distance;
   const y = coin.y + Math.sin(state.frame * 0.1 + coin.id) * 1.5;
+  if (coin.kind === "star") {
+    drawStar(context, x, y, 11, state.frame);
+    return;
+  }
+  if (coin.kind === "heart") {
+    const beat = 1 + Math.max(0, Math.sin(state.frame * 0.2)) * 0.15;
+    sprite(context, images, "heart", x - 9 * beat, y - 8 * beat, 18 * beat, 15 * beat);
+    return;
+  }
   // 빙글빙글: 가로 폭이 cos로 줄었다 늘었다
   const turn = Math.cos(state.frame * 0.11 + coin.id * 0.6);
   const size = COIN_R * 2.3;
@@ -506,6 +623,24 @@ function drawHud(context: CanvasRenderingContext2D, state: RunState, effects: Ef
   outlined(context, `${state.coinCount}`, center - 10, rowY, "#ffe27a");
   outlined(context, `속도 ×${(state.speed / START_SPEED).toFixed(1)}`, center + 28, rowY, "#ffffff");
   context.textAlign = "center";
+  context.font = "800 11px Pretendard, sans-serif";
+  outlined(context, `STAGE ${state.stage} · ${STAGE_NAMES[state.stage]}`, center, top + 12, "rgba(255,255,255,0.9)");
+  if (state.bonus > 0) {
+    // 보너스 타임 남은 시간 막대
+    const width = 140;
+    context.fillStyle = "rgba(0,0,0,0.25)";
+    context.beginPath();
+    context.roundRect(center - width / 2, top + 62, width, 6, 3);
+    context.fill();
+    const fill = context.createLinearGradient(center - width / 2, 0, center + width / 2, 0);
+    fill.addColorStop(0, "#ff7ab6");
+    fill.addColorStop(0.5, "#ffe066");
+    fill.addColorStop(1, "#6fe3ff");
+    context.fillStyle = fill;
+    context.beginPath();
+    context.roundRect(center - width / 2, top + 62, width * Math.min(1, state.bonus / 360), 6, 3);
+    context.fill();
+  }
 
   // 점수 알림: 장애물 점수·초 점수는 점수판 밑에서, 코인 점수는 코인 자리에서 떠오른다
   let row = 0;
@@ -528,9 +663,14 @@ function drawHud(context: CanvasRenderingContext2D, state: RunState, effects: Ef
     context.globalAlpha = alpha;
     context.translate(center, top + (GROUND - top) * 0.42);
     context.scale(scale, scale);
-    sprite(context, images, "crown", -18, -40, 36, 29);
-    context.font = "900 15px Pretendard, sans-serif";
-    outlined(context, `코인 올클리어! +${effects.banner.points}`, 0, 8, "#ffe066");
+    if (effects.banner.icon === "crown") sprite(context, images, "crown", -18, -40, 36, 29);
+    if (effects.banner.icon === "star") drawStar(context, 0, -26, 14, state.frame);
+    context.font = "900 17px Pretendard, sans-serif";
+    outlined(context, effects.banner.title, 0, 8, "#ffe066");
+    if (effects.banner.sub) {
+      context.font = "700 11px Pretendard, sans-serif";
+      outlined(context, effects.banner.sub, 0, 26, "#ffffff");
+    }
     context.restore();
   }
 }
@@ -541,6 +681,7 @@ export function draw(context: CanvasRenderingContext2D, view: View, state: RunSt
   context.save();
   if (effects.shake > 0) context.translate((hash(state.frame) - 0.5) * effects.shake, (hash(state.frame + 1) - 0.5) * effects.shake);
   drawSky(context, state, view, images);
+  drawMood(context, state, view);
   drawForest(context, state, view);
   drawGround(context, state, view, images);
   for (const hazard of state.hazards) if (hazard.kind !== "bar" && hazard.kind !== "branch") drawHazard(context, hazard, state, view, images);
@@ -556,13 +697,17 @@ export function draw(context: CanvasRenderingContext2D, view: View, state: RunSt
     vignette.addColorStop(0, "rgba(255,60,40,0)");
     vignette.addColorStop(1, `rgba(255,60,40,${effects.flash * 0.3})`);
     context.fillStyle = vignette;
-    context.fillRect(0, view.top, view.viewW, HEIGHT - view.top);
+    context.fillRect(0, view.top, view.viewW, view.bottom - view.top);
   }
   drawHud(context, state, effects, view, images);
 }
 
-/** 보이는 영역 계산: 세로를 꽉 채우되, 너무 좁은 화면(세로 휴대폰)은 가로 기준으로 맞추고 위쪽 하늘을 늘린다 */
+/**
+ * 보이는 영역 계산. 가로 화면은 세로를 꽉 채우고 넓을수록 앞이 멀리 보인다.
+ * 세로 휴대폰은 앞이 최소 420px 보이게 가로 기준으로 맞추고, 남는 세로는 하늘 60% · 땅 밑 40%로 나눠 채운다
+ */
 export function viewFor(cssWidth: number, cssHeight: number, dpr: number): View {
-  const scale = Math.min(cssHeight / HEIGHT, cssWidth / (WIDTH * 0.8));
-  return { scale, dpr, viewW: cssWidth / scale, top: HEIGHT - cssHeight / scale };
+  const scale = Math.min(cssHeight / HEIGHT, cssWidth / Math.min(WIDTH * 0.8, 420));
+  const extra = cssHeight / scale - HEIGHT;
+  return { scale, dpr, viewW: cssWidth / scale, top: -extra * 0.6, bottom: HEIGHT + extra * 0.4 };
 }
