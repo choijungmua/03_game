@@ -538,7 +538,7 @@ export function CapybaraRun() {
               <li>↓ 숙이기 · 휴대폰은 왼쪽 탭 점프, 오른쪽 누르기 숙이기</li>
               {best !== undefined && <li>내 최고 {best.toLocaleString()}점</li>}
             </ul>
-            <div className="w-full" onPointerDown={(event) => event.stopPropagation()}>
+            <div className="w-full">
               <RunLeaderboard records={records} />
             </div>
           </div>
