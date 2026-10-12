@@ -63,7 +63,11 @@ def double(x: np.ndarray, rate: int) -> np.ndarray:
 
 def process(path: Path) -> np.ndarray:
     rate, data = wavfile.read(path)
-    x = data.astype(np.float64) / 32768
+    # 사람 녹음은 스테레오·24/32bit·float일 수 있다
+    x = data.astype(np.float64)
+    if x.ndim > 1:
+        x = x.mean(axis=1)
+    x /= np.abs(x).max() or 1
     x = trim(x, rate)
     # 재샘플로 음높이를 올리면 길이도 함께 줄어 말이 더 경쾌해진다 (만화 캐릭터 목소리 방식)
     pitch = PITCH.get(path.stem, DEFAULT_PITCH)
