@@ -22,6 +22,7 @@ import {
   NET_TOP,
   NET_X,
   PLAYER_R,
+  PLAYER_Y,
   type Side,
   step,
   type VolleyState,
