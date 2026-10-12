@@ -6,6 +6,7 @@ import { ApiError, fetchApi, SERVER_ERROR_MESSAGE } from "@/lib/api-url";
 import { getSessionId } from "@/lib/games/game-events";
 
 import { DEFAULT_NICKNAME, MESSAGE_MAX, NICKNAME_MAX } from "./constants";
+import { messageProblem, safeNickname } from "./moderation";
 
 export interface GuestbookEntry {
   id: number;
@@ -34,6 +35,12 @@ async function request<T>(path: string, init?: RequestInit): Promise<Partial<T>>
 
 const errorText = (caught: Error | object) => (caught instanceof ApiError ? caught.message : SERVER_ERROR_MESSAGE);
 
+/** null·비속어·도배 글은 숨기고, 이상한 닉네임은 기본 이름으로 바꿔 보여 준다 */
+const visibleEntries = (entries: GuestbookEntry[]) =>
+  entries
+    .filter((entry) => typeof entry.message === "string" && !messageProblem(entry.message))
+    .map((entry) => ({ ...entry, nickname: safeNickname(entry.nickname) }));
+
 /** 방명록: 위에 글쓰기, 아래에 최신 글 50개. 지우기·고치기는 없다 (문제 글은 문의 메일로) */
 export function GuestbookBoard() {
   const [entries, setEntries] = useState<GuestbookEntry[] | null>(null);
@@ -45,7 +52,7 @@ export function GuestbookBoard() {
 
   const load = () => {
     request<{ entries: GuestbookEntry[] }>("/api/guestbook").then(
-      (body) => setEntries(Array.isArray(body.entries) ? body.entries : []),
+      (body) => setEntries(Array.isArray(body.entries) ? visibleEntries(body.entries) : []),
       (caught: Error) => setLoadError(errorText(caught)),
     );
   };
@@ -55,8 +62,9 @@ export function GuestbookBoard() {
     event.preventDefault();
     if (sending) return;
     const text = message.trim();
-    if (!text) {
-      setFormError("남길 말을 적어 주세요");
+    const problem = messageProblem(text);
+    if (problem) {
+      setFormError(problem);
       messageRef.current?.focus();
       return;
     }
@@ -67,10 +75,10 @@ export function GuestbookBoard() {
       const body = await request<{ entry: GuestbookEntry }>("/api/guestbook", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sessionId: getSessionId(), nickname: typeof nickname === "string" ? nickname.trim() : "", message: text }),
+        body: JSON.stringify({ sessionId: getSessionId(), nickname: safeNickname(typeof nickname === "string" ? nickname : ""), message: text }),
       });
       const entry = body.entry;
-      if (entry) setEntries((current) => [entry, ...(current ?? [])]);
+      if (entry) setEntries((current) => visibleEntries([entry, ...(current ?? [])]));
       setMessage("");
     } catch (caught) {
       setFormError(errorText(caught instanceof Error ? caught : {}));
