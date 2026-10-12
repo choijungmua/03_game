@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { mockIntersectionObserver } from "@/lib/games/testing/mock-intersection-observer";
 
-import { CapybaraPang, COUNTDOWN_STEP_MS, COUNTDOWN_VALUES } from "./capybara-pang";
+import { CapybaraPang, COUNTDOWN_STEP_MS, COUNTDOWN_VALUES, nextGoal } from "./capybara-pang";
 import { HINT_DELAY_MS, HURRY_SECONDS, ROUND_SECONDS, SWAP_MS } from "./constants";
 import { type Board, findMove, isValidSwap } from "./logic";
 import { PangHud } from "./pang-hud";
@@ -239,4 +239,13 @@ it("시간 보상은 콤보와 특수 블록 이유를 함께 읽을 수 있게 
 
   expect(screen.getByTestId("time-gain")).toHaveTextContent("+2초 · 특수 블록 · 연속 콤보");
 });
+});
+
+describe("nextGoal", () => {
+  it("다음 등급과 내 최고 기록 중 더 가까운 목표를 고른다", () => {
+    expect(nextGoal(0, 0)).toEqual({ label: "초보", score: 100_000 });
+    expect(nextGoal(200_000, 500_000)).toEqual({ label: "내 최고 기록", score: 500_000 });
+    expect(nextGoal(200_000, 5_000_000)).toEqual({ label: "중수", score: 1_000_000 });
+    expect(nextGoal(200_000_000, 0)).toBeNull();
+  });
 });

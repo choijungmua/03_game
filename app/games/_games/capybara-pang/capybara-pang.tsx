@@ -22,6 +22,8 @@ import {
   BIG_COUNT_SECONDS,
   BOARD_SIZE,
   BURST_AT_MS,
+  COMBO_PITCH_STEPS,
+  COMBO_WARN_MS,
   COMBO_WINDOW_MS,
   DRAG_THRESHOLD,
   FAIL_TIER_INDEX,
@@ -35,6 +37,7 @@ import {
   PANG_SOUNDS,
   POP_MS,
   POP_SPARKS,
+  RESULT_COUNT_MS,
   RESULT_SOUND_DELAY_MS,
   RESULT_TAP_GUARD_MS,
   ROUND_SECONDS,
@@ -121,6 +124,75 @@ function wait(ms: number) {
 /** 앞 소리가 끝난 뒤 이어서 나도록 모든 층을 ms만큼 미룬다 */
 function delayLayers(layers: readonly SoundLayer[], ms: number): SoundLayer[] {
   return layers.map((layer) => ({ ...layer, at: (layer.at ?? 0) + ms }));
+}
+
+/** 콤보 수만큼 5음계로 음을 올린다 (도→레→미→솔→라→도…) */
+function pitched(layers: readonly SoundLayer[], combo: number): SoundLayer[] {
+  const step = COMBO_PITCH_STEPS[Math.min(Math.max(combo - 1, 0), COMBO_PITCH_STEPS.length - 1)];
+  const ratio = 2 ** (step / 12);
+  return layers.map((layer) => ({ ...layer, from: layer.from * ratio, to: layer.to * ratio }));
+}
+
+/** 한 번 터질 때 판 위에 띄우는 것: 터진 자리 가운데의 +점수, 콤보, (많이 터지면) 하얀 번쩍 */
+type Burst = {
+  readonly id: number;
+  readonly x: number;
+  readonly y: number;
+  readonly points: number;
+  readonly combo: number;
+  readonly big: boolean;
+};
+
+function BurstOverlay({ burst }: { burst: Burst }) {
+  const delay = { animationDelay: `${BURST_AT_MS}ms` };
+  return (
+    <span aria-hidden="true" className="pointer-events-none absolute inset-0 z-10 motion-reduce:hidden">
+      {burst.big && <span className="absolute inset-0 bg-white animate-pang-flash" style={delay} />}
+      <span
+        className={cn(
+          "absolute whitespace-nowrap font-black tabular-nums text-yellow-200 [text-shadow:0_3px_0_rgb(0_0_0/0.45),0_0_12px_rgb(253_224_71/0.7)] animate-pang-float",
+          burst.big ? "text-[min(8vmin,2.6rem)]" : "text-[min(5.5vmin,1.6rem)]",
+        )}
+        style={{ left: `${burst.x}%`, top: `${burst.y}%`, ...delay }}
+      >
+        +{burst.points.toLocaleString("ko-KR")}
+      </span>
+      {burst.combo >= 2 && (
+        <span
+          className="absolute left-1/2 top-[38%] whitespace-nowrap text-[min(11vmin,3.6rem)] font-black italic text-white [text-shadow:0_4px_0_rgb(234_88_12),0_0_24px_rgb(251_146_60/0.8)] animate-pang-float"
+          style={{ ...delay, rotate: `${burst.combo % 2 ? -6 : 6}deg` }}
+        >
+          {burst.combo} 콤보!
+        </span>
+      )}
+    </span>
+  );
+}
+
+/** 지금 점수 바로 위의 목표: 다음 등급과 내 최고 기록 중 더 가까운 것. 다 넘었으면 null */
+export function nextGoal(score: number, bestScore: number) {
+  const goals = [
+    ...PANG_TIERS.map((tier) => ({ label: tier.label, score: tier.minScore })),
+    { label: "내 최고 기록", score: bestScore },
+  ].filter((goal) => goal.score > score);
+  return goals.length ? goals.reduce((near, goal) => (goal.score < near.score ? goal : near)) : null;
+}
+
+/** 결과 점수가 0부터 촤라락 올라간다 (끝으로 갈수록 느려짐). 움직임 줄이기면 바로 최종 점수 */
+function CountUpScore({ score, className }: { score: number; className: string }) {
+  const ref = useRef<HTMLSpanElement>(null);
+  const startRef = useRef(0);
+  useFrameText(ref, () => {
+    if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return score.toLocaleString("ko-KR");
+    startRef.current ||= performance.now();
+    const t = Math.min((performance.now() - startRef.current) / RESULT_COUNT_MS, 1);
+    return Math.round(score * (1 - (1 - t) ** 3)).toLocaleString("ko-KR");
+  });
+  return (
+    <span ref={ref} data-testid="result-score" className={className}>
+      {score.toLocaleString("ko-KR")}
+    </span>
+  );
 }
 
 /** 남은 시간 글자 + 줄어드는 막대. 마지막 HURRY_SECONDS초엔 빨갛게 두근거린다 */
@@ -340,6 +412,13 @@ function PangTile({
           </>
         )}
       </div>
+      {popping && (
+        <span
+          aria-hidden="true"
+          className="pointer-events-none absolute size-[88%] rounded-full border-white animate-pang-shock motion-reduce:hidden"
+          style={{ animationDelay: `${BURST_AT_MS}ms` }}
+        />
+      )}
       {/* 펑 하는 순간 눈물 둘은 좌우로, 반짝이 넷은 사방으로 튀어나간다 (조각 크기 25% → 이동 거리 ×4) */}
       {popping &&
         POP_SPARKS.map((spark, sparkIndex) => (
@@ -350,7 +429,9 @@ function PangTile({
               "pointer-events-none absolute flex size-[25%] items-center justify-center animate-pang-spark motion-reduce:hidden",
               spark.kind === "tear"
                 ? "rounded-[50%_50%_50%_0] bg-sky-300 shadow-[inset_-2px_-2px_0_rgb(0_0_0/0.12)]"
-                : "text-[min(6.5vmin,2.2rem)] leading-none text-yellow-200 drop-shadow",
+                : spark.kind === "dot"
+                  ? "bg-[radial-gradient(circle,white_28%,rgb(255_255_255/0.5)_36%,transparent_50%)]"
+                  : "text-[min(6.5vmin,2.2rem)] leading-none text-yellow-200 drop-shadow",
             )}
             style={sparkStyle(spark)}
           >
@@ -393,6 +474,7 @@ export function CapybaraPang() {
   const [feverUntil, setFeverUntil] = useState(0);
   /** 지금 터지는 폭탄·무지개 (가로·세로 광선, 퍼지는 고리) */
   const [blasts, setBlasts] = useState<readonly Blast[]>([]);
+  const [burst, setBurst] = useState<Burst | null>(null);
   /** 마지막 HURRY_SECONDS초: 시간 막대가 빨개지고 판 둘레가 두근거린다 */
   const [hurry, setHurry] = useState(false);
   /** 판 위에 크게 박히는 글씨 */
@@ -522,7 +604,8 @@ export function CapybaraPang() {
         playGameSound(PANG_SOUNDS.lastPang);
         setBlasts(blastsIn(current, plan.cleared));
         setPopping(plan.cleared);
-        shakeBoard();
+        showBurst(plan.cleared, points, 0);
+        shakeBoard(2);
         await wait(POP_MS);
         if (round !== roundRef.current) return;
         const next = collapse(
@@ -565,20 +648,41 @@ export function CapybaraPang() {
   }, [timeGain]);
 
   /** 폭탄·무지개처럼 한꺼번에 많이 터지면 펑 하는 순간 판이 쿵 흔들린다 (jsdom엔 animate가 없어 선택 호출) */
-  function shakeBoard() {
+  function shakeBoard(power = 1) {
     if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;
-    boardElRef.current?.animate?.(
-      [{ translate: "0 0" }, { translate: "-7px 4px" }, { translate: "6px -4px" }, { translate: "-3px 2px" }, { translate: "0 0" }],
-      { duration: 320, delay: BURST_AT_MS, easing: "ease-out" },
-    );
+    const at = (x: number, y: number) => ({ translate: `${x * power}px ${y * power}px` });
+    boardElRef.current?.animate?.([at(0, 0), at(-7, 4), at(6, -4), at(-4, 3), at(2, -1), at(0, 0)], {
+      duration: 280 + power * 60,
+      delay: BURST_AT_MS,
+      easing: "ease-out",
+    });
+    // 폰에선 펑 하는 순간 손에도 톡 (많이 터지면 더 길게). 아이폰 사파리엔 vibrate가 없어 조용히 넘어간다
+    setTimeout(() => navigator.vibrate?.(power > 1 ? 35 : 12), BURST_AT_MS);
   }
 
-  // 콤보 시간이 지나면 콤보 표시를 지운다
+  /** 터진 칸들 가운데에 +점수·콤보 글씨를 띄운다 */
+  function showBurst(cells: ReadonlySet<number>, points: number, comboCount: number) {
+    const cell = 100 / BOARD_SIZE;
+    const list = [...cells];
+    const center = (pick: (index: number) => number) =>
+      (list.reduce((sum, index) => sum + pick(index), 0) / list.length + 0.5) * cell;
+    setBurst({ id: Date.now(), x: center(colOf), y: center(rowOf), points, combo: comboCount, big: cells.size > SHAKE_CLEAR_COUNT });
+  }
+
+  // 콤보가 끊기기 직전엔 째깍으로 재촉하고, 시간이 지나면 콤보 표시를 지운다 (길게 이은 콤보가 끊기면 툭 떨어지는 소리)
   useEffect(() => {
     if (combo.count === 0) return;
-    const timer = setTimeout(() => setCombo({ count: 0, at: Date.now() }), COMBO_WINDOW_MS);
-    return () => clearTimeout(timer);
-  }, [combo]);
+    const timers = [
+      setTimeout(() => {
+        if (combo.count >= 2) playGameSound(PANG_SOUNDS.tick);
+      }, COMBO_WINDOW_MS - COMBO_WARN_MS),
+      setTimeout(() => {
+        if (combo.count >= 3 && phase === "playing") playGameSound(PANG_SOUNDS.comboBreak);
+        setCombo({ count: 0, at: Date.now() });
+      }, COMBO_WINDOW_MS),
+    ];
+    return () => timers.forEach(clearTimeout);
+  }, [combo, phase]);
 
   useEffect(() => {
     if (feverUntil === 0) return;
@@ -629,6 +733,7 @@ export function CapybaraPang() {
       setPlayStartAt((current) => current + timeBonus * 1000);
       setTimeGain({ id: scoreRef.current, seconds: timeBonus, reasons: timeBonusReasonsFor(nextCombo, specialCount) });
     }
+    return { points, combo: nextCombo };
   }
 
   /** 줄이 없어질 때까지 터뜨리기 → 떨어뜨리기를 반복한다 */
@@ -644,11 +749,15 @@ export function CapybaraPang() {
         : planClear(current, runs, [], [], idsRef.current);
 
       const activeBlasts = blastsIn(current, plan.cleared);
-      registerClear(plan.cleared.size + plan.created.size, activeBlasts.length);
-      playGameSound(plan.cleared.size > SHAKE_CLEAR_COUNT ? GAME_SOUNDS.explosion : PANG_SOUNDS.pop);
+      const cleared = registerClear(plan.cleared.size + plan.created.size, activeBlasts.length);
+      const big = plan.cleared.size > SHAKE_CLEAR_COUNT;
+      // 펑 하는 순간(BURST_AT_MS)에 맞춰 소리가 나고, 콤보가 이어질수록 음이 올라간다
+      playGameSound(delayLayers(pitched(big ? PANG_SOUNDS.bigPop : PANG_SOUNDS.pop, cleared.combo), BURST_AT_MS));
       setPopping(plan.cleared);
       setBlasts(activeBlasts);
-      if (plan.cleared.size > SHAKE_CLEAR_COUNT) shakeBoard();
+      showBurst(plan.cleared, cleared.points, cleared.combo);
+      // 조금 터지면 톡, 많이 터질수록 크게 흔들린다
+      shakeBoard(big ? Math.min(1 + plan.cleared.size / 10, 2.5) : 0.4);
       await wait(POP_MS);
       if (round !== roundRef.current) return;
 
@@ -764,6 +873,7 @@ export function CapybaraPang() {
     setHurry(false);
     setBanner(null);
     setBlasts([]);
+    setBurst(null);
     setSelected(null);
     setCursor(null);
     setSpawned(new Map());
@@ -823,6 +933,8 @@ export function CapybaraPang() {
   const tier = result ? getPangTier(result.score) : null;
   const resultScore = result?.score.toLocaleString("ko-KR") ?? "";
   const fever = feverUntil > 0;
+  // 이번 판 시작 전 최고 기록 (판이 끝나 기록이 저장돼도 목표가 바뀌지 않게 결과 화면에선 안 쓴다)
+  const bestScore = records.reduce((best, record) => Math.max(best, record.score), 0);
 
   const screenClass =
     phase === "countdown"
@@ -930,6 +1042,7 @@ export function CapybaraPang() {
             combo={combo.count}
             fever={fever}
             lastBonus={lastBonus}
+            goal={nextGoal(score, bestScore)}
           />
 
           <p
@@ -974,6 +1087,7 @@ export function CapybaraPang() {
               />
             ))}
             <BlastEffects blasts={blasts} />
+            {burst && <BurstOverlay key={burst.id} burst={burst} />}
             {phase === "playing" && <FinalCountdown startAt={playStartAt} />}
             {banner && (
               <span
@@ -1006,8 +1120,8 @@ export function CapybaraPang() {
                 {tier.label}
               </p>
               <p className="flex max-w-full flex-nowrap items-baseline gap-2 whitespace-nowrap font-black tabular-nums">
-                <span
-                  data-testid="result-score"
+                <CountUpScore
+                  score={result.score}
                   className={cn(
                     "leading-none",
                     resultScore.length <= 5
@@ -1016,9 +1130,7 @@ export function CapybaraPang() {
                         ? "text-[clamp(2.25rem,10vw,5rem)]"
                         : "text-[clamp(1.75rem,8vw,3.5rem)]",
                   )}
-                >
-                  {resultScore}
-                </span>
+                />
                 <span className="text-title-1">점</span>
               </p>
               <p data-testid="result-rank" className="text-title-2 font-bold tabular-nums">

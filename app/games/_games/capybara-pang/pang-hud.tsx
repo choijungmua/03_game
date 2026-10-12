@@ -29,9 +29,11 @@ type PangHudProps = {
   readonly combo: number;
   readonly fever: boolean;
   readonly lastBonus: number;
+  /** 바로 위 목표(다음 등급이나 내 최고 기록). 다 넘으면 null */
+  readonly goal?: { readonly label: string; readonly score: number } | null;
 };
 
-export function PangHud({ timer, score, scoreGain, timeGain, combo, fever, lastBonus }: PangHudProps) {
+export function PangHud({ timer, score, scoreGain, timeGain, combo, fever, lastBonus, goal }: PangHudProps) {
   const comboMultiplier = comboMultiplierFor(combo);
 
   return (
@@ -56,6 +58,11 @@ export function PangHud({ timer, score, scoreGain, timeGain, combo, fever, lastB
               </span>
             )}
           </span>
+          {goal && (
+            <span data-testid="play-goal" className="text-caption-2 font-semibold tabular-nums opacity-80">
+              {goal.label}까지 {(goal.score - score).toLocaleString("ko-KR")}점
+            </span>
+          )}
         </p>
 
         <div className="flex flex-col items-end gap-1">
@@ -95,7 +102,10 @@ export function PangHud({ timer, score, scoreGain, timeGain, combo, fever, lastB
               combo < 2 && "invisible",
             )}
           >
-          {combo}콤보 · ×{comboMultiplier.toLocaleString("ko-KR")}
+          {/* 콤보가 끊기기 직전 빨갛게 깜빡 — key={combo}라 새 콤보마다 처음부터 다시 */}
+          <span className="motion-safe:animate-pang-warn">
+            {combo}콤보 · ×{comboMultiplier.toLocaleString("ko-KR")}
+          </span>
         </span>
         </div>
       </div>
