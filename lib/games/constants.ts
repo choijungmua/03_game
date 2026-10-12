@@ -12,6 +12,7 @@ export const GAME_TITLES = {
   "capybara-pang": "바라매치",
   "watermelon-game": "수박 게임",
   "capybara-volleyball": "카피바라 배구",
+  "capybara-run": "카피바라 런",
 } as const;
 
 /** 로비 맵에 오두막 없이 왼쪽 위 "게임 목록"에서만 고르는 게임 (마을 테마와 안 맞음). 게임 페이지·검색 노출은 그대로 */

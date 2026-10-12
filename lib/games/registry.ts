@@ -108,6 +108,16 @@ export const GAMES: GameEntry[] = [
     seo: () => import("@/app/games/_games/capybara-volleyball/seo"),
     hideAbout: true,
   },
+  {
+    slug: "capybara-run",
+    title: GAME_TITLES["capybara-run"],
+    description: "갈수록 빨라지는 길을 점프·2단 점프·숙이기로 달리고, 철봉에 매달려 불길과 가시덩굴을 건너는 카피바라 러닝 게임. 넘을 때마다 점수가 쌓여요",
+    tier: "A",
+    playDifficulty: "보통",
+    pageName: "run",
+    component: dynamic(() => import("@/app/games/_games/capybara-run")),
+    seo: () => import("@/app/games/_games/capybara-run/seo"),
+  },
   // 새 게임은 여기에 한 줄씩 추가 (제목은 constants.ts GAME_TITLES에, CLAUDE.md "새 게임 추가 절차" 참고)
 ];
 
