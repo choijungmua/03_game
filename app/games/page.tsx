@@ -38,6 +38,9 @@ export default function GamesPage() {
         <header className="flex flex-col gap-3">
           <h1 className="text-title-1 text-text-strong">{SITE_TAGLINE}</h1>
           <p className="text-base text-text-normal">{SITE_DESCRIPTION}</p>
+          <Link href="/capybara" className="flex min-h-11 items-center self-start text-caption-1 text-primary hover:underline focus-visible:outline-2 focus-visible:outline-primary">
+            카피바라의 특징·먹이·서식지 알아보기
+          </Link>
         </header>
 
 

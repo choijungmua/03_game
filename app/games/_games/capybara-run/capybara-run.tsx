@@ -12,310 +12,122 @@ import { countdownSound, GAME_SOUNDS, GAME_TITLES } from "@/lib/games/constants"
 import { useLockPageScroll } from "@/lib/games/use-lock-page-scroll";
 import { playGameSound } from "@/lib/lobby/settings";
 
-import {
-  BAR_Y,
-  createRun,
-  GROUND,
-  type Hazard,
-  HEIGHT,
-  MAX_HEARTS,
-  MAX_SPEED,
-  PLAYER_H,
-  PLAYER_W,
-  PLAYER_X,
-  type RunEvent,
-  type RunInput,
-  type RunState,
-  SLIDE_H,
-  START_SPEED,
-  step,
-  WIDTH,
-} from "./logic";
+import { RUN_SOUNDS } from "./constants";
+import { BANNER_FRAMES, draw, type Effects, IMAGE_BASE, type Images, POPUP_FRAMES, viewFor } from "./draw";
+import { createRun, GROUND, PLAYER_X, type RunEvent, type RunInput, type RunState, STAGE_NAMES, step } from "./logic";
 import { getRank, getRunTier, insertRecord, LEADERBOARD_SIZE, RUN_TIERS, type RunRecord, saveRecords, useRunRecords } from "./records";
+import { SPRITE_SIZES } from "./sprites";
 
 const SLUG = "capybara-run";
 const TITLE = GAME_TITLES[SLUG];
 const STEP_MS = 1000 / 60;
-const SPRITE = "/assets/images/characters/capybara";
 const JUMP_KEYS = new Set(["Space", "ArrowUp", "KeyW"]);
 const DOWN_KEYS = new Set(["ArrowDown", "KeyS"]);
-/** 점수 알림이 위로 떠오르며 사라지는 프레임 */
-const POPUP_FRAMES = 50;
+const IMAGE_NAMES = [...Object.keys(SPRITE_SIZES), "bg-far"] as (keyof Images)[];
 
 type Phase = "idle" | "countdown" | "playing" | "result";
 
-interface Popup {
-  text: string;
-  /** 장애물을 넘어 받은 점수는 크고 노랗게, 초마다 받는 점수는 작게 */
-  big: boolean;
-  age: number;
+function emptyEffects(): Effects {
+  return { particles: [], popups: [], banner: null, shake: 0, flash: 0 };
 }
 
-function playEvents(events: RunEvent[]) {
+function burst(effects: Effects, x: number, y: number, count: number, color: string, spread: number, up: number) {
+  for (let index = 0; index < count; index += 1) {
+    const life = 18 + Math.random() * 16;
+    effects.particles.push({ x, y, vx: (Math.random() - 0.5) * spread, vy: -Math.random() * up, life, max: life, size: 1.2 + Math.random() * 2, color });
+  }
+}
+
+const DUST = "rgba(190,150,100,0.8)";
+
+/** 이벤트 → 소리·파티클·점수 알림 */
+function react(effects: Effects, events: RunEvent[], state: RunState) {
+  const feet = state.player.y;
   for (const event of events) {
-    if (event.type === "jump") playGameSound(GAME_SOUNDS.tap);
-    else if (event.type === "double") playGameSound(GAME_SOUNDS.whoosh);
-    else if (event.type === "grab") playGameSound(GAME_SOUNDS.place);
-    else if (event.type === "hurt") {
-      playGameSound(GAME_SOUNDS.hit);
-      playGameSound(GAME_SOUNDS.ouch);
-    }
-    else if (event.type === "over") playGameSound(GAME_SOUNDS.fail);
-    else if (event.type === "points" && event.points > 10) playGameSound(GAME_SOUNDS.pickup);
-  }
-}
-
-// --- 그리기 ---
-
-function drawBackground(context: CanvasRenderingContext2D, state: RunState) {
-  const sky = context.createLinearGradient(0, 0, 0, GROUND);
-  sky.addColorStop(0, "#5aa9e6");
-  sky.addColorStop(1, "#cfeefd");
-  context.fillStyle = sky;
-  context.fillRect(0, 0, WIDTH, HEIGHT);
-  // 멀수록 느리게 흐르는 산·숲 두 겹
-  const layers = [
-    { speed: 0.15, color: "#9cc7a4", base: 200, height: 70, period: 260 },
-    { speed: 0.45, color: "#5f9e6e", base: 232, height: 46, period: 140 },
-  ];
-  for (const layer of layers) {
-    context.fillStyle = layer.color;
-    context.beginPath();
-    context.moveTo(0, GROUND);
-    const shift = (state.distance * layer.speed) % layer.period;
-    for (let x = -layer.period; x <= WIDTH + layer.period; x += layer.period / 2) {
-      const peak = (Math.round((x + state.distance * layer.speed - shift) / (layer.period / 2)) % 2) * 0.5 + 0.5;
-      context.lineTo(x - shift, layer.base - layer.height * peak);
-    }
-    context.lineTo(WIDTH, GROUND);
-    context.fill();
-  }
-  context.fillStyle = "#b98a4e";
-  context.fillRect(0, GROUND, WIDTH, HEIGHT - GROUND);
-  context.fillStyle = "#7fb04f";
-  context.fillRect(0, GROUND, WIDTH, 6);
-  // 땅 무늬가 실제 속도로 흘러 빠르기가 느껴지게
-  context.fillStyle = "#a07440";
-  for (let x = -(state.distance % 48); x < WIDTH; x += 48) context.fillRect(x, GROUND + 16, 22, 4);
-}
-
-/** 속도가 붙으면 화면에 바람 줄이 그어진다 */
-function drawSpeedLines(context: CanvasRenderingContext2D, state: RunState) {
-  const strength = (state.speed - 10) / (MAX_SPEED - 10);
-  if (strength <= 0) return;
-  context.strokeStyle = `rgba(255,255,255,${0.15 + strength * 0.45})`;
-  context.lineWidth = 2;
-  for (let index = 0; index < 4 + strength * 10; index += 1) {
-    const y = (index * 53 + state.frame * 7) % (GROUND - 20);
-    const x = WIDTH - ((state.frame * state.speed * 2 + index * 197) % (WIDTH + 200));
-    context.beginPath();
-    context.moveTo(x, y);
-    context.lineTo(x + 40 + strength * 80, y);
-    context.stroke();
-  }
-}
-
-function drawFire(context: CanvasRenderingContext2D, x: number, w: number, frame: number) {
-  const glow = context.createRadialGradient(x + w / 2, GROUND, 4, x + w / 2, GROUND, w * 0.8);
-  glow.addColorStop(0, "rgba(255,140,0,0.45)");
-  glow.addColorStop(1, "rgba(255,140,0,0)");
-  context.fillStyle = glow;
-  context.fillRect(x - w * 0.3, GROUND - w * 0.8, w * 1.6, w * 0.8);
-  // 혀처럼 날름거리는 불꽃: 기둥마다 높이가 다르게 흔들린다
-  for (let flameX = x; flameX < x + w; flameX += 12) {
-    const height = 20 + Math.sin(frame * 0.45 + flameX * 0.7) * 6 + Math.sin(frame * 0.9 + flameX) * 3;
-    for (const [color, scale] of [
-      ["#e8410f", 1],
-      ["#ff9f1a", 0.7],
-      ["#ffe066", 0.4],
-    ] as const) {
-      context.fillStyle = color;
-      context.beginPath();
-      context.moveTo(flameX, GROUND);
-      context.quadraticCurveTo(flameX + 2, GROUND - height * scale * 0.6, flameX + 7, GROUND - height * scale);
-      context.quadraticCurveTo(flameX + 12, GROUND - height * scale * 0.5, flameX + 14, GROUND);
-      context.fill();
+    switch (event.type) {
+      case "jump":
+        playGameSound(RUN_SOUNDS.jump);
+        burst(effects, PLAYER_X - 6, feet, 6, DUST, 3, 1.5);
+        break;
+      case "double":
+        playGameSound(RUN_SOUNDS.double);
+        burst(effects, PLAYER_X, feet - 10, 10, "rgba(255,255,255,0.9)", 4, 2);
+        break;
+      case "land":
+        playGameSound(RUN_SOUNDS.land);
+        burst(effects, PLAYER_X, feet, 8, DUST, 4, 1.2);
+        break;
+      case "grab":
+        playGameSound(RUN_SOUNDS.grab);
+        burst(effects, PLAYER_X, feet - 46, 8, "rgba(255,240,170,0.95)", 4, 2);
+        break;
+      case "coin":
+        playGameSound(RUN_SOUNDS.coin);
+        burst(effects, event.x, event.y, 7, "rgba(255,220,90,0.95)", 3, 2.5);
+        effects.popups.push({ text: "+10", x: event.x, y: event.y - 10, big: false, age: 0 });
+        break;
+      case "bonus":
+        playGameSound(RUN_SOUNDS.bonus);
+        effects.banner = { title: `코인 올클리어! +${event.points}`, icon: "crown", age: 0 };
+        break;
+      case "stage":
+        playGameSound(RUN_SOUNDS.stage);
+        effects.banner = { title: `STAGE ${event.stage}`, sub: `${STAGE_NAMES[event.stage]} · 보너스 타임!`, icon: "star", age: 0 };
+        break;
+      case "bonusStart":
+        // 스테이지 시작과 같이 오면 스테이지 배너를 그대로 둔다
+        if (events.some((other) => other.type === "stage")) break;
+        playGameSound(RUN_SOUNDS.stage);
+        effects.banner = { title: "보너스 타임!", sub: "무적 · 코인 두 배", icon: "star", age: 0 };
+        break;
+      case "spring":
+        playGameSound(RUN_SOUNDS.spring);
+        burst(effects, PLAYER_X, feet, 10, "rgba(255,120,110,0.9)", 4, 2);
+        break;
+      case "heart":
+        playGameSound(RUN_SOUNDS.heart);
+        burst(effects, PLAYER_X, feet - 20, 10, "rgba(255,90,110,0.9)", 4, 2.5);
+        effects.popups.push({ text: "+1 하트", x: PLAYER_X, y: feet - 40, big: false, age: 0 });
+        break;
+      case "bonusEnd":
+        break;
+      case "hurt":
+        playGameSound(RUN_SOUNDS.hurt);
+        playGameSound(GAME_SOUNDS.ouch);
+        effects.shake = 5;
+        effects.flash = 1;
+        break;
+      case "fall":
+        playGameSound(RUN_SOUNDS.fall);
+        effects.flash = 1;
+        break;
+      case "over":
+        playGameSound(RUN_SOUNDS.over);
+        break;
+      case "points":
+        if (event.points > 10) playGameSound(RUN_SOUNDS.pass);
+        effects.popups.push({ text: event.points > 10 ? `+${event.points} ${event.label}!` : `+${event.points}`, x: -1, y: -1, big: event.points > 10, age: 0 });
+        break;
     }
   }
-}
-
-function drawThorns(context: CanvasRenderingContext2D, x: number, w: number) {
-  // 바닥에 깔린 짙은 덤불 위로 덩굴 두 줄이 엉키고, 가시가 위아래로 솟는다
-  context.fillStyle = "#2f4a22";
-  context.beginPath();
-  context.moveTo(x, GROUND);
-  for (let bushX = x; bushX <= x + w; bushX += 10) context.lineTo(bushX, GROUND - 14 - Math.abs(Math.sin(bushX * 0.09)) * 8);
-  context.lineTo(x + w, GROUND);
-  context.fill();
-  context.strokeStyle = "#5b3a1f";
-  context.lineWidth = 3;
-  for (const phase of [0, Math.PI]) {
-    context.beginPath();
-    for (let vineX = x; vineX <= x + w; vineX += 5) context.lineTo(vineX, GROUND - 14 + Math.sin(vineX * 0.12 + phase) * 7);
-    context.stroke();
+  // 숙여 미끄러지는 동안 흙먼지
+  if (state.player.mode === "slide" && state.frame % 3 === 0) burst(effects, PLAYER_X - 22, GROUND - 2, 2, DUST, 2, 1);
+  for (const particle of effects.particles) {
+    // 땅 근처 먼지는 세상과 함께 뒤로 흘러간다
+    particle.x += particle.vx - (particle.y > GROUND - 30 ? state.speed * 0.25 : 0);
+    particle.y += particle.vy;
+    particle.vy += 0.12;
+    particle.life -= 1;
   }
-  context.fillStyle = "#efe6d6";
-  for (let spikeX = x + 5; spikeX < x + w - 5; spikeX += 11) {
-    const baseY = GROUND - 14 + Math.sin(spikeX * 0.12) * 7;
-    const up = Math.round(spikeX / 11) % 2 === 0;
-    context.beginPath();
-    context.moveTo(spikeX - 3, baseY);
-    context.lineTo(spikeX + (up ? 1 : -1), baseY + (up ? -15 : 9));
-    context.lineTo(spikeX + 3, baseY);
-    context.fill();
-  }
-  context.fillStyle = "#6a9a3a";
-  for (let leafX = x + 10; leafX < x + w; leafX += 28) {
-    context.beginPath();
-    context.ellipse(leafX, GROUND - 20 + Math.sin(leafX * 0.12) * 6, 6, 3, -0.6, 0, Math.PI * 2);
-    context.fill();
-  }
-}
-
-function drawHazard(context: CanvasRenderingContext2D, hazard: Hazard, state: RunState) {
-  const x = hazard.x - state.distance;
-  const { w } = hazard;
-  if (x > WIDTH || x + w < 0) return;
-  switch (hazard.kind) {
-    case "fire":
-      drawFire(context, x, w, state.frame);
-      break;
-    case "thorn":
-      drawThorns(context, x, w);
-      break;
-    case "log":
-      context.fillStyle = "#8a5a2b";
-      context.beginPath();
-      context.roundRect(x, GROUND - 30, w, 30, 8);
-      context.fill();
-      context.fillStyle = "#d9a86c";
-      context.beginPath();
-      context.ellipse(x + w - 6, GROUND - 15, 6, 13, 0, 0, Math.PI * 2);
-      context.fill();
-      break;
-    case "branch": {
-      // 위에서 내려온 굵은 나뭇가지 끝에 잎이 머리 높이까지 늘어진다
-      context.fillStyle = "#6b4a2b";
-      context.fillRect(x + w / 2 - 6, 0, 12, GROUND - 60);
-      context.fillStyle = "#4e8a3a";
-      context.beginPath();
-      context.ellipse(x + w / 2, GROUND - 58, w / 2 + 8, 30, 0, 0, Math.PI * 2);
-      context.fill();
-      context.fillStyle = "#3d7030";
-      for (const offset of [-14, 0, 14]) {
-        context.beginPath();
-        context.ellipse(x + w / 2 + offset, GROUND - 36, 7, 10, 0, 0, Math.PI * 2);
-        context.fill();
-      }
-      break;
-    }
-    case "bar": {
-      // 양 끝에서 줄로 매단 쇠 철봉
-      context.strokeStyle = "#7a6a58";
-      context.lineWidth = 3;
-      for (const postX of [x + 6, x + w - 6]) {
-        context.beginPath();
-        context.moveTo(postX, 0);
-        context.lineTo(postX, BAR_Y);
-        context.stroke();
-      }
-      const metal = context.createLinearGradient(0, BAR_Y - 4, 0, BAR_Y + 4);
-      metal.addColorStop(0, "#f2f4f7");
-      metal.addColorStop(1, "#8a929e");
-      context.fillStyle = metal;
-      context.beginPath();
-      context.roundRect(x, BAR_Y - 4, w, 8, 4);
-      context.fill();
-      break;
-    }
-  }
-}
-
-function drawPlayer(context: CanvasRenderingContext2D, state: RunState, sprites: Record<string, HTMLImageElement>) {
-  const { player } = state;
-  // 다치고 무적인 동안 깜빡인다
-  if (state.hurt > 0 && Math.floor(state.hurt / 5) % 2 === 0) return;
-  const size = PLAYER_W * 1.9;
-  const left = PLAYER_X - size / 2;
-  const ready = (image?: HTMLImageElement) => image?.complete && image.naturalWidth > 0;
-  // 빨라질수록 다리가 빨리 움직인다
-  const stride = Math.max(3, Math.round(9 - state.speed / 3));
-  const walk = Math.floor(state.frame / stride) % 2 === 0 ? sprites.walk1 : sprites.walk2;
-
-  if (player.mode === "hang") {
-    context.strokeStyle = "#6b4a2b";
-    context.lineWidth = 5;
-    context.lineCap = "round";
-    for (const armX of [PLAYER_X - 8, PLAYER_X + 8]) {
-      context.beginPath();
-      context.moveTo(armX, player.y - PLAYER_H + 14);
-      context.lineTo(armX, BAR_Y);
-      context.stroke();
-    }
-  }
-  const image = player.mode === "run" ? walk : player.mode === "slide" ? sprites.walk1 : sprites.stand;
-  if (player.mode === "slide") {
-    // 납작하게 엎드려 미끄러진다 + 흙먼지
-    const height = SLIDE_H * 2.2;
-    if (ready(image)) context.drawImage(image, left - 6, player.y - height + 6, size + 12, height);
-    context.fillStyle = "rgba(160,116,64,0.6)";
-    for (let index = 0; index < 4; index += 1) {
-      context.beginPath();
-      context.arc(PLAYER_X - 30 - index * 10, GROUND - 4 - ((state.frame + index * 3) % 8), 4 - index * 0.6, 0, Math.PI * 2);
-      context.fill();
-    }
-    return;
-  }
-  const top = player.y - size + 8;
-  context.save();
-  if (player.mode === "air" && player.jumps === 2) {
-    // 2단 점프는 한 바퀴 돈다
-    context.translate(PLAYER_X, top + size / 2);
-    context.rotate(Math.min(1, Math.max(0, -player.vy / 11.5)) * Math.PI * 2);
-    context.translate(-PLAYER_X, -(top + size / 2));
-  }
-  if (ready(image)) context.drawImage(image, left, top, size, size);
-  else {
-    context.fillStyle = "#8b5a2b";
-    context.fillRect(PLAYER_X - PLAYER_W / 2, player.y - PLAYER_H, PLAYER_W, PLAYER_H);
-  }
-  context.restore();
-}
-
-function drawHud(context: CanvasRenderingContext2D, state: RunState, popups: Popup[]) {
-  context.textAlign = "center";
-  context.lineJoin = "round";
-  context.font = "bold 26px Pretendard, sans-serif";
-  context.lineWidth = 5;
-  context.strokeStyle = "rgba(0,0,0,0.35)";
-  context.strokeText(state.score.toLocaleString(), WIDTH / 2, 34);
-  context.fillStyle = "#ffffff";
-  context.fillText(state.score.toLocaleString(), WIDTH / 2, 34);
-  // 하트와 속도는 점수 바로 밑 한 줄 (그 아래는 철봉 높이라 비워 둔다)
-  context.font = "bold 13px Pretendard, sans-serif";
-  context.fillText(`${"❤".repeat(state.hearts)}${"♡".repeat(MAX_HEARTS - state.hearts)}  속도 x${(state.speed / START_SPEED).toFixed(1)}`, WIDTH / 2, 54);
-  // 넘을 때마다·1초마다 받은 점수가 점수 밑에서 떠올랐다 사라진다
-  popups.forEach((popup, index) => {
-    const alpha = 1 - popup.age / POPUP_FRAMES;
-    const y = 100 + index * 18 - popup.age * 0.3;
-    context.font = popup.big ? "bold 17px Pretendard, sans-serif" : "bold 13px Pretendard, sans-serif";
-    context.lineWidth = 4;
-    context.strokeStyle = `rgba(0,0,0,${alpha * 0.4})`;
-    context.strokeText(popup.text, WIDTH / 2, y);
-    context.fillStyle = popup.big ? `rgba(255,214,51,${alpha})` : `rgba(255,255,255,${alpha})`;
-    context.fillText(popup.text, WIDTH / 2, y);
-  });
-}
-
-function draw(context: CanvasRenderingContext2D, state: RunState, popups: Popup[], sprites: Record<string, HTMLImageElement>, shake: number) {
-  context.save();
-  if (shake > 0) context.translate((Math.random() - 0.5) * shake, (Math.random() - 0.5) * shake);
-  drawBackground(context, state);
-  for (const hazard of state.hazards) drawHazard(context, hazard, state);
-  drawPlayer(context, state, sprites);
-  drawSpeedLines(context, state);
-  context.restore();
-  drawHud(context, state, popups);
+  effects.particles = effects.particles.filter((particle) => particle.life > 0).slice(-160);
+  for (const popup of effects.popups) popup.age += 1;
+  // 코인 알림은 짧게, 점수판 밑 알림은 최근 3개까지
+  const coinPopups = effects.popups.filter((popup) => popup.x !== -1 && popup.age < POPUP_FRAMES / 1.5);
+  const scorePopups = effects.popups.filter((popup) => popup.x === -1 && popup.age < POPUP_FRAMES).slice(-3);
+  effects.popups = [...coinPopups, ...scorePopups];
+  if (effects.banner) effects.banner = effects.banner.age + 1 < BANNER_FRAMES ? { ...effects.banner, age: effects.banner.age + 1 } : null;
+  effects.shake = Math.max(0, effects.shake - 0.4);
+  effects.flash = Math.max(0, effects.flash - 0.04);
 }
 
 // --- 화면 ---
@@ -350,25 +162,20 @@ export function CapybaraRun() {
   const [result, setResult] = useState<RunRecord | null>(null);
   const canvas = useRef<HTMLCanvasElement>(null);
   const game = useRef<RunState>(createRun());
-  const popups = useRef<Popup[]>([]);
-  const shake = useRef(0);
+  const effects = useRef<Effects>(emptyEffects());
   const input = useRef<RunInput>({ jump: false, down: false });
   const downKeys = useRef(new Set<string>());
   const downPointers = useRef(new Set<number>());
-  const sprites = useRef<Record<string, HTMLImageElement>>({});
+  const images = useRef<Images>({});
 
   useLockPageScroll(phase === "countdown" || phase === "playing");
 
   useEffect(() => {
-    sprites.current = Object.fromEntries(
-      [
-        ["walk1", "capybara-walk1-right"],
-        ["walk2", "capybara-walk2-right"],
-        ["stand", "capybara-stand-right"],
-      ].map(([key, name]) => {
+    images.current = Object.fromEntries(
+      IMAGE_NAMES.map((name) => {
         const image = new Image();
-        image.src = `${SPRITE}/${name}.webp`;
-        return [key, image];
+        image.src = `${IMAGE_BASE}/${name}.webp`;
+        return [name, image];
       }),
     );
   }, []);
@@ -380,7 +187,7 @@ export function CapybaraRun() {
   function startCountdown() {
     playGameSound(GAME_SOUNDS.start);
     game.current = createRun();
-    popups.current = [];
+    effects.current = emptyEffects();
     input.current = { jump: false, down: false };
     downKeys.current.clear();
     downPointers.current.clear();
@@ -415,22 +222,25 @@ export function CapybaraRun() {
     const { state, events } = step(game.current, input.current);
     input.current.jump = false;
     game.current = state;
-    playEvents(events);
-    popups.current = popups.current.map((popup) => ({ ...popup, age: popup.age + 1 })).filter((popup) => popup.age < POPUP_FRAMES);
-    for (const event of events) {
-      if (event.type === "points") {
-        const big = event.points > 10;
-        popups.current = [...popups.current, { text: big ? `+${event.points} ${event.label}!` : `+${event.points}`, big, age: 0 }].slice(-4);
-      }
-      if (event.type === "hurt") shake.current = 10;
-    }
-    shake.current = Math.max(0, shake.current - 1);
+    react(effects.current, events, state);
     if (state.over) finish(state);
   });
 
+  // 캔버스를 화면 크기 × 기기 해상도로 맞춘다 (흐릿하게 늘어나지 않게)
   const render = useEffectEvent(() => {
-    const context = canvas.current?.getContext("2d");
-    if (context) draw(context, game.current, popups.current, sprites.current, shake.current);
+    const element = canvas.current;
+    const context = element?.getContext("2d");
+    if (!element || !context) return;
+    const dpr = Math.min(window.devicePixelRatio || 1, 3);
+    const { clientWidth, clientHeight } = element;
+    if (!clientWidth || !clientHeight) return;
+    const width = Math.round(clientWidth * dpr);
+    const height = Math.round(clientHeight * dpr);
+    if (element.width !== width || element.height !== height) {
+      element.width = width;
+      element.height = height;
+    }
+    draw(context, viewFor(clientWidth, clientHeight, dpr), game.current, effects.current, images.current);
   });
 
   useEffect(() => {
@@ -549,14 +359,14 @@ export function CapybaraRun() {
       )}
 
       {(phase === "playing" || phase === "countdown") && (
-        <canvas
-          ref={canvas}
-          width={WIDTH}
-          height={HEIGHT}
-          aria-label="카피바라 런 달리기 길"
-          className="max-h-full w-full object-contain"
-          style={{ aspectRatio: `${WIDTH} / ${HEIGHT}` }}
-        />
+        <canvas ref={canvas} aria-label="카피바라 런 달리기 길" className="absolute inset-0 size-full" />
+      )}
+      {phase === "playing" && (
+        // 터치 화면에서만 보이는 조작 안내 (누르는 건 화면 왼쪽·오른쪽 절반 전체)
+        <div className="pointer-events-none absolute inset-x-0 bottom-[max(1rem,env(safe-area-inset-bottom))] hidden justify-between px-5 text-caption-1 font-bold text-white/80 [@media(pointer:coarse)]:flex">
+          <span className="rounded-full bg-black/25 px-4 py-2 backdrop-blur-sm">◀ 탭: 점프 · 두 번: 2단</span>
+          <span className="rounded-full bg-black/25 px-4 py-2 backdrop-blur-sm">누르고 있기: 숙이기 ▶</span>
+        </div>
       )}
       {phase === "countdown" && (
         <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-success/80">
