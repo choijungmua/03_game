@@ -10,7 +10,6 @@ export const GAME_TITLES = {
   "capybara-alkkagi": "알까기",
   "capybara-log-dodge": "통나무 피하기",
   "capybara-pang": "바라매치",
-  "capybara-defense": "카피바라 디펜스",
   "watermelon-game": "수박 게임",
 } as const;
 

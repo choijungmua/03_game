@@ -47,7 +47,6 @@ export default async function GamePage({ params }: GamePageProps) {
     <main data-hide-page-scrollbar="true">
       <GameVisitTracker slug={slug} />
       <ButtonFocusGuard />
-      {game.slug === "capybara-defense" && <h1 className="sr-only">{game.title}</h1>}
       <JsonLd data={gameJsonLd(game, seo)} />
       <JsonLd
         data={breadcrumbJsonLd([

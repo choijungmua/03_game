@@ -114,11 +114,11 @@ describe("카피바라 습지 마을", () => {
     for (const door of world.doors) expect(positions.has(`${-door.x},${door.y}`)).toBe(true);
   });
 
-  it("등록된 디펜스 게임도 자동으로 오두막과 문이 생긴다", () => {
-    const world = createWorld(LOBBY_SEED, [...GAMES, { slug: "capybara-defense", title: "카피바라 디펜스" }]);
+  it("새 게임을 등록하면 자동으로 오두막과 문이 생긴다", () => {
+    const world = createWorld(LOBBY_SEED, [...GAMES, { slug: "new-game", title: "새 게임" }]);
 
-    expect(world.buildings.some((building) => building.slug === "capybara-defense")).toBe(true);
-    expect(world.doors.some((door) => door.slug === "capybara-defense")).toBe(true);
+    expect(world.buildings.some((building) => building.slug === "new-game")).toBe(true);
+    expect(world.doors.some((door) => door.slug === "new-game")).toBe(true);
   });
 
   it.each([7, 16])("오두막 %i채: 문 앞은 데크, 바로 뒤는 자기 오두막이고, 스폰에서 모든 문까지 걸어갈 수 있다", (count) => {

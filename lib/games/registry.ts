@@ -97,16 +97,6 @@ export const GAMES: GameEntry[] = [
     component: dynamic(() => import("@/app/games/_games/watermelon-game")),
     seo: () => import("@/app/games/_games/watermelon-game/seo"),
   },
-  {
-    slug: "capybara-defense",
-    title: GAME_TITLES["capybara-defense"],
-    description: "카피바라 수비대를 소환·배치하고 계열을 강화해 120라운드의 적과 최종 보스를 막는 디펜스 게임",
-    tier: "A",
-    playDifficulty: "어려움",
-    pageName: "defense",
-    component: dynamic(() => import("@/app/games/_games/capybara-defense")),
-    seo: () => import("@/app/games/_games/capybara-defense/seo"),
-  },
   // 새 게임은 여기에 한 줄씩 추가 (제목은 constants.ts GAME_TITLES에, CLAUDE.md "새 게임 추가 절차" 참고)
 ];
 
