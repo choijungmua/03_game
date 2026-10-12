@@ -1,4 +1,5 @@
 import { ApiError, fetchApi, SERVER_ERROR_MESSAGE } from "@/lib/api-url";
+import { recordGameTelemetry } from "@/lib/games/game-events";
 import { APPLE_KINDS, FISH_CATCHES } from "./constants";
 import type { FishCatch, FishInventory } from "./fishing";
 
@@ -40,5 +41,8 @@ export async function syncApples(profileId: string, token: string, command: "syn
   if (!response.ok) throw new ApiError(SERVER_ERROR_MESSAGE, response.status);
   const state = parseAppleState(await response.json());
   if (!state) throw new ApiError(SERVER_ERROR_MESSAGE, response.status);
+  if (command === "pick" && state.caughtCount > 0) {
+    void recordGameTelemetry("lobby", "apple_pick", { profileId, count: state.caughtCount, label: state.lastCatch });
+  }
   return state;
 }

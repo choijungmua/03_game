@@ -1,4 +1,5 @@
 import { ApiError, fetchApi, SERVER_ERROR_MESSAGE } from "@/lib/api-url";
+import { recordGameTelemetry } from "@/lib/games/game-events";
 
 const LAMP_KEY = /^-?\d+,-?\d+$/;
 export type LampState = Readonly<Record<string, boolean>>;
@@ -22,5 +23,6 @@ export async function syncLamps(key?: string, isOn?: boolean): Promise<LampState
   if (!response.ok) throw new ApiError(SERVER_ERROR_MESSAGE, response.status);
   const state = parseLampState(await response.json());
   if (!state) throw new ApiError(SERVER_ERROR_MESSAGE, response.status);
+  if (key !== undefined && isOn !== undefined) void recordGameTelemetry("lobby", "lamp_change", { label: key, value: isOn ? 1 : 0 });
   return state;
 }

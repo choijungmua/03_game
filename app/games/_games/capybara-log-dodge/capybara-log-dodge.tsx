@@ -9,7 +9,7 @@ import { GameOverActions } from "@/components/games/game-over-actions";
 import { ShareButton } from "@/components/games/share-button";
 import { cn } from "@/lib";
 import { GAME_SOUNDS, GAME_TITLES } from "@/lib/games/constants";
-import { submitGameRecord } from "@/lib/games/game-events";
+import { recordGameTelemetry, submitGameRecord } from "@/lib/games/game-events";
 import { useInView } from "@/lib/games/use-in-view";
 import { useLockPageScroll } from "@/lib/games/use-lock-page-scroll";
 import { lobbyAssetSrc } from "@/lib/lobby/assets";
@@ -594,6 +594,8 @@ export function CapybaraLogDodge() {
     const rank = getRank(records, record);
     saveRecords(insertRecord(records, record));
     void submitGameRecord("capybara-log-dodge", record.timeMs, record);
+    void recordGameTelemetry("capybara-log-dodge", "distance_walked", { distance: SCROLL_SPEED * state.elapsedMs / 1000, label: course || "random" });
+    void recordGameTelemetry("capybara-log-dodge", "map_progress", { value: state.elapsedMs / 1000, label: course || "random" });
     setResult({
       timeMs: record.timeMs,
       nearMisses: record.nearMisses,
@@ -689,9 +691,15 @@ export function CapybaraLogDodge() {
         }
         return;
       }
-      if (state.jumpMs > before.jumpMs) playGameSound(JUMP_SOUND);
+      if (state.jumpMs > before.jumpMs) {
+        playGameSound(JUMP_SOUND);
+        void recordGameTelemetry("capybara-log-dodge", "jump");
+      }
       else if (before.jumpMs > 0 && state.jumpMs === 0) playGameSound(LAND_SOUND);
-      if (before.duckMs === 0 && state.duckMs > 0) playGameSound(DUCK_SOUND);
+      if (before.duckMs === 0 && state.duckMs > 0) {
+        playGameSound(DUCK_SOUND);
+        void recordGameTelemetry("capybara-log-dodge", "slide");
+      }
       // 발소리: 땅에서 좌우로 움직일 때만, 간격을 두고
       if (state.lean !== 0 && state.jumpMs === 0 && now - lastStepAt >= STEP_SOUND_MS) {
         lastStepAt = now;

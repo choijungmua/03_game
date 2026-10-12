@@ -5,6 +5,7 @@ import { useEffect, useEffectEvent } from "react";
 import { ShareButton } from "@/components/games/share-button";
 import { cn } from "@/lib";
 import { createLocalRecordStore, type RecordGuard } from "@/lib/games/local-records";
+import { recordGameTelemetry } from "@/lib/games/game-events";
 import type { RoomView } from "@/lib/games/rooms";
 
 import { RECORD_LIMIT } from "./constants";
@@ -19,7 +20,7 @@ export interface RoomRecord {
 }
 
 /** 결과를 셀 수 있는 방 모양 — 판 게임(바둑·오목)과 알까기가 모두 이 필드를 가진다 */
-export type RecordableView = Pick<RoomView<Pick<BoardRoomState, "endReason" | "winner">>, "code" | "you" | "state">;
+export type RecordableView = Pick<RoomView<Pick<BoardRoomState, "endReason" | "winner">>, "code" | "you" | "state"> & { readonly bot?: boolean };
 
 const isRoomRecord: RecordGuard<RoomRecord> = (value): value is RoomRecord =>
   typeof value?.code === "string" &&
@@ -59,7 +60,11 @@ export function useRoomRecord(slug: string, view: RecordableView | null) {
 
   const record = useEffectEvent(() => {
     const next = addRoomResult(records, view, Date.now());
-    if (next) save(next);
+    if (next) {
+      save(next);
+      const result = next.at(-1)?.result;
+      if (view?.bot && result) void recordGameTelemetry(slug, "ai_match", { result });
+    }
   });
 
   const code = view?.code;

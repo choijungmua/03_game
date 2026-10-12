@@ -1,6 +1,7 @@
 "use client";
 
 import Image from "next/image";
+import Link from "next/link";
 import type { ReactNode } from "react";
 
 import { Button } from "@/components/inputs/button";
@@ -57,6 +58,12 @@ export function RoomLobby({ title, guide, room, record }: RoomLobbyProps) {
             {title}
           </p>
           <p className="text-balance text-caption-1 text-text-caption">{guide}</p>
+          <Link
+            href={`/games/${room.slug}/guide`}
+            className="inline-flex min-h-11 items-center rounded-md text-base font-medium text-text-strong underline underline-offset-4 hover:text-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+          >
+            하는 법·공략 보기
+          </Link>
         </div>
 
         <div className="flex min-h-0 flex-col gap-3 lg:col-start-2 lg:row-span-2 lg:row-start-1">

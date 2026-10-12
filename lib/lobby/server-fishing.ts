@@ -1,4 +1,5 @@
 import { ApiError, fetchApi, SERVER_ERROR_MESSAGE } from "@/lib/api-url";
+import { recordGameTelemetry } from "@/lib/games/game-events";
 
 import { FISH_CATCHES } from "./constants";
 import type { FishCatch, FishInventory } from "./fishing";
@@ -83,5 +84,14 @@ export async function syncFishing(
   if (!response.ok) throw new ApiError(SERVER_ERROR_MESSAGE, response.status);
   const state = parseFishingState(await response.json());
   if (!state) throw new ApiError(SERVER_ERROR_MESSAGE, response.status);
+  if (command === "consume" && name && state.consumed) {
+    void recordGameTelemetry("lobby", "apple_eat", { profileId, label: name });
+    void recordGameTelemetry("lobby", "satiety_change", { profileId, value: state.satiety });
+    void recordGameTelemetry("lobby", "affection_change", { profileId, value: state.affection });
+  }
+  if (command === "outfit" && outfit) {
+    void recordGameTelemetry("lobby", "outfit_change", { profileId, label: outfit.hat ?? "none", metadata: outfit });
+    void recordGameTelemetry("lobby", "glasses_change", { profileId, label: outfit.glasses ?? "none" });
+  }
   return state;
 }
