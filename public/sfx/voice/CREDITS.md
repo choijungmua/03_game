@@ -8,4 +8,5 @@
 | two | 둘 | [LL-Q9176 (kor)-호로조-둘.wav](https://commons.wikimedia.org/wiki/File:LL-Q9176_(kor)-%ED%98%B8%EB%A1%9C%EC%A1%B0-%EB%91%98.wav) | CC0 |
 | one | 하나 | [LL-Q9176 (kor)-호로조-하나.wav](https://commons.wikimedia.org/wiki/File:LL-Q9176_(kor)-%ED%98%B8%EB%A1%9C%EC%A1%B0-%ED%95%98%EB%82%98.wav) | CC0 |
 | woah | 와 | [LL-Q9176 (kor)-CHK2605-와.wav](https://commons.wikimedia.org/wiki/File:LL-Q9176_(kor)-CHK2605-%EC%99%80.wav) | CC0 |
+| timeup | 끝 | [Ko-끝.ogg](https://commons.wikimedia.org/wiki/File:Ko-%EB%81%9D.ogg) by HappyMidnight, 피치·음색 가공함 (가공본도 같은 라이선스) | CC BY-SA 4.0 |
 | hi | 안녕 | [LL-Q9176 (kor)-CHK2605-안녕.wav](https://commons.wikimedia.org/wiki/File:LL-Q9176_(kor)-CHK2605-%EC%95%88%EB%85%95.wav) | CC0 |
