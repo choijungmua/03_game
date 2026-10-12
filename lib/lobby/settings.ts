@@ -93,14 +93,49 @@ export type LobbySound =
   | "bathOut"
   | "stepWater";
 
-/** 효과음 한 겹. 여러 겹을 at(ms)만큼 늦춰 겹쳐서 한 소리를 만든다. from→to는 음 높이(tone) 또는 거르는 주파수(noise), Hz */
-export type SoundLayer = { at?: number; ms: number; level: number; attack?: number; from: number; to: number } & (
-  | { kind: "tone"; wave: OscillatorType }
-  | { kind: "noise"; filter: BiquadFilterType; q: number }
+/** public/sfx/voice/<이름>.wav — 사람 목소리를 카피바라 캐릭터 목소리로 가공한 대사 (scripts/audio로 다시 만든다) */
+export const VOICE_LINES = [
+  "three", "two", "one", "go", "win", "lose", "record", "nice", "wow", "great", "oops", "ouch", "myturn",
+  "timeup", "woah", "careful", "hup", "hurry", "yawn", "yum", "hi", "gotit", "ahh", "levelup", "yay",
+] as const;
+export type VoiceLine = (typeof VOICE_LINES)[number];
+
+/**
+ * 효과음 한 겹. 여러 겹을 at(ms)만큼 늦춰 겹쳐서 한 소리를 만든다.
+ * from→to는 음 높이(tone), 거르는 주파수(noise), 목소리를 거르는 로우패스(voice), Hz.
+ * pan은 왼쪽(-1)~오른쪽(1), wet은 울림(리버브)으로 보내는 양(0~1)
+ */
+export type SoundLayer = {
+  at?: number;
+  ms: number;
+  level: number;
+  attack?: number;
+  from: number;
+  to: number;
+  pan?: number;
+  wet?: number;
+} & (
+  | {
+      kind: "tone";
+      wave: OscillatorType;
+      /** 같은 음을 ±센트만큼 어긋나게 세 겹 쌓아 두툼하게(유니즌) */
+      detune?: number;
+      /** FM: ratio배 음으로 흔들어 마림바·종·칼림바 같은 타악기 배음을 만든다 */
+      fm?: { ratio: number; index: number };
+      /** 로우패스를 이 Hz에서 시작해 끝으로 갈수록 닫아(필터 엔벨로프) 말랑하게 */
+      lowpass?: number;
+    }
+  | { kind: "noise"; filter: BiquadFilterType; q: number; color?: "white" | "pink" | "brown" }
+  | { kind: "voice"; line: VoiceLine }
 );
 
+type Bus = { input: GainNode; reverb: GainNode };
+type NoiseColor = "white" | "pink" | "brown";
+
 let audio: AudioContext | null = null;
-let noise: AudioBuffer | null = null;
+let bus: Bus | null = null;
+const noises = new Map<NoiseColor, AudioBuffer>();
+const voices = new Map<VoiceLine, AudioBuffer | Promise<AudioBuffer | null>>();
 
 export function playSound(name: LobbySound, settings: LobbySettings) {
   playLayers(SOUNDS[name], settings);
@@ -111,7 +146,6 @@ export function playGameSound(layers: readonly SoundLayer[]) {
   playLayers(layers, loadLobbySettings());
 }
 
-// ponytail: 효과음 파일 없이 오실레이터·잡음으로 짧게 합성한다(저작권 걱정 없음). 효과음 파일이 생기면 여기서 AudioBuffer 재생으로 바꾼다
 function playLayers(layers: readonly SoundLayer[], settings: LobbySettings) {
   if (settings.muted || settings.volume <= 0) return;
   // 소리는 곁들이라 Web Audio가 어디서 예외를 던져도(오디오 장치 중단·잘못된 값 등) 부른 쪽으로 번지지 않게 삼킨다.
@@ -121,49 +155,230 @@ function playLayers(layers: readonly SoundLayer[], settings: LobbySettings) {
   } catch {}
 }
 
+/**
+ * 모든 소리가 지나는 마스터 버스: 레이어 → (마른 소리 + 짧은 방 울림) → 컴프레서 → 스피커.
+ * 울림과 압축이 한 공간에서 나는 소리처럼 묶어 줘서, 날것의 비프음이 요즘 게임 소리처럼 들린다
+ */
+function masterBus(ctx: AudioContext): Bus {
+  const compressor = ctx.createDynamicsCompressor();
+  compressor.threshold.value = -16;
+  compressor.knee.value = 10;
+  compressor.ratio.value = 4;
+  compressor.attack.value = 0.003;
+  compressor.release.value = 0.16;
+  compressor.connect(ctx.destination);
+
+  const input = ctx.createGain();
+  input.connect(compressor);
+
+  // 리버브 임펄스는 파일 없이 만든다: 좌우가 다른 잡음이 1.1초 동안 줄어들며 높은 소리부터 사라진다
+  const length = Math.floor(ctx.sampleRate * 1.1);
+  const impulse = ctx.createBuffer(2, length, ctx.sampleRate);
+  for (let channel = 0; channel < 2; channel += 1) {
+    const data = impulse.getChannelData(channel);
+    let smooth = 0;
+    for (let i = 0; i < length; i += 1) {
+      const t = i / length;
+      smooth += (Math.random() * 2 - 1 - smooth) * (0.6 - 0.5 * t);
+      data[i] = smooth * (1 - t) ** 3;
+    }
+  }
+  const convolver = ctx.createConvolver();
+  convolver.buffer = impulse;
+  const reverb = ctx.createGain();
+  reverb.gain.value = 0.9;
+  reverb.connect(convolver);
+  convolver.connect(compressor);
+  return { input, reverb };
+}
+
+function noiseBuffer(ctx: AudioContext, color: NoiseColor) {
+  const cached = noises.get(color);
+  if (cached) return cached;
+  const buffer = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate);
+  const data = buffer.getChannelData(0);
+  // pink는 바람·물보라, brown은 쿵·우르릉처럼 낮게 깔리는 잡음 (white를 거르면 결이 거칠어 따로 만든다)
+  let b0 = 0;
+  let b1 = 0;
+  let b2 = 0;
+  let last = 0;
+  for (let i = 0; i < data.length; i += 1) {
+    const white = Math.random() * 2 - 1;
+    if (color === "pink") {
+      b0 = 0.99765 * b0 + white * 0.099;
+      b1 = 0.963 * b1 + white * 0.2965;
+      b2 = 0.57 * b2 + white * 1.0526;
+      data[i] = (b0 + b1 + b2 + white * 0.1848) * 0.2;
+    } else if (color === "brown") {
+      last = (last + 0.02 * white) / 1.02;
+      data[i] = last * 3.5;
+    } else data[i] = white;
+  }
+  noises.set(color, buffer);
+  return buffer;
+}
+
+/** 목소리 파일은 처음 소리를 낼 때 한꺼번에 받아 둔다 (모두 합쳐 0.5MB 아래) */
+function loadVoice(ctx: AudioContext, line: VoiceLine): AudioBuffer | Promise<AudioBuffer | null> {
+  const cached = voices.get(line);
+  if (cached) return cached;
+  const loading = fetch(`/sfx/voice/${line}.wav`)
+    .then((response) => (response.ok ? response.arrayBuffer() : Promise.reject(new Error(String(response.status)))))
+    .then((bytes) => ctx.decodeAudioData(bytes))
+    .then((buffer) => {
+      voices.set(line, buffer);
+      return buffer;
+    })
+    .catch(() => {
+      voices.delete(line);
+      return null;
+    });
+  voices.set(line, loading);
+  return loading;
+}
+
 function synthesize(layers: readonly SoundLayer[], settings: LobbySettings) {
   audio ??= new AudioContext();
+  const ctx = audio;
   // 브라우저는 한 번 누르거나 키를 치기 전까지 소리를 막는다. 막혀 있으면 조용히 넘어간다
   // iOS는 통화·앱 전환 뒤 "interrupted"로 두기도 해서, running이 아니면 다시 깨운다
-  if (audio.state !== "running") audio.resume().catch(() => {});
-  if (!noise) {
-    noise = audio.createBuffer(1, audio.sampleRate, audio.sampleRate);
-    const data = noise.getChannelData(0);
-    for (let i = 0; i < data.length; i += 1) data[i] = Math.random() * 2 - 1;
-  }
-  // 같은 소리를 계속 내도 기계음처럼 안 들리게 높낮이를 조금씩 흔든다
-  const pitch = 0.92 + Math.random() * 0.16;
-  for (const layer of layers) {
-    const start = audio.currentTime + (layer.at ?? 0) / 1000;
-    const end = start + layer.ms / 1000;
-    const gain = audio.createGain();
-    gain.gain.setValueAtTime(0.0001, start);
-    gain.gain.exponentialRampToValueAtTime(layer.level * settings.volume, start + (layer.attack ?? 10) / 1000);
-    gain.gain.exponentialRampToValueAtTime(0.0001, end);
-    gain.connect(audio.destination);
+  if (ctx.state !== "running") ctx.resume().catch(() => {});
+  const target = (bus ??= masterBus(ctx));
+  if (voices.size === 0) for (const line of VOICE_LINES) void loadVoice(ctx, line);
 
-    let source: AudioScheduledSourceNode;
-    let frequency: AudioParam;
-    if (layer.kind === "tone") {
-      const oscillator = audio.createOscillator();
-      oscillator.type = layer.wave;
-      oscillator.connect(gain);
-      source = oscillator;
-      frequency = oscillator.frequency;
-    } else {
-      const buffer = audio.createBufferSource();
-      buffer.buffer = noise;
-      const filter = audio.createBiquadFilter();
-      filter.type = layer.filter;
-      filter.Q.value = layer.q;
-      buffer.connect(filter);
-      filter.connect(gain);
-      source = buffer;
-      frequency = filter.frequency;
+  // 같은 소리를 계속 내도 기계음처럼 안 들리게 높낮이·크기·시작을 조금씩 흔든다
+  const pitch = 0.94 + Math.random() * 0.12;
+  const volume = settings.volume * (0.9 + Math.random() * 0.2);
+  const requested = ctx.currentTime;
+  for (const layer of layers) {
+    const at = (layer.at ?? 0) / 1000 + Math.random() * 0.006;
+    if (layer.kind !== "voice") {
+      playLayer(ctx, target, layer, ctx.currentTime + at, pitch, volume);
+      continue;
     }
-    frequency.setValueAtTime(layer.from * pitch, start);
-    frequency.exponentialRampToValueAtTime(layer.to * pitch, end);
+    const voice = loadVoice(ctx, layer.line);
+    if (voice instanceof AudioBuffer) playVoice(ctx, target, layer, voice, ctx.currentTime + at, volume);
+    // 아직 받는 중이면 0.3초 안에 오면 늦게라도 낸다 (그보다 늦으면 장면과 어긋나 버린다)
+    else
+      void voice.then((buffer) => {
+        if (buffer && ctx.currentTime - requested < 0.3) playVoice(ctx, target, layer, buffer, ctx.currentTime + at, volume);
+      });
+  }
+}
+
+/** 레이어 소리 → 좌우 위치 → 마스터 버스(마른 소리) + 울림 */
+function route(ctx: AudioContext, target: Bus, node: AudioNode, layer: SoundLayer, defaultWet: number) {
+  const panner = ctx.createStereoPanner();
+  panner.pan.value = Math.max(-1, Math.min(1, layer.pan ?? 0));
+  node.connect(panner);
+  panner.connect(target.input);
+  const send = ctx.createGain();
+  send.gain.value = layer.wet ?? defaultWet;
+  panner.connect(send);
+  send.connect(target.reverb);
+}
+
+function playVoice(
+  ctx: AudioContext,
+  target: Bus,
+  layer: Extract<SoundLayer, { kind: "voice" }>,
+  buffer: AudioBuffer,
+  start: number,
+  volume: number,
+) {
+  const source = ctx.createBufferSource();
+  source.buffer = buffer;
+  // 목소리는 반음 안쪽으로만 흔든다. 더 흔들면 말투가 어색해진다
+  source.playbackRate.value = 0.97 + Math.random() * 0.06;
+  const end = start + Math.min(layer.ms / 1000, buffer.duration / source.playbackRate.value);
+  const filter = ctx.createBiquadFilter();
+  filter.type = "lowpass";
+  filter.frequency.setValueAtTime(layer.from, start);
+  filter.frequency.exponentialRampToValueAtTime(layer.to, end);
+  const gain = ctx.createGain();
+  gain.gain.setValueAtTime(0.0001, start);
+  gain.gain.exponentialRampToValueAtTime(layer.level * volume, start + (layer.attack ?? 5) / 1000);
+  gain.gain.setValueAtTime(layer.level * volume, Math.max(start + 0.006, end - 0.04));
+  gain.gain.exponentialRampToValueAtTime(0.0001, end);
+  source.connect(filter);
+  filter.connect(gain);
+  route(ctx, target, gain, layer, 0.1);
+  source.start(start);
+  source.stop(end + 0.02);
+}
+
+function playLayer(
+  ctx: AudioContext,
+  target: Bus,
+  layer: Exclude<SoundLayer, { kind: "voice" }>,
+  start: number,
+  pitch: number,
+  volume: number,
+) {
+  const end = start + layer.ms / 1000;
+  const gain = ctx.createGain();
+  gain.gain.setValueAtTime(0.0001, start);
+  gain.gain.exponentialRampToValueAtTime(layer.level * volume, start + (layer.attack ?? 8) / 1000);
+  gain.gain.exponentialRampToValueAtTime(0.0001, end);
+  route(ctx, target, gain, layer, 0.14);
+
+  const sweep = (param: AudioParam, multiplier = 1) => {
+    param.setValueAtTime(layer.from * pitch * multiplier, start);
+    param.exponentialRampToValueAtTime(layer.to * pitch * multiplier, end);
+  };
+  const sources: AudioScheduledSourceNode[] = [];
+
+  if (layer.kind === "tone") {
+    let output: AudioNode = gain;
+    if (layer.lowpass) {
+      const filter = ctx.createBiquadFilter();
+      filter.type = "lowpass";
+      filter.Q.value = 0.8;
+      filter.frequency.setValueAtTime(layer.lowpass, start);
+      filter.frequency.exponentialRampToValueAtTime(Math.max(layer.lowpass * 0.25, 80), end);
+      filter.connect(gain);
+      output = filter;
+    }
+    const spread = layer.detune ? [-layer.detune, 0, layer.detune] : [0];
+    for (const cents of spread) {
+      const oscillator = ctx.createOscillator();
+      oscillator.type = layer.wave;
+      oscillator.detune.value = cents;
+      sweep(oscillator.frequency);
+      if (layer.fm) {
+        // 흔드는 깊이가 소리 끝으로 갈수록 줄어 "통-" 하고 맑게 남는다 (실제 나무·쇠 타악기처럼)
+        const modulator = ctx.createOscillator();
+        sweep(modulator.frequency, layer.fm.ratio);
+        const depth = ctx.createGain();
+        depth.gain.setValueAtTime(layer.from * pitch * layer.fm.index, start);
+        depth.gain.exponentialRampToValueAtTime(Math.max(layer.to * pitch * layer.fm.index * 0.05, 0.01), end);
+        modulator.connect(depth);
+        depth.connect(oscillator.frequency);
+        sources.push(modulator);
+      }
+      if (spread.length > 1) {
+        const unison = ctx.createGain();
+        unison.gain.value = 0.55;
+        oscillator.connect(unison);
+        unison.connect(output);
+      } else oscillator.connect(output);
+      sources.push(oscillator);
+    }
+  } else {
+    const buffer = ctx.createBufferSource();
+    buffer.buffer = noiseBuffer(ctx, layer.color ?? "white");
+    buffer.loop = true;
+    const filter = ctx.createBiquadFilter();
+    filter.type = layer.filter;
+    filter.Q.value = layer.q;
+    sweep(filter.frequency);
+    buffer.connect(filter);
+    filter.connect(gain);
+    sources.push(buffer);
+  }
+  for (const source of sources) {
     source.start(start);
     source.stop(end + 0.02);
   }
 }
+

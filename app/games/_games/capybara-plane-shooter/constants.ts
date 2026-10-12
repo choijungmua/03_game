@@ -33,157 +33,166 @@ export const PLANE_SHOOTER_SOUNDS = {
   /** 무기별 자동 발사음 (아주 작게) */
   fire: {
     /** 퓻: 풀잎탄 */
-    basic: [{ kind: "tone", wave: "triangle", from: 1500, to: 700, ms: 45, level: 0.04 }],
-    /** 퓻퓻: 해바라기씨 쌍발 */
+    basic: [{ kind: "noise", filter: "bandpass", q: 4, color: "pink", from: 3200, to: 1600, ms: 40, level: 0.05 }],
+    /** 퓻퓻: 해바라기씨 쌍발 (좌우로 살짝 벌어진다) */
     double: [
-      { kind: "tone", wave: "triangle", from: 1500, to: 700, ms: 40, level: 0.035 },
-      { at: 25, kind: "tone", wave: "triangle", from: 1700, to: 800, ms: 40, level: 0.035 },
+      { kind: "noise", filter: "bandpass", q: 4, color: "pink", from: 3200, to: 1600, ms: 35, level: 0.045, pan: -0.25 },
+      { at: 25, kind: "noise", filter: "bandpass", q: 4, color: "pink", from: 3600, to: 1800, ms: 35, level: 0.045, pan: 0.25 },
     ],
-    /** 파샥: 귤 산탄 */
+    /** 파샥: 귤 산탄 — 바람 한 줌 + 귤껍질 톡 */
     spread: [
-      { kind: "noise", filter: "bandpass", q: 2, from: 2600, to: 1200, ms: 60, level: 0.08 },
-      { kind: "tone", wave: "triangle", from: 1100, to: 500, ms: 55, level: 0.035 },
+      { kind: "noise", filter: "bandpass", q: 2, color: "pink", from: 2600, to: 1200, ms: 60, level: 0.08 },
+      { kind: "tone", wave: "sine", from: 900, to: 880, ms: 50, level: 0.03, fm: { ratio: 2.76, index: 0.4 } },
     ],
-    /** 틱: 옥수수 연사 (가장 짧게) */
-    rapid: [{ kind: "tone", wave: "square", from: 1900, to: 1200, ms: 25, level: 0.025 }],
-    /** 슈웅: 사탕수수 관통 */
-    pierce: [{ kind: "tone", wave: "sawtooth", from: 900, to: 250, ms: 110, level: 0.04 }],
+    /** 틱: 옥수수 연사 (가장 짧게) — 나무 알갱이 톡 */
+    rapid: [{ kind: "tone", wave: "sine", from: 1900, to: 1850, ms: 25, level: 0.03, fm: { ratio: 2.76, index: 0.4 }, wet: 0 }],
+    /** 슈웅: 사탕수수 관통 — 길게 가르는 바람 */
+    pierce: [{ kind: "noise", filter: "bandpass", q: 3, color: "pink", from: 2400, to: 500, ms: 120, level: 0.06 }],
   } satisfies Record<WeaponKind, readonly SoundLayer[]>,
   /** 스윽: 비행기가 좌우로 기울며 움직이기 시작 */
-  move: [{ kind: "noise", filter: "bandpass", q: 1.5, from: 300, to: 900, ms: 140, level: 0.05, attack: 40 }],
-  /** 탁: 적이 총알에 맞음 (아직 안 죽음) */
+  move: [{ kind: "noise", filter: "bandpass", q: 1.5, color: "pink", from: 300, to: 900, ms: 140, level: 0.05, attack: 40 }],
+  /** 탁: 적이 총알에 맞음 (아직 안 죽음) — 가죽 북 */
   enemyHit: [
-    { kind: "noise", filter: "highpass", q: 1, from: 2400, to: 1800, ms: 30, level: 0.1 },
-    { kind: "tone", wave: "sine", from: 500, to: 300, ms: 35, level: 0.05 },
+    { kind: "noise", filter: "bandpass", q: 2, color: "pink", from: 2000, to: 1400, ms: 30, level: 0.09, wet: 0 },
+    { kind: "tone", wave: "sine", from: 420, to: 260, ms: 40, level: 0.05 },
   ],
-  /** 퍼벙: 적 격추 */
+  /** 퍼벙: 적 격추 — 갈색 소음 퍽 + 둔한 저음 */
   enemyDown: [
-    { kind: "noise", filter: "lowpass", q: 0.8, from: 1800, to: 150, ms: 240, level: 0.26 },
-    { kind: "tone", wave: "sine", from: 200, to: 60, ms: 200, level: 0.12 },
+    { kind: "noise", filter: "lowpass", q: 0.8, color: "brown", from: 1600, to: 120, ms: 260, level: 0.3, wet: 0.2 },
+    { kind: "tone", wave: "sine", from: 180, to: 55, ms: 200, level: 0.12 },
   ],
-  /** 팅: 보스 가죽에 튕김 (보스는 안 죽는다) */
-  bossHit: [{ kind: "tone", wave: "square", from: 2300, to: 2100, ms: 25, level: 0.03 }],
-  /** 팅: 아르마딜로 방패에 총알이 막힘 */
+  /** 팅: 보스 가죽에 튕김 (보스는 안 죽는다) — 돌 튕기는 소리 */
+  bossHit: [{ kind: "tone", wave: "sine", from: 2300, to: 2280, ms: 40, level: 0.03, fm: { ratio: 1.4, index: 0.8 }, wet: 0 }],
+  /** 팅: 아르마딜로 방패에 총알이 막힘 — 돌 껍데기 */
   shieldBlock: [
-    { kind: "tone", wave: "square", from: 1800, to: 1500, ms: 35, level: 0.035 },
-    { kind: "noise", filter: "highpass", q: 2, from: 4000, to: 3000, ms: 25, level: 0.06 },
+    { kind: "tone", wave: "sine", from: 1600, to: 1580, ms: 60, level: 0.04, fm: { ratio: 1.4, index: 1 } },
+    { kind: "noise", filter: "highpass", q: 2, from: 4000, to: 3000, ms: 20, level: 0.05, wet: 0 },
   ],
-  /** 뾰로롱: 독화살개구리가 둘로 갈라짐 */
+  /** 뾰로롱: 독화살개구리가 둘로 갈라짐 — 물방울 두 개가 양쪽으로 */
   split: [
-    { kind: "tone", wave: "sine", from: 400, to: 900, ms: 90, level: 0.08 },
-    { at: 70, kind: "tone", wave: "sine", from: 500, to: 1100, ms: 90, level: 0.07 },
+    { kind: "tone", wave: "sine", from: 400, to: 900, ms: 90, level: 0.08, pan: -0.4, lowpass: 4000 },
+    { at: 70, kind: "tone", wave: "sine", from: 500, to: 1100, ms: 90, level: 0.07, pan: 0.4, lowpass: 4000 },
   ],
-  /** 삐빅: 칼새가 멈춰 돌진을 예고 */
+  /** 똑똑: 칼새가 멈춰 돌진을 예고 — 우드블록 두 번 */
   dasherWarn: [
-    { kind: "tone", wave: "square", from: 1200, to: 1200, ms: 60, level: 0.05 },
-    { at: 90, kind: "tone", wave: "square", from: 1500, to: 1500, ms: 60, level: 0.05 },
+    { kind: "tone", wave: "sine", from: 1200, to: 1190, ms: 80, level: 0.06, fm: { ratio: 2.76, index: 0.8 } },
+    { at: 90, kind: "tone", wave: "sine", from: 1500, to: 1490, ms: 80, level: 0.06, fm: { ratio: 2.76, index: 0.8 } },
   ],
-  /** 뿅: 조준 사격 적이 쏨 */
-  enemyShot: [{ kind: "tone", wave: "sine", from: 560, to: 360, ms: 80, level: 0.06 }],
-  /** 부웅: 보스 탄막 발사 */
+  /** 뿅: 조준 사격 적이 쏨 — 씨앗 퐁 */
+  enemyShot: [{ kind: "tone", wave: "sine", from: 560, to: 360, ms: 80, level: 0.06, lowpass: 2500 }],
+  /** 부웅: 보스 탄막 발사 — 따뜻한 저음 + 갈색 바람 */
   bossShot: [
-    { kind: "tone", wave: "sawtooth", from: 320, to: 180, ms: 120, level: 0.045 },
-    { kind: "noise", filter: "lowpass", q: 1, from: 900, to: 300, ms: 120, level: 0.08 },
+    { kind: "tone", wave: "sawtooth", from: 320, to: 180, ms: 120, level: 0.04, detune: 10, lowpass: 1200 },
+    { kind: "noise", filter: "lowpass", q: 1, color: "brown", from: 900, to: 300, ms: 120, level: 0.1 },
   ],
-  /** 퍽+지직: 비행기가 맞음 */
+  /** 퍽 + "아야!": 비행기가 맞음 */
   damage: [
     ...GAME_SOUNDS.hit,
-    { at: 40, kind: "tone", wave: "square", from: 220, to: 120, ms: 220, level: 0.07 },
+    { at: 40, kind: "noise", filter: "lowpass", q: 1, color: "brown", from: 900, to: 150, ms: 220, level: 0.15 },
+    ...delay(GAME_SOUNDS.ouch, 60),
   ],
-  /** 퍽 뒤 삐삐: 체력이 한 칸 남음 */
+  /** 퍽 뒤 "조심해!": 체력이 한 칸 남음 */
   lowHp: [...GAME_SOUNDS.hit, ...delay(GAME_SOUNDS.warning, 260)],
   /** 띠링↑: 무기 간식 먹음 */
   weaponPickup: [
     ...GAME_SOUNDS.pickup,
-    { at: 160, kind: "tone", wave: "triangle", from: 880, to: 1760, ms: 160, level: 0.08 },
+    { at: 160, kind: "tone", wave: "sine", from: 1760, to: 1756, ms: 220, level: 0.07, fm: { ratio: 3.5, index: 0.6 }, wet: 0.3 },
   ],
-  /** 포로롱: 유자 온천 회복 */
+  /** 포로롱 + "아 시원해": 유자 온천 회복 — 칼림바 셋 */
   heal: [
-    { kind: "tone", wave: "sine", from: 659, to: 659, ms: 90, level: 0.11 },
-    { at: 80, kind: "tone", wave: "sine", from: 784, to: 784, ms: 90, level: 0.11 },
-    { at: 160, kind: "tone", wave: "sine", from: 988, to: 988, ms: 220, level: 0.11 },
+    { kind: "tone", wave: "sine", from: 659, to: 659, ms: 200, level: 0.1, fm: { ratio: 3.5, index: 0.6 }, pan: -0.2, wet: 0.35 },
+    { at: 80, kind: "tone", wave: "sine", from: 784, to: 784, ms: 200, level: 0.1, fm: { ratio: 3.5, index: 0.6 }, wet: 0.35 },
+    { at: 160, kind: "tone", wave: "sine", from: 988, to: 988, ms: 320, level: 0.1, fm: { ratio: 3.5, index: 0.6 }, pan: 0.2, wet: 0.4 },
+    { at: 200, kind: "voice", line: "ahh", from: 8000, to: 6000, ms: 700, level: 0.65 },
   ],
-  /** 따단: 일반 스테이지 클리어 */
+  /** 따단 + "나이스!": 일반 스테이지 클리어 — 마림바 */
   stageClear: [
-    { kind: "tone", wave: "triangle", from: 784, to: 784, ms: 110, level: 0.13 },
-    { at: 110, kind: "tone", wave: "triangle", from: 1175, to: 1175, ms: 260, level: 0.14 },
+    { kind: "tone", wave: "sine", from: 784, to: 784, ms: 180, level: 0.12, fm: { ratio: 4, index: 0.8 }, wet: 0.3 },
+    { at: 110, kind: "tone", wave: "sine", from: 1175, to: 1175, ms: 360, level: 0.13, fm: { ratio: 4, index: 0.8 }, wet: 0.4 },
+    { at: 300, kind: "voice", line: "great", from: 9000, to: 7000, ms: 600, level: 0.75 },
   ],
   /** 콰광 뒤 빠밤빠밤!: 카이만 보스 격파 */
   bossDefeat: [...GAME_SOUNDS.explosion, ...delay(GAME_SOUNDS.success, 300)],
-  /** 그르렁↑ 뒤 삐삐: 보스가 다음 페이즈로 (체력 2/3·1/3) */
+  /** 그르렁↑ 뒤 "조심해!": 보스가 다음 페이즈로 (체력 2/3·1/3) */
   bossPhase: [
-    { kind: "tone", wave: "sawtooth", from: 90, to: 180, ms: 380, level: 0.09, attack: 40 },
-    { kind: "noise", filter: "lowpass", q: 1, from: 300, to: 900, ms: 380, level: 0.18, attack: 40 },
+    { kind: "tone", wave: "sawtooth", from: 90, to: 180, ms: 380, level: 0.08, attack: 40, detune: 15, lowpass: 900 },
+    { kind: "noise", filter: "lowpass", q: 1, color: "brown", from: 300, to: 900, ms: 380, level: 0.22, attack: 40 },
     ...delay(GAME_SOUNDS.warning, 380),
   ],
-  /** 웨엥웨엥: 보스 스테이지 진입 경보 */
+  /** 둥둥 + "우와!": 보스 스테이지 진입 — 징 두 번이 깊게 울린다 */
   bossStage: [
-    { kind: "tone", wave: "sawtooth", from: 440, to: 660, ms: 300, level: 0.06 },
-    { at: 300, kind: "tone", wave: "sawtooth", from: 660, to: 440, ms: 300, level: 0.06 },
-    { at: 600, kind: "tone", wave: "sawtooth", from: 440, to: 660, ms: 300, level: 0.06 },
-    { at: 900, kind: "tone", wave: "sawtooth", from: 660, to: 440, ms: 300, level: 0.06 },
+    { kind: "tone", wave: "sine", from: 220, to: 218, ms: 700, level: 0.14, fm: { ratio: 1.4, index: 1.4 }, wet: 0.5 },
+    { at: 450, kind: "tone", wave: "sine", from: 165, to: 163, ms: 900, level: 0.14, fm: { ratio: 1.4, index: 1.4 }, wet: 0.5 },
+    // 스테이지 클리어 "나이스!" 바로 뒤에 이어지므로 한 박 늦춘다
+    { at: 1000, kind: "voice", line: "woah", from: 9000, to: 7000, ms: 500, level: 0.75 },
   ],
-  /** 그르르: 카이만 보스 등장 */
+  /** 그르르: 카이만 보스 등장 — 땅울림 */
   bossAppear: [
-    { kind: "tone", wave: "sawtooth", from: 110, to: 60, ms: 700, level: 0.09, attack: 80 },
-    { kind: "noise", filter: "lowpass", q: 1, from: 500, to: 120, ms: 700, level: 0.2, attack: 80 },
+    { kind: "tone", wave: "sawtooth", from: 110, to: 60, ms: 700, level: 0.08, attack: 80, detune: 18, lowpass: 600 },
+    { kind: "noise", filter: "lowpass", q: 1, color: "brown", from: 500, to: 120, ms: 700, level: 0.26, attack: 80, wet: 0.3 },
   ],
-  /** 뚜-딧: 보스 패턴 바뀜 */
+  /** 똑-딱: 보스 패턴 바뀜 — 우드블록 */
   bossPattern: [
-    { kind: "tone", wave: "square", from: 520, to: 520, ms: 60, level: 0.05 },
-    { at: 70, kind: "tone", wave: "square", from: 780, to: 780, ms: 60, level: 0.05 },
+    { kind: "tone", wave: "sine", from: 520, to: 515, ms: 90, level: 0.07, fm: { ratio: 2.76, index: 0.8 } },
+    { at: 70, kind: "tone", wave: "sine", from: 780, to: 775, ms: 90, level: 0.07, fm: { ratio: 2.76, index: 0.8 } },
   ],
-  /** 뿅뿅뿅: 보스가 돌격을 마치고 어지러워 기절 */
+  /** 띠용띠용: 보스가 돌격을 마치고 어지러워 기절 — 칼림바가 양쪽으로 빙글 */
   bossStun: [
-    { kind: "tone", wave: "sine", from: 900, to: 600, ms: 90, level: 0.08 },
-    { at: 110, kind: "tone", wave: "sine", from: 1000, to: 700, ms: 90, level: 0.08 },
-    { at: 220, kind: "tone", wave: "sine", from: 1100, to: 800, ms: 120, level: 0.08 },
+    { kind: "tone", wave: "sine", from: 900, to: 600, ms: 110, level: 0.07, fm: { ratio: 3.5, index: 0.5 }, pan: -0.4 },
+    { at: 110, kind: "tone", wave: "sine", from: 1000, to: 700, ms: 110, level: 0.07, fm: { ratio: 3.5, index: 0.5 }, pan: 0.4 },
+    { at: 220, kind: "tone", wave: "sine", from: 1100, to: 800, ms: 140, level: 0.07, fm: { ratio: 3.5, index: 0.5 }, pan: -0.4 },
   ],
-  /** 위이잉: 레이저 충전 예고 */
-  laserWarn: [{ kind: "tone", wave: "sawtooth", from: 200, to: 900, ms: 850, level: 0.05, attack: 200 }],
+  /** 위이잉: 레이저 충전 예고 — 바람이 모여든다 */
+  laserWarn: [
+    { kind: "tone", wave: "sawtooth", from: 200, to: 900, ms: 850, level: 0.04, attack: 200, detune: 12, lowpass: 2000 },
+    { kind: "noise", filter: "bandpass", q: 3, color: "pink", from: 400, to: 3000, ms: 850, level: 0.06, attack: 300 },
+  ],
   /** 지이이잉: 레이저 발사 */
   laserBeam: [
-    { kind: "tone", wave: "square", from: 140, to: 130, ms: 1500, level: 0.05, attack: 20 },
-    { kind: "noise", filter: "bandpass", q: 2, from: 1800, to: 1400, ms: 1500, level: 0.12, attack: 20 },
+    { kind: "tone", wave: "sawtooth", from: 140, to: 130, ms: 1500, level: 0.05, attack: 20, detune: 20, lowpass: 1500 },
+    { kind: "noise", filter: "bandpass", q: 2, color: "pink", from: 1800, to: 1400, ms: 1500, level: 0.12, attack: 20, wet: 0.2 },
   ],
-  /** 붕붕: 보스가 말벌 부하를 부름 */
+  /** 붕붕: 보스가 말벌 부하를 부름 — 날갯짓이 좌우로 */
   summon: [
-    { kind: "tone", wave: "sawtooth", from: 180, to: 220, ms: 160, level: 0.05 },
-    { at: 140, kind: "tone", wave: "sawtooth", from: 200, to: 250, ms: 160, level: 0.05 },
+    { kind: "tone", wave: "sawtooth", from: 180, to: 220, ms: 160, level: 0.04, detune: 25, lowpass: 1500, pan: -0.3 },
+    { at: 140, kind: "tone", wave: "sawtooth", from: 200, to: 250, ms: 160, level: 0.04, detune: 25, lowpass: 1500, pan: 0.3 },
   ],
-  /** 삐삐: 돌격 예고 */
+  /** 삐삐 + "조심해!": 돌격 예고 */
   chargeWindup: GAME_SOUNDS.warning,
   /** 휘익: 보스가 내리꽂음 */
-  chargeDash: [{ kind: "noise", filter: "bandpass", q: 1, from: 2200, to: 300, ms: 450, level: 0.3, attack: 30 }],
+  chargeDash: [{ kind: "noise", filter: "bandpass", q: 1, color: "pink", from: 2200, to: 300, ms: 450, level: 0.3, attack: 30 }],
   /** 콰광 뒤 뿌우우: 격추당해 게임 오버 */
   gameOver: [...GAME_SOUNDS.explosion, ...delay(GAME_SOUNDS.fail, 350)],
-  /** 우웅↑ 반짝: 방어막 */
+  /** 우웅↑ 반짝 + "얍!": 방어막 — 물방울 막이 부풀어 오른다 */
   barrier: [
-    { kind: "tone", wave: "sine", from: 300, to: 900, ms: 300, level: 0.1, attack: 40 },
-    { at: 120, kind: "tone", wave: "triangle", from: 1200, to: 1600, ms: 260, level: 0.06 },
+    { kind: "voice", line: "hup", from: 8000, to: 6000, ms: 300, level: 0.55 },
+    { kind: "tone", wave: "sine", from: 300, to: 900, ms: 300, level: 0.1, attack: 40, lowpass: 3000, wet: 0.3 },
+    { at: 120, kind: "tone", wave: "sine", from: 1400, to: 1400, ms: 300, level: 0.05, fm: { ratio: 3.5, index: 0.6 }, wet: 0.4 },
   ],
-  /** 지지징↑: 폭주 */
+  /** 지지징↑ + "얍!": 폭주 */
   overdrive: [
-    { kind: "tone", wave: "sawtooth", from: 200, to: 1200, ms: 380, level: 0.07, attack: 30 },
-    { kind: "noise", filter: "bandpass", q: 1.5, from: 800, to: 4000, ms: 380, level: 0.1, attack: 30 },
+    { kind: "voice", line: "hup", from: 8000, to: 6000, ms: 300, level: 0.55 },
+    { kind: "tone", wave: "sawtooth", from: 200, to: 1200, ms: 380, level: 0.06, attack: 30, detune: 15, lowpass: 3500 },
+    { kind: "noise", filter: "bandpass", q: 1.5, color: "pink", from: 800, to: 4000, ms: 380, level: 0.1, attack: 30 },
   ],
-  /** 콰-아앙: 폭탄 */
+  /** 콰-아앙 + "대박!": 폭탄 — 갈색 소음 울림 */
   bomb: [
     ...GAME_SOUNDS.explosion,
-    { kind: "noise", filter: "lowpass", q: 0.7, from: 3000, to: 200, ms: 800, level: 0.35, attack: 20 },
+    { kind: "noise", filter: "lowpass", q: 0.7, color: "brown", from: 3000, to: 150, ms: 900, level: 0.4, attack: 20, wet: 0.4 },
     { kind: "tone", wave: "sine", from: 90, to: 30, ms: 700, level: 0.2 },
+    { at: 250, kind: "voice", line: "wow", from: 10000, to: 8000, ms: 600, level: 0.8 },
   ],
-  /** 띠링띠링: 스킬 게이지가 가득 참 */
+  /** 띠링띠링: 스킬 게이지가 가득 참 — 칼림바 */
   skillReady: [
-    { kind: "tone", wave: "sine", from: 1319, to: 1319, ms: 90, level: 0.09 },
-    { at: 90, kind: "tone", wave: "sine", from: 1760, to: 1760, ms: 160, level: 0.09 },
+    { kind: "tone", wave: "sine", from: 1319, to: 1319, ms: 160, level: 0.08, fm: { ratio: 3.5, index: 0.6 }, wet: 0.3 },
+    { at: 90, kind: "tone", wave: "sine", from: 1760, to: 1760, ms: 260, level: 0.08, fm: { ratio: 3.5, index: 0.6 }, wet: 0.35 },
   ],
-  /** 반짝반짝: 무기 레벨 최대 도달 */
-  weaponMax: delay(GAME_SOUNDS.record, 200),
-  /** 뚜루↓: 맞아서 무기 레벨이 내려감 (피격음 뒤) */
+  /** 반짝 + "레벨업!": 무기 레벨 최대 도달 */
+  weaponMax: delay(GAME_SOUNDS.levelUp, 200),
+  /** 뚜루↓: 맞아서 무기 레벨이 내려감 (피격음 뒤) — 마림바가 내려간다 */
   levelDown: [
-    { at: 120, kind: "tone", wave: "triangle", from: 700, to: 660, ms: 90, level: 0.08 },
-    { at: 210, kind: "tone", wave: "triangle", from: 520, to: 380, ms: 160, level: 0.08 },
+    { at: 120, kind: "tone", wave: "sine", from: 700, to: 695, ms: 140, level: 0.07, fm: { ratio: 4, index: 0.6 } },
+    { at: 210, kind: "tone", wave: "sine", from: 466, to: 462, ms: 240, level: 0.07, fm: { ratio: 4, index: 0.6 }, wet: 0.25 },
   ],
   /** 반짝반짝: 1위 기록 (격추 뒤 결과 화면이 뜨고 조금 있다가) */
   newRecord: delay(GAME_SOUNDS.record, 400),

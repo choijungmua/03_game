@@ -167,99 +167,106 @@ export const YUZU_SINK = 8;
 /** 온천 그림 바닥이 온천 가운데보다 아래로 내려오는 거리(타일). 폭 10타일 그림의 물 타원 가운데를 온천 가운데에 맞춘다 */
 export const ONSEN_BOTTOM = 4;
 
-/** 효과음 파일 없이 오실레이터(tone)·걸러낸 잡음(noise)을 겹쳐 합성하는 짧은 소리들 (주파수 Hz, 길이·시작 ms, 최대 크기 0~1) */
+/** 효과음 파일 없이 합성하는 짧은 소리들 (주파수 Hz, 길이·시작 ms, 최대 크기 0~1). 온천 숲 + 말랑한 장난감 느낌: 풀·나무·진흙·물 같은 실제 재질 소리 + FM 칼림바 + 중요한 순간의 카피바라 목소리.
+ * 발소리·채팅은 자주 나니 짧고 작게, 목소리 없이 */
 export const SOUNDS: Record<LobbySound, readonly SoundLayer[]> = {
-  chat: [{ kind: "tone", wave: "sine", from: 740, to: 1180, ms: 120, level: 0.18 }],
-  swing: [{ kind: "tone", wave: "triangle", from: 420, to: 140, ms: 140, level: 0.16 }],
-  hit: [{ kind: "tone", wave: "square", from: 180, to: 55, ms: 200, level: 0.12 }],
-  // 사각: 풀밭을 밟는 낮고 부드러운 발소리 + 풀잎 스치는 소리
-  step: [
-    { kind: "noise", filter: "lowpass", q: 1, from: 900, to: 250, ms: 70, level: 0.18 },
-    { kind: "tone", wave: "sine", from: 120, to: 70, ms: 60, level: 0.08 },
-    { kind: "noise", filter: "bandpass", q: 0.8, from: 3200, to: 2000, ms: 110, level: 0.08, attack: 15 },
+  // 띵: 작은 칼림바 한 음 (자주 나니 목소리 없이)
+  chat: [
+    { kind: "tone", wave: "sine", fm: { ratio: 3.5, index: 1.2 }, from: 1175, to: 1175, ms: 160, level: 0.14, wet: 0.2 },
+    { at: 50, kind: "tone", wave: "sine", fm: { ratio: 3.5, index: 0.8 }, from: 1568, to: 1568, ms: 140, level: 0.08, wet: 0.25 },
   ],
-  // 통: 나무 데크 판자를 밟는 속 빈 나무 울림
+  // 휙: 공기를 가르는 바람 소리
+  swing: [{ kind: "noise", color: "pink", filter: "bandpass", q: 1.4, from: 900, to: 2600, ms: 150, level: 0.2, attack: 40 }],
+  // 퍽: 솜방망이로 때리는 둔탁한 소리
+  hit: [
+    { kind: "noise", color: "brown", filter: "lowpass", q: 1, from: 1600, to: 300, ms: 90, level: 0.35 },
+    { kind: "tone", wave: "sine", from: 160, to: 60, ms: 120, level: 0.18 },
+  ],
+  // 사각: 풀밭을 밟는 발소리 + 풀잎 스치는 소리
+  step: [
+    { kind: "noise", color: "brown", filter: "lowpass", q: 0.8, from: 700, to: 220, ms: 60, level: 0.16 },
+    { at: 8, kind: "noise", color: "pink", filter: "bandpass", q: 0.9, from: 3400, to: 2200, ms: 90, level: 0.06, attack: 12 },
+  ],
+  // 통: 나무 데크 판자를 밟는 속 빈 나무 울림 (우드블록 FM)
   stepDeck: [
-    { kind: "noise", filter: "bandpass", q: 4, from: 900, to: 700, ms: 40, level: 0.3 },
-    { kind: "tone", wave: "triangle", from: 320, to: 260, ms: 80, level: 0.12 },
-    { at: 8, kind: "tone", wave: "sine", from: 640, to: 560, ms: 50, level: 0.05 },
+    { kind: "noise", color: "pink", filter: "bandpass", q: 3, from: 800, to: 650, ms: 35, level: 0.18 },
+    { kind: "tone", wave: "sine", fm: { ratio: 2.76, index: 1.5 }, from: 260, to: 240, ms: 70, level: 0.09 },
   ],
   // 철퍽: 진흙길을 밟는 질척한 소리
   stepMud: [
-    { kind: "noise", filter: "lowpass", q: 2, from: 400, to: 900, ms: 90, level: 0.22 },
-    { kind: "tone", wave: "sine", from: 90, to: 60, ms: 70, level: 0.1 },
+    { kind: "noise", color: "brown", filter: "lowpass", q: 2.5, from: 300, to: 900, ms: 90, level: 0.22 },
+    { at: 40, kind: "noise", color: "pink", filter: "bandpass", q: 4, from: 600, to: 1200, ms: 40, level: 0.06 },
   ],
   // 뿅 → 털썩: 폴짝 뛰어올라 통나무에 엉덩이를 붙인다
   sit: [
-    { kind: "tone", wave: "sine", from: 520, to: 160, ms: 150, level: 0.18 },
-    { at: 120, kind: "noise", filter: "lowpass", q: 1, from: 700, to: 200, ms: 100, level: 0.3 },
-    { at: 120, kind: "tone", wave: "sine", from: 110, to: 60, ms: 90, level: 0.14 },
+    { kind: "tone", wave: "sine", fm: { ratio: 3.5, index: 0.8 }, from: 520, to: 260, ms: 140, level: 0.12 },
+    { at: 120, kind: "noise", color: "brown", filter: "lowpass", q: 1, from: 800, to: 200, ms: 110, level: 0.32 },
+    { at: 120, kind: "tone", wave: "sine", fm: { ratio: 2.76, index: 1 }, from: 180, to: 150, ms: 90, level: 0.1 },
   ],
-  // 하아~암: 천천히 올라갔다 길게 내려오는 목소리 + 숨소리
+  // 하아암: 진짜 하품 목소리 + 부드러운 숨소리
   yawn: [
-    { kind: "tone", wave: "triangle", from: 240, to: 420, ms: 550, level: 0.1, attack: 180 },
-    { at: 450, kind: "tone", wave: "triangle", from: 420, to: 170, ms: 850, level: 0.1, attack: 80 },
-    { kind: "noise", filter: "bandpass", q: 0.8, from: 1000, to: 600, ms: 1200, level: 0.05, attack: 300 },
+    { kind: "voice", line: "yawn", from: 8000, to: 5000, ms: 1300, level: 0.7, wet: 0.2 },
+    { kind: "noise", color: "pink", filter: "bandpass", q: 0.7, from: 1200, to: 600, ms: 1200, level: 0.05, attack: 300 },
   ],
   // 슥슥: 털을 긁는 짧고 까슬한 소리 두 번
   scratch: [
-    { kind: "noise", filter: "bandpass", q: 1.5, from: 2600, to: 1800, ms: 90, level: 0.16 },
-    { at: 70, kind: "noise", filter: "bandpass", q: 1.5, from: 2200, to: 1500, ms: 80, level: 0.12 },
+    { kind: "noise", color: "pink", filter: "bandpass", q: 1.5, from: 2800, to: 1800, ms: 90, level: 0.15, pan: -0.15 },
+    { at: 80, kind: "noise", color: "pink", filter: "bandpass", q: 1.5, from: 2400, to: 1500, ms: 80, level: 0.12, pan: 0.15 },
   ],
-  // 아삭 쩝: 수박을 크게 베어 무는 바삭한 소리 + 과즙이 톡 튀는 소리
+  // 아삭 + 냠냠: 수박을 바삭 베어 물고 맛있게 먹는다
   chomp: [
-    { kind: "noise", filter: "highpass", q: 0.7, from: 3800, to: 1800, ms: 45, level: 0.4 },
-    { at: 30, kind: "noise", filter: "bandpass", q: 1.2, from: 2600, to: 900, ms: 75, level: 0.32 },
-    { at: 10, kind: "tone", wave: "sine", from: 230, to: 110, ms: 70, level: 0.16 },
-    { at: 95, kind: "tone", wave: "sine", from: 1300, to: 700, ms: 35, level: 0.05 },
+    { kind: "noise", filter: "highpass", q: 0.7, from: 4000, to: 1800, ms: 45, level: 0.35 },
+    { at: 30, kind: "noise", color: "pink", filter: "bandpass", q: 1.2, from: 2600, to: 900, ms: 75, level: 0.28 },
+    { at: 10, kind: "tone", wave: "sine", from: 230, to: 110, ms: 70, level: 0.12 },
+    { at: 140, kind: "voice", line: "yum", from: 9000, to: 7000, ms: 700, level: 0.65 },
   ],
-  // 헉!: 깜짝 놀라 치솟았다가 털썩 내려앉는 소리
+  // 헉!: 깜짝 놀라 우드블록 두 번 → 털썩
   caught: [
-    { kind: "tone", wave: "square", from: 320, to: 900, ms: 110, level: 0.1 },
-    { at: 130, kind: "tone", wave: "sawtooth", from: 700, to: 140, ms: 480, level: 0.09 },
-    { at: 130, kind: "noise", filter: "lowpass", q: 1, from: 600, to: 150, ms: 220, level: 0.25 },
+    { kind: "tone", wave: "sine", fm: { ratio: 2.76, index: 2 }, from: 700, to: 900, ms: 80, level: 0.14 },
+    { at: 90, kind: "tone", wave: "sine", fm: { ratio: 2.76, index: 2 }, from: 900, to: 1100, ms: 80, level: 0.14 },
+    { at: 200, kind: "noise", color: "brown", filter: "lowpass", q: 1, from: 700, to: 150, ms: 240, level: 0.3 },
+    { at: 200, kind: "tone", wave: "triangle", lowpass: 1200, from: 300, to: 110, ms: 380, level: 0.1 },
   ],
   // 휙 → 퐁당: 낚싯줄을 던지고 찌가 물에 떨어진다
   fishCast: [
-    { kind: "noise", filter: "bandpass", q: 1, from: 1800, to: 600, ms: 180, level: 0.12 },
-    { at: 560, kind: "tone", wave: "sine", from: 900, to: 300, ms: 90, level: 0.14 },
-    { at: 560, kind: "noise", filter: "lowpass", q: 1, from: 1200, to: 300, ms: 120, level: 0.18 },
+    { kind: "noise", color: "pink", filter: "bandpass", q: 1.2, from: 2400, to: 700, ms: 200, level: 0.13 },
+    { at: 560, kind: "tone", wave: "sine", from: 900, to: 320, ms: 80, level: 0.12, wet: 0.3 },
+    { at: 560, kind: "noise", color: "pink", filter: "lowpass", q: 1, from: 1600, to: 300, ms: 140, level: 0.18, wet: 0.3 },
   ],
   // 톡톡: 찌가 쑥 들어가는 입질
   fishBite: [
-    { kind: "tone", wave: "sine", from: 600, to: 220, ms: 70, level: 0.2 },
-    { at: 110, kind: "tone", wave: "sine", from: 600, to: 220, ms: 70, level: 0.2 },
+    { kind: "tone", wave: "sine", from: 700, to: 260, ms: 60, level: 0.18, wet: 0.2 },
+    { at: 110, kind: "tone", wave: "sine", from: 700, to: 260, ms: 60, level: 0.18, wet: 0.2 },
   ],
-  // 첨벙 → 보글보글 → 아~: 온천에 뛰어들어 몸을 담그고 나른하게 한숨
+  // 첨벙 → 아 시원해: 온천에 몸을 담그고 나른하게
   bathIn: [
-    { kind: "noise", filter: "lowpass", q: 1, from: 1800, to: 250, ms: 320, level: 0.35 },
-    { at: 60, kind: "tone", wave: "sine", from: 180, to: 70, ms: 160, level: 0.14 },
-    { at: 200, kind: "tone", wave: "sine", from: 520, to: 880, ms: 45, level: 0.06 },
-    { at: 290, kind: "tone", wave: "sine", from: 600, to: 1000, ms: 45, level: 0.05 },
-    { at: 380, kind: "tone", wave: "sine", from: 480, to: 820, ms: 45, level: 0.05 },
-    { at: 450, kind: "tone", wave: "triangle", from: 330, to: 210, ms: 700, level: 0.08, attack: 180 },
+    { kind: "noise", color: "pink", filter: "lowpass", q: 1, from: 2200, to: 250, ms: 360, level: 0.35, wet: 0.3 },
+    { at: 60, kind: "tone", wave: "sine", from: 180, to: 70, ms: 160, level: 0.12 },
+    { at: 220, kind: "tone", wave: "sine", from: 520, to: 880, ms: 40, level: 0.05, wet: 0.3 },
+    { at: 320, kind: "tone", wave: "sine", from: 600, to: 1000, ms: 40, level: 0.04, wet: 0.3 },
+    { at: 380, kind: "voice", line: "ahh", from: 8000, to: 6000, ms: 1100, level: 0.7, wet: 0.35 },
   ],
   // 촤르르 → 똑똑: 물에서 나오며 털에서 물이 흘러내린다
   bathOut: [
-    { kind: "noise", filter: "bandpass", q: 0.9, from: 2600, to: 700, ms: 300, level: 0.22, attack: 30 },
-    { at: 280, kind: "tone", wave: "sine", from: 1300, to: 650, ms: 45, level: 0.08 },
-    { at: 430, kind: "tone", wave: "sine", from: 1150, to: 600, ms: 45, level: 0.06 },
+    { kind: "noise", color: "pink", filter: "bandpass", q: 0.9, from: 2800, to: 700, ms: 320, level: 0.22, attack: 30, wet: 0.25 },
+    { at: 300, kind: "tone", wave: "sine", from: 1400, to: 650, ms: 40, level: 0.07, pan: -0.3, wet: 0.3 },
+    { at: 450, kind: "tone", wave: "sine", from: 1200, to: 600, ms: 40, level: 0.05, pan: 0.3, wet: 0.3 },
   ],
-  // 찰박: 온천 물속을 걷는 물장구
+  // 찰박: 온천 물속을 걷는 작은 물장구
   stepWater: [
-    { kind: "noise", filter: "lowpass", q: 1.2, from: 1400, to: 450, ms: 130, level: 0.16 },
-    { at: 20, kind: "tone", wave: "sine", from: 320, to: 540, ms: 50, level: 0.04 },
+    { kind: "noise", color: "pink", filter: "lowpass", q: 1.2, from: 1600, to: 450, ms: 110, level: 0.13, wet: 0.15 },
+    { at: 25, kind: "tone", wave: "sine", from: 380, to: 620, ms: 40, level: 0.03 },
   ],
-  // 부스럭 → 톡: 나뭇잎을 헤치고 사과를 똑 딴다
+  // 부스럭 → 톡: 나뭇잎을 헤치고 사과를 똑 딴다 (칼림바 한 음)
   applePick: [
-    { kind: "noise", filter: "bandpass", q: 0.9, from: 3000, to: 1800, ms: 160, level: 0.14 },
-    { at: 150, kind: "tone", wave: "sine", from: 880, to: 520, ms: 60, level: 0.16 },
+    { kind: "noise", color: "pink", filter: "bandpass", q: 0.9, from: 3200, to: 1800, ms: 160, level: 0.13 },
+    { at: 150, kind: "tone", wave: "sine", fm: { ratio: 3.5, index: 1 }, from: 880, to: 880, ms: 180, level: 0.13, wet: 0.2 },
   ],
-  // 첨벙 → 띠링: 물고기를 끌어올린다
+  // 첨벙 → 잡았다!: 물고기를 끌어올린다
   fishCatch: [
-    { kind: "noise", filter: "lowpass", q: 1, from: 1500, to: 300, ms: 200, level: 0.25 },
-    { at: 150, kind: "tone", wave: "triangle", from: 660, to: 660, ms: 110, level: 0.14 },
-    { at: 260, kind: "tone", wave: "triangle", from: 990, to: 990, ms: 220, level: 0.14 },
+    { kind: "noise", color: "pink", filter: "lowpass", q: 1, from: 1800, to: 300, ms: 220, level: 0.25, wet: 0.3 },
+    { at: 150, kind: "tone", wave: "sine", fm: { ratio: 3.5, index: 1 }, from: 784, to: 784, ms: 200, level: 0.1, wet: 0.25 },
+    { at: 220, kind: "voice", line: "gotit", from: 9000, to: 7000, ms: 700, level: 0.75 },
   ],
 };
 

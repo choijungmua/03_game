@@ -8,7 +8,7 @@ import { GameControls } from "@/components/games/game-controls";
 import { GameOverActions } from "@/components/games/game-over-actions";
 import { ShareButton } from "@/components/games/share-button";
 import { cn } from "@/lib";
-import { GAME_SOUNDS, GAME_TITLES } from "@/lib/games/constants";
+import { countdownSound, GAME_SOUNDS, GAME_TITLES } from "@/lib/games/constants";
 import { recordGameTelemetry, submitGameRecord } from "@/lib/games/game-events";
 import { useInView } from "@/lib/games/use-in-view";
 import { useLockPageScroll } from "@/lib/games/use-lock-page-scroll";
@@ -572,11 +572,11 @@ export function CapybaraLogDodge() {
 
   useEffect(() => {
     if (phase !== "countdown") return;
-    playGameSound(GAME_SOUNDS.countdown);
+    playGameSound(countdownSound(COUNTDOWN_VALUES[0]));
     const timers = COUNTDOWN_VALUES.map((_, index) =>
       setTimeout(() => {
         if (index < COUNTDOWN_VALUES.length - 1) {
-          playGameSound(GAME_SOUNDS.countdown);
+          playGameSound(countdownSound(COUNTDOWN_VALUES[index + 1]));
           setCountdownIndex(index + 1);
           return;
         }
@@ -688,6 +688,7 @@ export function CapybaraLogDodge() {
         if (!before.hitBy) {
           playGameSound(GAME_SOUNDS.hit);
           playGameSound(SOUNDS.caught);
+          playGameSound(GAME_SOUNDS.ouch);
         }
         return;
       }
@@ -726,6 +727,9 @@ export function CapybaraLogDodge() {
       if (state.nearMisses > before.nearMisses) {
         playGameSound(GAME_SOUNDS.whoosh);
         if (state.combo >= 2) playGameSound(COMBO_SOUNDS[Math.min(state.combo, COMBO_SOUNDS.length) - 1]);
+        // 목소리는 콤보 5·10에서만 (연속 아슬아슬마다 말하면 시끄럽다)
+        if (state.combo === 5) playGameSound(GAME_SOUNDS.praise);
+        else if (state.combo === 10) playGameSound(GAME_SOUNDS.jackpot);
       }
       if (state.pickup && !before.pickup) playGameSound(PICKUP_SPAWN_SOUND);
       if (state.shield && !before.shield) playGameSound(SHIELD_GET_SOUND);
@@ -733,7 +737,10 @@ export function CapybaraLogDodge() {
 
       // 등급 시간을 넘기면 빠라밤, 새 통나무 종류가 풀리면 따단 (겹치면 등급 소리만)
       const crossed = (ms: number) => before.elapsedMs < ms && state.elapsedMs >= ms;
-      if (getLogDodgeTier(before.elapsedMs) !== getLogDodgeTier(state.elapsedMs)) playGameSound(TIER_UP_SOUND);
+      if (getLogDodgeTier(before.elapsedMs) !== getLogDodgeTier(state.elapsedMs)) {
+        playGameSound(TIER_UP_SOUND);
+        playGameSound(GAME_SOUNDS.levelUp);
+      }
       else if (Object.values(LOG_UNLOCK_MS).some((ms) => ms > 0 && crossed(ms))) playGameSound(LEVEL_UP_SOUND);
     }
 

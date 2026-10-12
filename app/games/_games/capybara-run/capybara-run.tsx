@@ -8,7 +8,7 @@ import { GameOverActions } from "@/components/games/game-over-actions";
 import { Leaderboard, TierLabel } from "@/components/games/leaderboard";
 import { ShareButton } from "@/components/games/share-button";
 import { cn } from "@/lib";
-import { GAME_SOUNDS, GAME_TITLES } from "@/lib/games/constants";
+import { countdownSound, GAME_SOUNDS, GAME_TITLES } from "@/lib/games/constants";
 import { useLockPageScroll } from "@/lib/games/use-lock-page-scroll";
 import { playGameSound } from "@/lib/lobby/settings";
 
@@ -56,7 +56,10 @@ function playEvents(events: RunEvent[]) {
     if (event.type === "jump") playGameSound(GAME_SOUNDS.tap);
     else if (event.type === "double") playGameSound(GAME_SOUNDS.whoosh);
     else if (event.type === "grab") playGameSound(GAME_SOUNDS.place);
-    else if (event.type === "hurt") playGameSound(GAME_SOUNDS.hit);
+    else if (event.type === "hurt") {
+      playGameSound(GAME_SOUNDS.hit);
+      playGameSound(GAME_SOUNDS.ouch);
+    }
     else if (event.type === "over") playGameSound(GAME_SOUNDS.fail);
     else if (event.type === "points" && event.points > 10) playGameSound(GAME_SOUNDS.pickup);
   }
@@ -389,7 +392,7 @@ export function CapybaraRun() {
 
   useEffect(() => {
     if (phase !== "countdown") return;
-    playGameSound(GAME_SOUNDS.countdown);
+    playGameSound(countdownSound(count));
     const timer = setTimeout(() => {
       if (count > 1) setCount(count - 1);
       else {

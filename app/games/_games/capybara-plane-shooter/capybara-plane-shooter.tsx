@@ -9,7 +9,7 @@ import { GameControls } from "@/components/games/game-controls";
 import { GameOverActions } from "@/components/games/game-over-actions";
 import { ShareButton } from "@/components/games/share-button";
 import { cn } from "@/lib";
-import { FULL_BLEED_LAYER, GAME_SOUNDS, GAME_TITLES } from "@/lib/games/constants";
+import { countdownSound, FULL_BLEED_LAYER, GAME_SOUNDS, GAME_TITLES } from "@/lib/games/constants";
 import { submitGameRecord } from "@/lib/games/game-events";
 import { useInView } from "@/lib/games/use-in-view";
 import { useLockPageScroll } from "@/lib/games/use-lock-page-scroll";
@@ -751,7 +751,7 @@ export function CapybaraPlaneShooter() {
 
   // 3·2·1 숫자가 바뀔 때마다 한 박
   useEffect(() => {
-    if (phase === "countdown") playGameSound(GAME_SOUNDS.countdown);
+    if (phase === "countdown") playGameSound(countdownSound(COUNTDOWN_VALUES[countdownIndex]));
   }, [phase, countdownIndex]);
 
   useEffect(() => {

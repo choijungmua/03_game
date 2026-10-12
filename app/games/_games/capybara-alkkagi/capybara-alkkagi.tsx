@@ -98,11 +98,20 @@ function aliveCount(pieces: Piece[], owner: Stone) {
   return pieces.filter((piece) => piece.owner === owner && !piece.out).length;
 }
 
-// 세기(0~1)에 맞춰 소리 크기와 음높이를 바꿔 재생한다
-function playScaled(layers: readonly SoundLayer[], strength: number) {
+/** 판 위 x 좌표 → 좌우 소리 위치(-0.6~0.6) */
+const panAt = (x: number) => (x / FIELD - 0.5) * 1.2;
+
+// 세기(0~1)에 맞춰 소리 크기와 음높이를 바꿔 재생한다. 목소리의 from/to는 필터라 음높이를 건드리지 않는다
+function playScaled(layers: readonly SoundLayer[], strength: number, pan?: number) {
   const level = 0.35 + 0.65 * strength;
   const pitch = 0.8 + 0.4 * strength;
-  playGameSound(layers.map((layer) => ({ ...layer, level: layer.level * level, from: layer.from * pitch, to: layer.to * pitch })));
+  playGameSound(
+    layers.map((layer) =>
+      layer.kind === "voice"
+        ? layer
+        : { ...layer, level: layer.level * level, from: layer.from * pitch, to: layer.to * pitch, pan: pan ?? layer.pan },
+    ),
+  );
 }
 
 export function CapybaraAlkkagi() {
@@ -201,27 +210,33 @@ export function CapybaraAlkkagi() {
     if (shot.by !== you) playScaled(ALKKAGI_SOUNDS.flick, speed / MAX_SPEED);
 
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
-      if (shot.knocked > 0) playGameSound(ALKKAGI_SOUNDS.fall);
+      const mineFell = !!you && aliveCount(view.state.pieces, you) < aliveCount(shot.before, you);
+      if (shot.knocked > 0 || mineFell) playGameSound(ALKKAGI_SOUNDS.fall);
+      if (mineFell) playGameSound(ALKKAGI_SOUNDS.myFall);
       afterMessage();
       return;
     }
 
     const frames: Piece[][] = [];
     /** 부딪힌 프레임 → 충격 세기(0~1): 그 프레임에서 가장 많이 움직인 알의 속도로 어림한다 */
-    const hitFrames = new Map<number, number>();
-    const fallFrames = new Set<number>();
+    const hitFrames = new Map<number, { strength: number; pan: number }>();
+    /** 알이 떨어진 프레임 → 내 알인지, 좌우 위치 */
+    const fallFrames = new Map<number, { mine: boolean; pan: number }>();
     simulateShot(shot.before, shot.pieceId, shot.velocity, (pieces, hit) => {
       const previous = frames.at(-1) ?? shot.before;
       if (hit) {
         let fastest = 0;
+        let x = FIELD / 2;
         pieces.forEach((piece, i) => {
           const dx = piece.x - previous[i].x;
           const dy = piece.y - previous[i].y;
-          fastest = Math.max(fastest, Math.sqrt(dx * dx + dy * dy));
+          const moved = Math.sqrt(dx * dx + dy * dy);
+          if (moved > fastest) [fastest, x] = [moved, piece.x];
         });
-        hitFrames.set(frames.length, Math.min(1, fastest / MAX_SPEED));
+        hitFrames.set(frames.length, { strength: Math.min(1, fastest / MAX_SPEED), pan: panAt(x) });
       }
-      if (pieces.some((piece, i) => piece.out && !previous[i].out)) fallFrames.add(frames.length);
+      const dropped = pieces.find((piece, i) => piece.out && !previous[i].out);
+      if (dropped) fallFrames.set(frames.length, { mine: dropped.owner === you, pan: panAt(dropped.x) });
       frames.push(pieces.map((piece) => ({ ...piece })));
     });
     if (frames.length === 0) {
@@ -250,23 +265,30 @@ export function CapybaraAlkkagi() {
       // rAF의 now는 그 화면 프레임이 시작된 시각이라 바로 앞에서 잰 startedAt보다 이를 수 있다 — 음수 index(frames[-1] = undefined)가 되지 않게 0에서 막는다
       const index = Math.max(0, Math.min(frames.length - 1, Math.floor((now - startedAt) / STEP_MS)));
       let shaken = false;
-      let fell = false;
+      let fell: { mine: boolean; pan: number } | undefined;
       let impact = -1;
+      let impactPan = 0;
       for (let i = shown + 1; i <= index; i++) {
-        const strength = hitFrames.get(i);
-        if (strength !== undefined) {
+        const hit = hitFrames.get(i);
+        if (hit !== undefined) {
           if (!shaken) shake();
           shaken = true;
-          impact = Math.max(impact, strength);
+          if (hit.strength > impact) [impact, impactPan] = [hit.strength, hit.pan];
         }
-        if (fallFrames.has(i)) fell = true;
+        const drop = fallFrames.get(i);
+        if (drop && !fell?.mine) fell = drop;
       }
       // 한 화면 프레임에 여러 번 부딪혀도 소리는 한 번, 그리고 CLACK_GAP_MS 간격을 둔다
       if (impact >= 0 && now - lastClack >= CLACK_GAP_MS) {
         lastClack = now;
-        playScaled(ALKKAGI_SOUNDS.clack, impact);
+        playScaled(ALKKAGI_SOUNDS.clack, impact, impactPan);
       }
-      if (fell) playGameSound(ALKKAGI_SOUNDS.fall);
+      if (fell) {
+        const pan = fell.pan;
+        playGameSound(ALKKAGI_SOUNDS.fall.map((layer) => ({ ...layer, pan })));
+        // 내 알이 떨어지면 "앗!" (목소리는 가운데)
+        if (fell.mine) playGameSound(ALKKAGI_SOUNDS.myFall);
+      }
       shown = index;
       if (index >= frames.length - 1) {
         // 마지막은 서버 상태(= JSX가 그린 값)로 맞춘다
