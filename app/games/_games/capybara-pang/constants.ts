@@ -60,7 +60,15 @@ export const POP_SPARKS = [
   { kind: "star", dx: 55, dy: -80 },
   { kind: "star", dx: -65, dy: 70 },
   { kind: "star", dx: 65, dy: 70 },
+  { kind: "star", dx: 0, dy: -110 },
+  { kind: "star", dx: 0, dy: 100 },
+  { kind: "dot", dx: -110, dy: 35 },
+  { kind: "dot", dx: 110, dy: 35 },
+  { kind: "dot", dx: -35, dy: -105 },
+  { kind: "dot", dx: 35, dy: -105 },
 ] as const;
+/** 콤보가 이을수록 팡 소리가 5음계로 한 칸씩 올라간다 (반음 단위). 끝까지 가면 거기서 멈춘다 */
+export const COMBO_PITCH_STEPS = [0, 2, 4, 7, 9, 12, 14, 16, 19, 21, 24] as const;
 /** 한 번에 이만큼 넘게 터지면 판이 흔들린다 */
 export const SHAKE_CLEAR_COUNT = 5;
 
@@ -91,9 +99,20 @@ export const FAIL_TIER_INDEX = 3;
 
 export const PANG_SOUNDS = {
   /** 팡: 블록이 터짐 */
+  /** 뽁!: 물방울이 튀듯 올라가는 소리 + 딱 하는 찰칵 + 바닥을 치는 쿵. 콤보마다 음이 올라간다 */
   pop: [
-    { kind: "tone", wave: "sine", from: 700, to: 1400, ms: 90, level: 0.12 },
-    { kind: "noise", filter: "bandpass", q: 2, from: 2400, to: 1600, ms: 60, level: 0.08 },
+    { kind: "tone", wave: "sine", from: 320, to: 1500, ms: 70, level: 0.2, attack: 2 },
+    { kind: "noise", filter: "highpass", q: 1, from: 3800, to: 2600, ms: 28, level: 0.14, attack: 1 },
+    { kind: "tone", wave: "triangle", from: 190, to: 60, ms: 110, level: 0.16, attack: 1 },
+    { kind: "tone", wave: "square", from: 1320, to: 1320, ms: 70, level: 0.035, at: 45 },
+  ],
+  /** 콰광!: 한꺼번에 많이 터질 때 — 찢어지는 소음 + 묵직한 저음 + 반짝 올라가는 꼬리 */
+  bigPop: [
+    { kind: "noise", filter: "lowpass", q: 1.4, from: 3200, to: 120, ms: 380, level: 0.3, attack: 1 },
+    { kind: "tone", wave: "sawtooth", from: 150, to: 45, ms: 300, level: 0.12, attack: 1 },
+    { kind: "tone", wave: "sine", from: 90, to: 38, ms: 360, level: 0.26 },
+    { kind: "tone", wave: "sine", from: 400, to: 1800, ms: 90, level: 0.12, at: 20 },
+    { kind: "tone", wave: "triangle", from: 1760, to: 2640, ms: 160, level: 0.06, at: 120 },
   ],
   /** 째깍: 마지막 10초 동안 초마다 (3·2·1은 카운트다운 삐가 대신한다) */
   tick: [{ kind: "tone", wave: "sine", from: 1500, to: 1300, ms: 45, level: 0.07 }],
