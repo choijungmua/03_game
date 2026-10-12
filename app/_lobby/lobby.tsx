@@ -10,6 +10,7 @@ import { pretendard } from "@/config";
 import { cn } from "@/lib";
 import { Apple, Armchair, Bath, Fish, HandFist, NotebookPen } from "lucide-react";
 import { type ApiError, API_URL } from "@/lib/api-url";
+import { recordGameTelemetry } from "@/lib/games/game-events";
 
 import { Loading } from "@/components/feedback/loading";
 import { Progress } from "@/components/feedback/progress";
@@ -111,6 +112,7 @@ import { FishBag } from "./fish-bag";
 import { GuestbookPanel } from "./guestbook-panel";
 import { KeyboardGuide } from "./keyboard-guide";
 import { LobbyMenu } from "./lobby-menu";
+import { LobbyIntro } from "./lobby-intro";
 import { SoundSettings } from "./lobby-settings";
 import { ProfileName } from "./profile-name";
 import {
@@ -282,11 +284,8 @@ const APPLE_SPOTS: readonly [number, number][] = [
 ];
 /** 로비 WebSocket 주소 (http→ws, https→wss) */
 const LOBBY_WS_URL = `${API_URL.replace(/^http/, "ws")}/api/lobby/ws`;
-/**
- * 가만히 있으면 이 간격으로만 한 번 보낸다. 서버는 WebSocket이 열려 있으면 조용해도 지우지 않고(연결 확인은 30초 ping),
- * 멈춰 있는 동안 서버에 일을 시키지 않으려고 길게 둔다 — 만일을 위한 안전망일 뿐이다 (전에는 2초)
- */
-const HEARTBEAT_MS = 25_000;
+const HEARTBEAT_MS = 5000;
+const CONNECTION_TIMEOUT_MS = 8000;
 const RECONNECT_MIN_MS = 1000;
 const RECONNECT_MAX_MS = 8000;
 /** 못 보내고 쌓인 데이터가 이만큼 넘으면(느린 연결) 이번엔 건너뛴다 */
@@ -1664,6 +1663,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
       me.y = water.y + Math.sin(angle) * BATH_RY * TILE * 0.8;
       me.facing = "down";
       playSound("bathIn", settingsRef.current);
+      void recordGameTelemetry("lobby", "onsen_visit", { profileId: profileRef.current.id });
       showNotice("아~ 따끈따끈해요 · Space로 나오기");
     };
     /** 가까운 둘레부터 좌우로 번갈아 돌아보며 발 디딜 풀밭으로 폴짝 나온다 (등불·데크 갈래길에 막히면 옆자리) */
@@ -1687,6 +1687,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
 
     // 문 앞에서 시작하면(돌아온 직후 등) 한 번 벗어났다 다시 다가가야 입장한다
     let doorArmed = nearestDoor() === null;
+    let walkedDistance = 0;
     let charge = 0;
     let leaving = false;
     let attackQueued = false;
@@ -1957,6 +1958,11 @@ export function Lobby({ games }: { games: DoorGame[] }) {
     let disposed = false;
     let reconnectTimer = 0;
     let reconnectDelay = RECONNECT_MIN_MS;
+    let connectedAt = 0;
+    let bufferedSince: number | null = null;
+    let sequence = 0;
+    let acknowledged = 0;
+    const pendingPositions = new Map<number, { x: number; y: number; at: number }>();
     /** 마지막으로 보낸 위치·방향·앉기·옷. 같으면 HEARTBEAT_MS가 지날 때까지 다시 보내지 않는다 */
     let lastSentKey = "";
     let lastSentAt = -Infinity;
@@ -1964,9 +1970,38 @@ export function Lobby({ games }: { games: DoorGame[] }) {
     let lastSentName = "";
     let nameSentAt = -Infinity;
 
+    const disconnect = (current: WebSocket, code = 1000) => {
+      if (disposed || socket !== current) return;
+      socket = null;
+      pendingPositions.clear();
+      remotes.clear();
+      current.close();
+      if (code === LOBBY_FULL_CODE) showNotice("로비에 사람이 너무 많아요. 잠시 뒤 다시 들어가 볼게요");
+      window.clearTimeout(reconnectTimer);
+      reconnectTimer = window.setTimeout(connect, reconnectDelay);
+      reconnectDelay = Math.min(RECONNECT_MAX_MS, reconnectDelay * 2);
+    };
+
     const send = () => {
-      if (!socket || socket.readyState !== WebSocket.OPEN || socket.bufferedAmount > MAX_BUFFERED_BYTES) return;
+      const current = socket;
+      if (disposed || !current) return;
       const now = performance.now();
+      const oldestPending = pendingPositions.values().next().value;
+      if (
+        current.readyState === WebSocket.CLOSED || current.readyState === WebSocket.CLOSING ||
+        (current.readyState === WebSocket.CONNECTING && now - connectedAt >= CONNECTION_TIMEOUT_MS) ||
+        (oldestPending && now - oldestPending.at >= CONNECTION_TIMEOUT_MS) ||
+        (bufferedSince !== null && now - bufferedSince >= CONNECTION_TIMEOUT_MS)
+      ) {
+        disconnect(current);
+        return;
+      }
+      if (current.readyState !== WebSocket.OPEN) return;
+      if (current.bufferedAmount > MAX_BUFFERED_BYTES) {
+        bufferedSince ??= now;
+        return;
+      }
+      bufferedSince = null;
       // 낚시 동작은 채팅 쿨타임이 지난 뒤에 채팅으로 보낸다 (쿨타임 안의 채팅은 서버가 버린다)
       if (chatQueued === null && (fishQueued ?? feedQueued) !== null && now - lastChatAt.current >= CHAT_COOLDOWN_MS + 100) {
         if (fishQueued !== null) {
@@ -1984,6 +2019,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
       if (!attackQueued && chatQueued === null && key === lastSentKey && now - lastSentAt < HEARTBEAT_MS) return;
       const request: PresenceRequest = {
         token,
+        sequence: ++sequence,
         x: me.x,
         y: me.y,
         facing: me.facing,
@@ -1995,6 +2031,14 @@ export function Lobby({ games }: { games: DoorGame[] }) {
         ...(profile.id && { profileId: profile.id }),
         ...(profile.name && { name: profile.name }),
       };
+      try {
+        current.send(JSON.stringify(request));
+      } catch (error) {
+        if (!(error instanceof Error)) throw error;
+        disconnect(current);
+        return;
+      }
+      pendingPositions.set(sequence, { x: me.x, y: me.y, at: now });
       attackQueued = false;
       chatQueued = null;
       lastSentKey = key;
@@ -2003,11 +2047,19 @@ export function Lobby({ games }: { games: DoorGame[] }) {
         lastSentName = profile.name;
         nameSentAt = now;
       }
-      socket.send(JSON.stringify(request));
     };
 
     const receive = (data: Partial<LobbyMessage>) => {
-      if (!data.you || !Array.isArray(data.players)) return;
+      if (!data || !data.you || !Array.isArray(data.players) || !Number.isFinite(data.you.x) || !Number.isFinite(data.you.y)) return;
+      const ack = data.ack;
+      if (ack !== undefined && (!Number.isSafeInteger(ack) || ack < acknowledged || ack > sequence)) return;
+      const sent = ack === undefined ? undefined : pendingPositions.get(ack);
+      if (ack !== undefined) {
+        acknowledged = ack;
+        for (const key of pendingPositions.keys()) if (key <= ack) pendingPositions.delete(key);
+      } else {
+        pendingPositions.clear();
+      }
       const received = performance.now();
       if (me.name !== data.you.name) setMyName(data.you.name);
       me.name = data.you.name;
@@ -2022,15 +2074,26 @@ export function Lobby({ games }: { games: DoorGame[] }) {
         if (me.sitting) standUp();
         reelLine(received, false);
         stopAuto();
-      } else if (
-        data.corrected &&
-        Math.hypot(data.you.x - me.x, data.you.y - me.y) > CORRECTION_SNAP_PX &&
-        (inBath(data.you.x, data.you.y) || !blocked(data.you.x, data.you.y))
-      ) {
-        // 서버가 순간이동으로 판단해 위치를 크게 고쳤을 때만 따른다 (you는 조금 전에 보낸 위치라 작은 보정까지 따르면 뒤로 튄다.
-        // 작은 차이는 다음 전송들로 서버가 곧 따라온다)
-        me.x = data.you.x;
-        me.y = data.you.y;
+      } else if (data.corrected && sent) {
+        const dx = data.you.x - sent.x;
+        const dy = data.you.y - sent.y;
+        if (Math.hypot(dx, dy) > CORRECTION_SNAP_PX) {
+          const previousX = me.x;
+          const previousY = me.y;
+          const x = me.x + dx;
+          const y = me.y + dy;
+          if (inBath(x, y) || !blocked(x, y)) {
+            me.x = x;
+            me.y = y;
+          } else if (inBath(data.you.x, data.you.y) || !blocked(data.you.x, data.you.y)) {
+            me.x = data.you.x;
+            me.y = data.you.y;
+          }
+          for (const position of pendingPositions.values()) {
+            position.x += me.x - previousX;
+            position.y += me.y - previousY;
+          }
+        }
       }
 
       const seen = new Set<string>();
@@ -2106,16 +2169,21 @@ export function Lobby({ games }: { games: DoorGame[] }) {
     };
 
     const connect = () => {
-      if (disposed) return;
+      if (disposed || socket) return;
+      window.clearTimeout(reconnectTimer);
       const current = new WebSocket(LOBBY_WS_URL);
       socket = current;
+      connectedAt = performance.now();
+      bufferedSince = null;
+      pendingPositions.clear();
       current.onopen = () => {
-        reconnectDelay = RECONNECT_MIN_MS;
+        if (disposed || socket !== current) return;
         lastSentKey = "";
+        lastSentAt = -Infinity;
         send();
       };
       current.onmessage = (event) => {
-        if (typeof event.data !== "string") return;
+        if (disposed || socket !== current || typeof event.data !== "string") return;
         let data: Partial<LobbyMessage>;
         try {
           data = JSON.parse(event.data);
@@ -2123,16 +2191,11 @@ export function Lobby({ games }: { games: DoorGame[] }) {
           return;
         }
         receive(data);
+        if (data?.you && Array.isArray(data.players)) reconnectDelay = RECONNECT_MIN_MS;
       };
-      // 에러 뒤에는 늘 close가 따라오므로 다시 붙는 건 close에서만 한다
+      current.onerror = () => disconnect(current);
       current.onclose = (event) => {
-        if (socket === current) socket = null;
-        if (disposed) return;
-        // 끊긴 동안 남의 카피바라가 제자리에 멈춘 채 서 있지 않게 치운다
-        remotes.clear();
-        if (event.code === LOBBY_FULL_CODE) showNotice("로비에 사람이 너무 많아요. 잠시 뒤 다시 들어가 볼게요");
-        reconnectTimer = window.setTimeout(connect, reconnectDelay);
-        reconnectDelay = Math.min(RECONNECT_MAX_MS, reconnectDelay * 2);
+        disconnect(current, event.code);
       };
     };
 
@@ -2146,6 +2209,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
       refreshFishing();
       refreshApples();
       refreshLamps();
+      send();
       if (socket || disposed) return;
       window.clearTimeout(reconnectTimer);
       reconnectDelay = RECONNECT_MIN_MS;
@@ -2365,7 +2429,9 @@ export function Lobby({ games }: { games: DoorGame[] }) {
           me.facing = next;
         }
       }
-      me.walkDist = moved ? me.walkDist + Math.hypot(me.x - startX, me.y - startY) : 0;
+      const frameDistance = Math.hypot(me.x - startX, me.y - startY);
+      me.walkDist = moved ? me.walkDist + frameDistance : 0;
+      if (moved) walkedDistance += frameDistance;
       me.pose = moved ? walkPose(me.walkDist) : "stand";
       const attacking = now < me.attackUntil;
       const bathingNow = inBath(me.x, me.y);
@@ -2833,6 +2899,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
       window.clearInterval(fishingSyncId);
       window.clearTimeout(reconnectTimer);
       window.clearTimeout(noticeTimer);
+      if (walkedDistance > 0) void recordGameTelemetry("lobby", "distance_walked", { profileId: profileRef.current.id, distance: walkedDistance });
       disposed = true;
       socket?.close();
     };
@@ -2872,6 +2939,11 @@ export function Lobby({ games }: { games: DoorGame[] }) {
   const updateSettings = (next: LobbySettings) => {
     settingsRef.current = next;
     saveLobbySettings(next);
+    void recordGameTelemetry("lobby", "sound_change", {
+      profileId: profileRef.current.id,
+      label: next.muted ? "muted" : "enabled",
+      value: next.volume,
+    });
     // 켤 때 짧게 한 번 울린다 — 방금 켠 소리를 확인하고, iOS는 누른 순간 소리를 내야 오디오가 풀린다
     if (!next.muted && next.volume > 0 && (settings.muted || settings.volume <= 0)) playSound("chat", next);
   };
@@ -3206,7 +3278,8 @@ export function Lobby({ games }: { games: DoorGame[] }) {
             <span className="rounded-full bg-card/85 px-2 py-0.5 text-caption-3 font-semibold text-text-strong">때리기</span>
           </button>
         </div>
-        <nav aria-label="사이트 정보" className="flex items-center gap-3 text-caption-3 drop-shadow-md">
+      <nav aria-label="사이트 정보" className="flex items-center gap-3 text-caption-3 drop-shadow-md">
+        <LobbyIntro />
           {SITE_LINKS.map(({ href, label }) => (
             <Link
               key={href}

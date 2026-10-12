@@ -30,6 +30,7 @@ export interface PublicPlayer extends PlayerState {
 
 export interface PresenceRequest extends PlayerState {
   token: string;
+  sequence?: number;
   /** 이번 동기화 사이에 때리기를 눌렀는지 */
   attack: boolean;
   /** 이번 동기화 사이에 보낸 채팅 (cleanChat을 거친 값) */
@@ -51,7 +52,7 @@ export interface PresenceResponse {
 
 /** 로비 WebSocket(백엔드 /api/lobby/ws)이 틱마다 보내는 메시지. 보내는 쪽은 PresenceRequest 그대로 */
 export interface LobbyMessage extends PresenceResponse {
-  /** 걸어서 갈 수 없는 거리라 서버가 내 위치를 고쳤으면 true. 이때만 내 캐릭터를 you 위치로 옮긴다 */
+  ack?: number;
   corrected: boolean;
 }
 
