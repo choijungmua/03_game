@@ -23,11 +23,18 @@ const MOVE_SPEED = 5;
 const SPIKE_FRAMES = 14;
 /** 한 번 닿은 뒤 다시 닿을 수 있을 때까지 (공이 몸에 붙어 떨리지 않게) */
 const TOUCH_COOLDOWN = 8;
+/** 땅에 닿기 직전에 누른 점프도 받아 준다 (조작이 씹히지 않게) */
+const JUMP_BUFFER = 6;
+/** 땅에서 스파이크 키를 누르면 바라보는 쪽(또는 누른 쪽)으로 몸을 날린다 */
+const DIVE_FRAMES = 22;
+const DIVE_SPEED = 8;
+/** 스파이크가 맞는 순간 화면이 잠깐 멈추는 프레임 (타격감) */
+const SPIKE_FREEZE = 5;
 
 export const KEY = { left: 1, right: 2, up: 4, hit: 8, down: 16 } as const;
 
 export type Side = 0 | 1;
-export type GameEvent = "bump" | "spike" | "wall" | "point" | "win";
+export type GameEvent = "bump" | "spike" | "wall" | "point" | "win" | "jump" | "land" | "dive";
 
 export interface Player {
   x: number;
@@ -38,6 +45,11 @@ export interface Player {
   cooldown: number;
   /** 지난 프레임에 스파이크 키를 누르고 있었는지 (누를 때 한 번만 시작) */
   held: boolean;
+  /** 남은 점프 예약 프레임 */
+  jumpBuffer: number;
+  /** 남은 다이빙 프레임과 방향(-1·1) */
+  dive: number;
+  diveDir: number;
 }
 
 export interface Ball {
@@ -56,36 +68,52 @@ export interface VolleyState {
   /** 남은 쉬는 프레임 */
   pause: number;
   winner: Side | null;
+  /** 남은 멈춤 프레임 (스파이크 순간) */
+  freeze: number;
 }
 
 const homeX = (side: Side) => (side === 0 ? 72 : WIDTH - 72);
 const direction = (side: Side) => (side === 0 ? 1 : -1);
 
 function serve(state: VolleyState): VolleyState {
-  const player = (side: Side): Player => ({ x: homeX(side), y: PLAYER_Y, vy: 0, spike: 0, cooldown: 0, held: false });
+  const player = (side: Side): Player => ({ x: homeX(side), y: PLAYER_Y, vy: 0, spike: 0, cooldown: 0, held: false, jumpBuffer: 0, dive: 0, diveDir: 0 });
   return { ...state, players: [player(0), player(1)], ball: { x: homeX(state.server), y: 60, vx: 0, vy: 0 } };
 }
 
 export function createGame(server: Side = 0): VolleyState {
-  return serve({ players: [] as never, ball: {} as Ball, score: [0, 0], server, pause: 0, winner: null });
+  return serve({ players: [] as never, ball: {} as Ball, score: [0, 0], server, pause: 0, winner: null, freeze: 0 });
 }
 
-function movePlayer(player: Player, side: Side, keys: number): Player {
-  const next = { ...player, cooldown: Math.max(0, player.cooldown - 1), spike: Math.max(0, player.spike - 1) };
+function movePlayer(player: Player, side: Side, keys: number, events: GameEvent[]): Player {
+  const next = { ...player, cooldown: Math.max(0, player.cooldown - 1), spike: Math.max(0, player.spike - 1), dive: Math.max(0, player.dive - 1) };
   const grounded = player.y >= PLAYER_Y;
-  next.x += ((keys & KEY.right ? 1 : 0) - (keys & KEY.left ? 1 : 0)) * MOVE_SPEED;
+  const hit = Boolean(keys & KEY.hit);
+  const pressedHit = hit && !player.held;
+  const axis = (keys & KEY.right ? 1 : 0) - (keys & KEY.left ? 1 : 0);
+  if (player.dive > 0) next.x += player.diveDir * DIVE_SPEED * (player.dive / DIVE_FRAMES + 0.3);
+  else next.x += axis * MOVE_SPEED;
   const [min, max] = side === 0 ? [PLAYER_R, NET_X - NET_HALF - PLAYER_R] : [NET_X + NET_HALF + PLAYER_R, WIDTH - PLAYER_R];
   next.x = Math.min(max, Math.max(min, next.x));
-  if (grounded && keys & KEY.up) next.vy = -JUMP_SPEED;
+  next.jumpBuffer = keys & KEY.up ? JUMP_BUFFER : Math.max(0, player.jumpBuffer - 1);
+  if (grounded && next.jumpBuffer > 0 && player.dive === 0) {
+    next.vy = -JUMP_SPEED;
+    next.jumpBuffer = 0;
+    events.push("jump");
+  }
   next.vy += PLAYER_GRAVITY;
   next.y += next.vy;
   if (next.y >= PLAYER_Y) {
+    if (!grounded) events.push("land");
     next.y = PLAYER_Y;
     next.vy = 0;
   }
-  const hit = Boolean(keys & KEY.hit);
-  // 스파이크는 공중에서만
-  if (hit && !player.held && next.y < PLAYER_Y) next.spike = SPIKE_FRAMES;
+  // 스파이크는 공중에서, 땅에서는 다이빙
+  if (pressedHit && next.y < PLAYER_Y) next.spike = SPIKE_FRAMES;
+  else if (pressedHit && grounded && player.dive === 0) {
+    next.dive = DIVE_FRAMES;
+    next.diveDir = axis || direction(side);
+    events.push("dive");
+  }
   next.held = hit;
   return next;
 }
@@ -103,12 +131,14 @@ function touch(ball: Ball, player: Player, side: Side, keys: number, events: Gam
   if (player.spike > 0) {
     // 앞(상대 쪽) 키를 누르면 더 길게, 뒤 키를 누르면 짧게. ↓는 꽂기, ↑는 높이 띄우기
     const back = keys & (side === 0 ? KEY.left : KEY.right);
-    out.vx = dir * (back ? 7 : 13);
-    out.vy = keys & KEY.down ? 8 : keys & KEY.up ? -9 : 2;
+    out.vx = dir * (back ? 7 : 14);
+    out.vy = keys & KEY.down ? 9 : keys & KEY.up ? -9 : 2;
     events.push("spike");
   } else {
     out.vx = nx * 9 + dir * 1.5;
     out.vy = Math.min(ny * 9, -9);
+    // 다이빙 중에 받으면 낮은 공도 높이 띄워 살린다
+    if (player.dive > 0) out.vy = -11;
     events.push("bump");
   }
   return [out, { ...player, cooldown: TOUCH_COOLDOWN, spike: 0 }];
@@ -146,15 +176,17 @@ function moveBall(ball: Ball, events: GameEvent[]): Ball {
 export function step(state: VolleyState, keys: [number, number]): { state: VolleyState; events: GameEvent[] } {
   const events: GameEvent[] = [];
   if (state.winner !== null) return { state, events };
+  if (state.freeze > 0) return { state: { ...state, freeze: state.freeze - 1 }, events };
   if (state.pause > 0) {
     const pause = state.pause - 1;
     return { state: pause === 0 ? serve({ ...state, pause }) : { ...state, pause }, events };
   }
-  const players = [movePlayer(state.players[0], 0, keys[0]), movePlayer(state.players[1], 1, keys[1])] as [Player, Player];
+  const players = [movePlayer(state.players[0], 0, keys[0], events), movePlayer(state.players[1], 1, keys[1], events)] as [Player, Player];
   let ball = moveBall(state.ball, events);
   for (const side of [0, 1] as const) [ball, players[side]] = touch(ball, players[side], side, keys[side], events);
 
-  if (ball.y + BALL_R < GROUND) return { state: { ...state, players, ball }, events };
+  const freeze = events.includes("spike") ? SPIKE_FREEZE : 0;
+  if (ball.y + BALL_R < GROUND) return { state: { ...state, players, ball, freeze }, events };
   const scorer: Side = ball.x < NET_X ? 1 : 0;
   const score = [...state.score] as [number, number];
   score[scorer] += 1;
