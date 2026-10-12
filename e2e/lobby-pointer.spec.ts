@@ -65,7 +65,7 @@ test("우클릭은 메뉴나 버튼 포커스 대신 로비 이동으로 처리�
 test("같은 월드 접근점에서 문·의자·온천·사과·물가·방명록 상호작용이 열린다", async ({ page }) => {
   test.setTimeout(120_000);
   await page.route(`${API_ORIGIN}/api/lobby/apples`, (route) =>
-    route.fulfill({ json: { trees: WORLD.appleTrees.map(() => 3), lastCatch: "apple", caughtCount: 1, inventory: { apple: 1 } } }),
+    route.fulfill({ json: { trees: WORLD.appleTrees.map(() => 3), lastCatch: "사과", caughtCount: 1, inventory: { 사과: 1 } } }),
   );
   await page.route(`${API_ORIGIN}/api/lobby/fishing`, async (route) => {
     const body = route.request().postDataJSON();
@@ -88,7 +88,7 @@ test("같은 월드 접근점에서 문·의자·온천·사과·물가·방명�
 
   const door = WORLD.doors[0];
   await loadAt(page, door);
-  await expect(page.getByRole("status")).toContainText(door.title);
+  await expect(page).toHaveURL(new RegExp(`/games/${door.slug}$`));
 
   const seat = WORLD.seats[0];
   await loadAt(page, { x: seat.seatX, y: seat.standY });

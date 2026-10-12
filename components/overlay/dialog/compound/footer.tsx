@@ -2,7 +2,7 @@
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 
 import { cn } from "@/lib";
-import { Button } from "@/components";
+import { Button } from "@/components/inputs/button";
 import { DIALOG_STYLES } from "../variable";
 import { DialogFooterProps } from "../type";
 import { SLOT, DEFAULT } from "../constants";

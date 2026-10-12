@@ -13,6 +13,9 @@
 # testing
 /coverage
 /test-results
+/test-results-*/
+/artifacts/
+/.omo/
 /playwright-report
 /blob-report
 

@@ -20,6 +20,15 @@ function collectErrors(page: Page) {
 async function stubNetwork(page: Page) {
   await page.route((url) => url.hostname !== "localhost", (route) => route.fulfill({ status: 200, body: "" }));
   await page.route(`${API_ORIGIN}/**`, (route) => route.fulfill({ json: { ok: true } }));
+  await page.route(`${API_ORIGIN}/api/lobby/fishing`, (route) => route.fulfill({ json: {
+    active: false, nextCatchAt: null, inventory: {}, lastCatch: null, caughtCount: 0,
+    consumed: false, feedStatus: null, satiety: 0, affection: 0, outfit: {},
+  } }));
+  await page.route(`${API_ORIGIN}/api/lobby/apples`, (route) => route.fulfill({ json: {
+    trees: Array(8).fill(3), lastCatch: null, caughtCount: 0, inventory: {},
+  } }));
+  await page.route(`${API_ORIGIN}/api/lobby/lamps`, (route) => route.fulfill({ json: {} }));
+  await page.route(`${API_ORIGIN}/api/guestbook`, (route) => route.fulfill({ json: { entries: [] } }));
   await page.route(`${API_ORIGIN}/api/games/*/rooms`, (route) =>
     route.request().method() === "GET" ? route.fulfill({ json: { ok: true, rooms: [] } }) : route.fallback(),
   );

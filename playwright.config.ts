@@ -23,6 +23,6 @@ export default defineConfig({
     reuseExistingServer: !process.env.CI,
     timeout: 300_000,
     // 셸에 NODE_ENV=development가 있으면 프로덕션 빌드가 React를 섞어 prerender에서 터진다 — production으로 고정
-    env: { NODE_ENV: "production" },
+    env: { NODE_ENV: "production", NEXT_PUBLIC_API_URL: "http://localhost:4000" },
   },
 });

@@ -13,5 +13,9 @@
 /.claude
 /.agents
 /.omo
+/artifacts
+/qa
+/test-results*
+/playwright-report
 /.mcp.json
 /scripts/__pycache__
