@@ -137,8 +137,11 @@ let bus: Bus | null = null;
 const noises = new Map<NoiseColor, AudioBuffer>();
 const voices = new Map<VoiceLine, AudioBuffer | Promise<AudioBuffer | null>>();
 
+/** 로비 효과음(걷기·펀치·맞기 등) 합성음 배율. 레이어 레벨이 0.1~0.3이라 같이 나는 목소리(0.7)에 묻혀서 키운다. 목소리·미니게임 소리는 그대로 */
+export const LOBBY_SFX_BOOST = 2.5;
+
 export function playSound(name: LobbySound, settings: LobbySettings) {
-  playLayers(SOUNDS[name], settings);
+  playLayers(SOUNDS[name], settings, LOBBY_SFX_BOOST);
 }
 
 /** 게임 화면용: 로비에서 정한 소리 켜기·크기(이 기기 localStorage)를 매번 읽어 따른다. 게임별 소리는 각 게임 constants.ts에 SoundLayer[]로 둔다 */
@@ -146,12 +149,12 @@ export function playGameSound(layers: readonly SoundLayer[]) {
   playLayers(layers, loadLobbySettings());
 }
 
-function playLayers(layers: readonly SoundLayer[], settings: LobbySettings) {
+function playLayers(layers: readonly SoundLayer[], settings: LobbySettings, boost = 1) {
   if (settings.muted || settings.volume <= 0) return;
   // 소리는 곁들이라 Web Audio가 어디서 예외를 던져도(오디오 장치 중단·잘못된 값 등) 부른 쪽으로 번지지 않게 삼킨다.
   // 번지면 알까기 샷 애니메이션이 끊겨 알이 잠기거나, 이펙트에서 나면 게임 화면이 오류 화면으로 바뀐다
   try {
-    synthesize(layers, settings);
+    synthesize(layers, settings, boost);
   } catch {}
 }
 
@@ -237,7 +240,7 @@ function loadVoice(ctx: AudioContext, line: VoiceLine): AudioBuffer | Promise<Au
   return loading;
 }
 
-function synthesize(layers: readonly SoundLayer[], settings: LobbySettings) {
+function synthesize(layers: readonly SoundLayer[], settings: LobbySettings, boost: number) {
   audio ??= new AudioContext();
   const ctx = audio;
   // 브라우저는 한 번 누르거나 키를 치기 전까지 소리를 막는다. 막혀 있으면 조용히 넘어간다
@@ -253,7 +256,7 @@ function synthesize(layers: readonly SoundLayer[], settings: LobbySettings) {
   for (const layer of layers) {
     const at = (layer.at ?? 0) / 1000 + Math.random() * 0.006;
     if (layer.kind !== "voice") {
-      playLayer(ctx, target, layer, ctx.currentTime + at, pitch, volume);
+      playLayer(ctx, target, layer, ctx.currentTime + at, pitch, volume * boost);
       continue;
     }
     const voice = loadVoice(ctx, layer.line);
