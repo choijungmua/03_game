@@ -19,6 +19,8 @@ export interface PublicPlayer extends PlayerState {
   id: string;
   /** 머리 위 이름표 ("졸린 치킨바라"). 접속 중인 사람끼리는 안 겹친다 */
   name: string;
+  /** 서버가 경험치로 정한 레벨 (1~30). 클라이언트는 보여 주기만 한다 */
+  level: number;
   /** 남은 기절 시간(ms). 서버·클라이언트 시계가 달라서 시각이 아니라 남은 시간으로 보낸다 */
   stunMs: number;
   /** 남은 때리기 동작 시간(ms) */
@@ -33,6 +35,8 @@ export interface PresenceRequest extends PlayerState {
   sequence?: number;
   /** 이번 동기화 사이에 때리기를 눌렀는지 */
   attack: boolean;
+  /** 이번 동기화 사이에 대시를 눌렀는지 (서버가 레벨·쿨타임을 다시 확인한다) */
+  dash?: boolean;
   /** 이번 동기화 사이에 보낸 채팅 (cleanChat을 거친 값) */
   chat?: string;
   /** 기기별 프로필 id(UUID). 서버가 채팅·낚시 이력을 이 id로 묶어 저장한다 */
