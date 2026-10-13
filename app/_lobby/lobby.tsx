@@ -8,7 +8,7 @@ import { type FormEvent, useEffect, useEffectEvent, useRef, useState } from "rea
 
 import { pretendard } from "@/config";
 import { cn } from "@/lib";
-import { Apple, Armchair, Bath, Fish, HandFist, NotebookPen } from "lucide-react";
+import { Apple, Armchair, Bath, Fish, HandFist, NotebookPen, Zap } from "lucide-react";
 import { type ApiError, API_URL } from "@/lib/api-url";
 import { recordGameTelemetry } from "@/lib/games/game-events";
 
@@ -158,6 +158,7 @@ import {
   WALK_SPEED,
   worldToViewport,
 } from "@/lib/lobby/world";
+import { DASH_COOLDOWN_MS, DASH_DISTANCE, DASH_LEVEL, DASH_MS, speedOf } from "@/lib/lobby/level";
 
 import { Wardrobe } from "./wardrobe";
 
@@ -197,6 +198,7 @@ interface CapybaraLook {
 interface Remote {
   id: string;
   name: string;
+  level: number;
   x: number;
   y: number;
   /** 받은 위치들. 매 프레임 조금 과거(REMOTE_RENDER_DELAY_MS)를 보간해 그린다 (lib/lobby/interpolation.ts) */
@@ -305,6 +307,7 @@ const KEY_VECTORS: Partial<Record<string, [number, number]>> = {
   KeyD: [1, 0],
 };
 const ATTACK_KEYS: ReadonlySet<string> = new Set(["KeyF", "KeyJ"]);
+const DASH_KEYS: ReadonlySet<string> = new Set(["KeyG", "KeyK"]);
 
 const TEXTURE_OF: Record<Tile, Texture> = {
   meadow: "meadow",
@@ -574,6 +577,29 @@ function drawLabel(ctx: CanvasRenderingContext2D, text: string, x: number, y: nu
   ctx.strokeText(text, x, y);
   ctx.fillStyle = "#fff";
   ctx.fillText(text, x, y);
+}
+
+/** 머리 위 이름표 "5Lv 포근한 이기길바라". 레벨은 이름보다 크고 굵게 */
+function drawNameTag(ctx: CanvasRenderingContext2D, level: number, name: string, x: number, y: number) {
+  const levelText = `${level}Lv`;
+  const levelFont = `800 16px ${CANVAS_FONT}`;
+  const nameFont = `600 13px ${CANVAS_FONT}`;
+  ctx.font = levelFont;
+  const levelWidth = ctx.measureText(levelText).width;
+  ctx.font = nameFont;
+  const left = x - (levelWidth + 4 + ctx.measureText(name).width) / 2;
+  ctx.textAlign = "left";
+  ctx.textBaseline = "middle";
+  ctx.lineWidth = 4;
+  ctx.strokeStyle = "rgba(40,28,16,0.85)";
+  ctx.font = levelFont;
+  ctx.strokeText(levelText, left, y);
+  ctx.fillStyle = "#ffd75e";
+  ctx.fillText(levelText, left, y);
+  ctx.font = nameFont;
+  ctx.strokeText(name, left + levelWidth + 4, y);
+  ctx.fillStyle = "#fff";
+  ctx.fillText(name, left + levelWidth + 4, y);
 }
 
 /** 둥근 몸통과 꼬리를 끊김 없는 한 선으로 잇는 말풍선 윤곽. 꼬리는 곡선으로 몸통 밑변에서 흘러내린다 */
@@ -1220,6 +1246,11 @@ export function Lobby({ games }: { games: DoorGame[] }) {
   /** Space(앉기·목욕·낚시 버튼): 통나무 앞이면 앉기·일어나기, 온천 둘레면 목욕·나오기, 물가면 계속 낚기 시작·그만하기 */
   const spaceRequest = useRef(false);
   const attackRequest = useRef(false);
+  /** G·K·대시 버튼 (DASH_LEVEL부터) */
+  const dashRequest = useRef(false);
+  const dashButtonRef = useRef<HTMLButtonElement>(null);
+  /** 서버가 정한 내 레벨. 대시 버튼을 보일지 정한다 */
+  const [myLevel, setMyLevel] = useState(1);
   const joystickRef = useRef<HTMLDivElement>(null);
   const knobRef = useRef<HTMLDivElement>(null);
   const minimapRef = useRef<HTMLCanvasElement>(null);
@@ -1478,6 +1509,10 @@ export function Lobby({ games }: { games: DoorGame[] }) {
       attackUntil: 0,
       stunUntil: 0,
       lastAttackAt: -Infinity,
+      /** 서버가 경험치로 정한 레벨. 이동 속도·대시에 쓴다 */
+      level: 1,
+      dashUntil: 0,
+      lastDashAt: -Infinity,
       pendingFacing: "up" as Facing,
       facingSince: 0,
       chat: "",
@@ -1691,6 +1726,9 @@ export function Lobby({ games }: { games: DoorGame[] }) {
     let charge = 0;
     let leaving = false;
     let attackQueued = false;
+    let dashQueued = false;
+    /** 첫 응답의 레벨은 알리지 않는다 (들어올 때마다 레벨 업처럼 보이지 않게) */
+    let receivedLevel = false;
     let chatQueued: string | null = null;
     let shownDoor: Door | null = null;
     let shownSitting = false;
@@ -1874,6 +1912,13 @@ export function Lobby({ games }: { games: DoorGame[] }) {
         }
         return;
       }
+      if (DASH_KEYS.has(event.code)) {
+        if (!event.repeat) {
+          dashRequest.current = true;
+          flashButton(dashButtonRef.current);
+        }
+        return;
+      }
       // 버튼·링크에 포커스가 있으면 Space/Enter는 그 요소의 기본 동작(누르기)에 맡긴다
       if (event.target instanceof HTMLElement && event.target.closest("a, button, summary")) return;
       if (event.code === "Space") {
@@ -2016,7 +2061,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
       const outfit = outfitRef.current;
       const profile = profileRef.current;
       const key = `${me.x},${me.y},${me.facing},${me.sitting},${JSON.stringify(outfit)},${profile.name}`;
-      if (!attackQueued && chatQueued === null && key === lastSentKey && now - lastSentAt < HEARTBEAT_MS) return;
+      if (!attackQueued && !dashQueued && chatQueued === null && key === lastSentKey && now - lastSentAt < HEARTBEAT_MS) return;
       const request: PresenceRequest = {
         token,
         sequence: ++sequence,
@@ -2025,6 +2070,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
         facing: me.facing,
         sitting: me.sitting,
         attack: attackQueued,
+        ...(dashQueued && { dash: true }),
         outfit,
         ...(chatQueued !== null && { chat: chatQueued }),
         // 서버가 받아들인 채팅·이모티콘·낚시를 이 프로필 id로 이력에 남긴다
@@ -2040,6 +2086,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
       }
       pendingPositions.set(sequence, { x: me.x, y: me.y, at: now });
       attackQueued = false;
+      dashQueued = false;
       chatQueued = null;
       lastSentKey = key;
       lastSentAt = now;
@@ -2063,6 +2110,15 @@ export function Lobby({ games }: { games: DoorGame[] }) {
       const received = performance.now();
       if (me.name !== data.you.name) setMyName(data.you.name);
       me.name = data.you.name;
+      const level = data.you.level ?? 1;
+      if (level !== me.level) {
+        if (receivedLevel && level > me.level) {
+          showNotice(level >= DASH_LEVEL && me.level < DASH_LEVEL ? `레벨 업! ${level}Lv · 대시를 배웠어요 (G)` : `레벨 업! ${level}Lv`, 2400);
+        }
+        me.level = level;
+        setMyLevel(level);
+      }
+      receivedLevel = true;
 
       if (data.you.stunMs > 0) {
         if (me.stunUntil < received) {
@@ -2123,6 +2179,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
           pushSnapshot(remote.snapshots, player.x, player.y, received, LOBBY_TICK_MS);
           remote.seenAt = received;
           remote.facing = player.facing;
+          remote.level = player.level ?? 1;
           if (player.sitting && !remote.sitting) remote.sitSince = received;
           remote.sitting = player.sitting;
           remote.outfit = player.outfit ?? {};
@@ -2136,6 +2193,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
           remotes.set(player.id, {
             id: player.id,
             name: player.name,
+            level: player.level ?? 1,
             x: player.x,
             y: player.y,
             snapshots: [{ x: player.x, y: player.y, at: received }],
@@ -2319,6 +2377,28 @@ export function Lobby({ games }: { games: DoorGame[] }) {
           playSound("swing", settingsRef.current);
         }
       }
+      if (dashRequest.current) {
+        dashRequest.current = false;
+        const wait = DASH_COOLDOWN_MS - (now - me.lastDashAt);
+        if (me.level < DASH_LEVEL) {
+          showNotice(`대시는 ${DASH_LEVEL}Lv부터 쓸 수 있어요`);
+        } else if (isStunned) {
+          // 기절 중엔 무시
+        } else if (wait > 0) {
+          showNotice(`대시 준비 중 ${Math.ceil(wait / 1000)}초`);
+        } else {
+          if (me.sitting) standUp();
+          reelLine(now, false);
+          stopAuto();
+          me.meal = null;
+          me.lastDashAt = now;
+          me.dashUntil = now + DASH_MS;
+          // 서버는 출발점에서 바라보는 방향으로 판정하니 움직이기 전에 바로 보낸다
+          dashQueued = true;
+          send();
+          playSound("swing", settingsRef.current);
+        }
+      }
       // 바꾼 이름을 보냈는데 한참 지나도 이름표가 그대로면 접속 중인 다른 사람이 쓰는 이름이라 서버가 거절한 것이다.
       // 거절된 이름은 지워서 계속 다시 보내지 않는다 (서버는 틱에 바뀐 게 없으면 메시지를 안 보내서 응답 대신 시간으로 판단)
       const wantedName = profileRef.current.name;
@@ -2397,9 +2477,15 @@ export function Lobby({ games }: { games: DoorGame[] }) {
       const startX = me.x;
       const startY = me.y;
       let moved = false;
-      if (wantsMove && !me.sitting) {
+      // 대시 중엔 입력과 상관없이 바라보는 방향으로 미끄러진다 (막히는 곳에선 멈춘다)
+      const dashing = !isStunned && now - dt < me.dashUntil;
+      if (dashing) [dx, dy] = FACING_VECTORS[me.facing];
+      if ((wantsMove || dashing) && !me.sitting) {
         const length = Math.hypot(dx, dy); // 대각선도 같은 속도
-        const step = Math.min(WALK_SPEED * speed * satietyWalkSpeed(satietyRef.current, Date.now()) * (dt / 1000), distance);
+        // 레벨이 오를수록 빨리 걷는다 (1Lv = 기본 속도, 30Lv = 최고 속도)
+        const step = dashing
+          ? (DASH_DISTANCE * Math.min(dt, me.dashUntil - (now - dt))) / DASH_MS
+          : Math.min(WALK_SPEED * speedOf(me.level) * speed * satietyWalkSpeed(satietyRef.current, Date.now()) * (dt / 1000), distance);
         // 목욕 중엔 물 안쪽 타원 밖으로 못 걸어 나가고(나오기는 Space), 뭍에선 막히는 타일에 막힌다
         const bathing = inBath(me.x, me.y);
         const bathWater = bathCenter(springNear(me.x, me.y));
@@ -2745,7 +2831,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
       }
       for (const remote of remotes.values()) {
         const labelY = remote.y - (remote.sitting ? SIT_SIZE : STAND_SIZE) - 8 + (inBath(remote.x, remote.y) ? BATH_SINK : 0);
-        drawLabel(ctx, remote.name, remote.x, labelY);
+        drawNameTag(ctx, remote.level, remote.name, remote.x, labelY);
         // 낚싯대·공중의 찌와 물고기는 이름표를 가리지 않게 머리 위로 끌어올려 이름표 다음에 그린다
         if (remote.fishing) drawFishingRod(ctx, remote.fishing, remote.x, remote.y, remote.facing, now, !reducedMotion, labelY);
         if (remote.meal) drawHearts(ctx, remote.x, labelY - 8, now - remote.meal.at, !reducedMotion);
@@ -2753,7 +2839,7 @@ export function Lobby({ games }: { games: DoorGame[] }) {
         if (now < remote.chatUntil && !actionChat) drawSpeech(remote.chat, remote.x, labelY - 10);
       }
       const myLabelY = drawnY - (me.sitting ? SIT_SIZE : STAND_SIZE) - 8 + (myBathing ? BATH_SINK : 0);
-      if (me.name) drawLabel(ctx, me.name, drawnX, myLabelY);
+      if (me.name) drawNameTag(ctx, me.level, me.name, drawnX, myLabelY);
       const mySpeechY = me.name ? myLabelY - 10 : myLabelY + 4;
       if (me.fishing) drawFishingRod(ctx, me.fishing, drawnX, drawnY, me.facing, now, !reducedMotion, mySpeechY + 10);
       if (now < me.chatUntil) drawSpeech(me.chat, drawnX, mySpeechY);
@@ -3277,6 +3363,24 @@ export function Lobby({ games }: { games: DoorGame[] }) {
             </span>
             <span className="rounded-full bg-card/85 px-2 py-0.5 text-caption-3 font-semibold text-text-strong">때리기</span>
           </button>
+          {myLevel >= DASH_LEVEL && (
+            <button
+              ref={dashButtonRef}
+              type="button"
+              onClick={() => {
+                dashRequest.current = true;
+              }}
+              disabled={stunned}
+              aria-label="대시 (G)"
+              aria-keyshortcuts="G K"
+              className="group flex flex-col items-center gap-0.5 rounded-full focus-visible:outline-2 focus-visible:outline-primary disabled:opacity-50"
+            >
+              <span className="relative flex size-14 items-center justify-center rounded-full border-4 border-[#8a5a2b] bg-[#ffd75e] text-[#5a3a1a] shadow-md transition-transform duration-100 md:size-18 motion-safe:group-active:scale-90">
+                <Zap className="size-7" />
+              </span>
+              <span className="rounded-full bg-card/85 px-2 py-0.5 text-caption-3 font-semibold text-text-strong">대시</span>
+            </button>
+          )}
         </div>
       <nav aria-label="사이트 정보" className="flex items-center gap-3 text-caption-3 drop-shadow-md">
         <LobbyIntro />

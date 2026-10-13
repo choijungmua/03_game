@@ -16,7 +16,7 @@ function corridor() {
 }
 
 function reply(request: PresenceRequest, corrected = false): LobbyMessage {
-  return { you: { ...request, id: 'me', name: '테스트바라', stunMs: 0, attackMs: 0, chat: '', chatMs: 0 }, players: [], online: 1, hit: null, corrected, ...(request.sequence !== undefined && { ack: request.sequence }) };
+  return { you: { ...request, id: 'me', name: '테스트바라', level: 1, stunMs: 0, attackMs: 0, chat: '', chatMs: 0 }, players: [], online: 1, hit: null, corrected, ...(request.sequence !== undefined && { ack: request.sequence }) };
 }
 
 const canvas = (page: Page) => page.getByRole('img', { name: /카피바라 온천 습지 마을 로비/ });
