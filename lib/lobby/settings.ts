@@ -302,7 +302,8 @@ function playVoice(
   gain.gain.exponentialRampToValueAtTime(0.0001, end);
   source.connect(filter);
   filter.connect(gain);
-  route(ctx, target, gain, layer, 0.1);
+  // 목소리에 울림을 걸면 동굴 속처럼 으스스해진다. 마른 소리로 바로 들려준다
+  route(ctx, target, gain, layer, 0);
   source.start(start);
   source.stop(end + 0.02);
 }

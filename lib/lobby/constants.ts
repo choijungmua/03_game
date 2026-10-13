@@ -205,7 +205,7 @@ export const SOUNDS: Record<LobbySound, readonly SoundLayer[]> = {
   ],
   // 하아암: 진짜 하품 목소리 + 부드러운 숨소리
   yawn: [
-    { kind: "voice", line: "yawn", from: 8000, to: 5000, ms: 1300, level: 0.7, wet: 0.2 },
+    { kind: "voice", line: "yawn", from: 9000, to: 8000, ms: 1300, level: 0.7 },
     { kind: "noise", color: "pink", filter: "bandpass", q: 0.7, from: 1200, to: 600, ms: 1200, level: 0.05, attack: 300 },
   ],
   // 슥슥: 털을 긁는 짧고 까슬한 소리 두 번
@@ -244,7 +244,7 @@ export const SOUNDS: Record<LobbySound, readonly SoundLayer[]> = {
     { at: 60, kind: "tone", wave: "sine", from: 180, to: 70, ms: 160, level: 0.12 },
     { at: 220, kind: "tone", wave: "sine", from: 520, to: 880, ms: 40, level: 0.05, wet: 0.3 },
     { at: 320, kind: "tone", wave: "sine", from: 600, to: 1000, ms: 40, level: 0.04, wet: 0.3 },
-    { at: 380, kind: "voice", line: "ahh", from: 8000, to: 6000, ms: 1100, level: 0.7, wet: 0.35 },
+    { at: 380, kind: "voice", line: "ahh", from: 9000, to: 8000, ms: 1100, level: 0.7 },
   ],
   // 촤르르 → 똑똑: 물에서 나오며 털에서 물이 흘러내린다
   bathOut: [

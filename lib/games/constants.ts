@@ -83,7 +83,7 @@ export const GAME_SOUNDS = {
     { kind: "tone", wave: "sawtooth", from: 392, to: 380, ms: 260, level: 0.06, detune: 10, lowpass: 1400 },
     { at: 230, kind: "tone", wave: "sawtooth", from: 330, to: 318, ms: 260, level: 0.06, detune: 10, lowpass: 1200 },
     { at: 460, kind: "tone", wave: "sawtooth", from: 262, to: 180, ms: 600, level: 0.06, detune: 10, lowpass: 1000 },
-    { at: 300, kind: "voice", line: "lose", from: 6000, to: 2500, ms: 800, level: 0.75 },
+    { at: 300, kind: "voice", line: "lose", from: 9000, to: 8000, ms: 800, level: 0.75 },
   ],
   /** 신기록!: 신기록·순위권 — 종소리가 쏟아지고 외친다 */
   record: [

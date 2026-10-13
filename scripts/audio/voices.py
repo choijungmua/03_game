@@ -1,8 +1,8 @@
-"""tts.ps1로 녹음한 사람 목소리를 카피바라 캐릭터 목소리로 가공해 public/sfx/voice/*.wav로 낸다.
+"""tts.ps1로 녹음한 여자 목소리를 게임용으로 깨끗하게 다듬어 public/sfx/voice/*.wav로 낸다.
 
 사용: python scripts/audio/voices.py <원본 폴더> <출력 폴더>
-처리: 앞뒤 무음 자르기 → 대사별 음높이 올림(재샘플) → 저역 컷·존재감(3kHz) 부스트 → 따뜻한 포화 →
-      압축 → 살짝 어긋난 겹목소리(더블링) → 페이드 → -1dBFS 정규화 → 24kHz 16bit 모노
+처리: 앞뒤 무음 자르기 → 대사별 음높이 살짝 올림(재샘플) → 저역 컷·존재감(3kHz) 살짝 부스트 →
+      압축 → 페이드 → -1dBFS 정규화 → 24kHz 16bit 모노
 """
 
 import sys
@@ -37,7 +37,7 @@ def shelf(x: np.ndarray, rate: int) -> np.ndarray:
     presence = butter(2, [2200, 5200], "bandpass", fs=rate, output="sos")
     air_cut = butter(4, 10000, "lowpass", fs=rate, output="sos")
     y = sosfilt(low_cut, x)
-    y = y + 0.55 * sosfilt(presence, y)
+    y = y + 0.25 * sosfilt(presence, y)
     return sosfilt(air_cut, y)
 
 
@@ -51,15 +51,6 @@ def compress(x: np.ndarray, rate: int, threshold=0.25, ratio=3.5) -> np.ndarray:
     return x * gains
 
 
-def double(x: np.ndarray, rate: int) -> np.ndarray:
-    # 같은 목소리를 아주 조금 높이고 12ms 늦게 겹쳐 얇은 TTS 느낌을 두툼한 캐릭터 목소리로 만든다
-    shifted = resample_poly(x, 200, 203)
-    delay = int(rate * 0.012)
-    y = np.zeros(max(len(x), len(shifted) + delay))
-    y[: len(x)] += x
-    y[delay: delay + len(shifted)] += 0.3 * shifted
-    return y
-
 
 def process(path: Path) -> np.ndarray:
     rate, data = wavfile.read(path)
@@ -72,10 +63,9 @@ def process(path: Path) -> np.ndarray:
     # 재샘플로 음높이를 올리면 길이도 함께 줄어 말이 더 경쾌해진다 (만화 캐릭터 목소리 방식)
     pitch = PITCH.get(path.stem, DEFAULT_PITCH)
     x = resample_poly(x, OUT_RATE * 100, int(rate * pitch * 100))
+    # 찌그러뜨림(포화)·겹목소리(더블링)는 쓰지 않는다 — 메아리처럼 울려 무섭게 들렸다
     x = shelf(x, OUT_RATE)
-    x = np.tanh(x / np.abs(x).max() * 1.6) / np.tanh(1.6)
-    x = compress(x, OUT_RATE)
-    x = double(x, OUT_RATE)
+    x = compress(x / np.abs(x).max(), OUT_RATE)
     fade_in, fade_out = int(OUT_RATE * 0.004), int(OUT_RATE * 0.04)
     x[:fade_in] *= np.linspace(0, 1, fade_in)
     x[-fade_out:] *= np.linspace(1, 0, fade_out)
