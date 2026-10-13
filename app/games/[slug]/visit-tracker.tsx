@@ -2,26 +2,26 @@
 
 import { useEffect } from "react";
 
-import { recordGameTelemetry, recordGameVisit, wasGameCompleted } from "@/lib/games/game-events";
+import { quitGameRound, recordGameVisit, restoreGameRound, suspendGameRound } from "@/lib/games/game-events";
 
 export function GameVisitTracker({ slug }: { slug: string }) {
   useEffect(() => {
-    const openedAt = performance.now();
-    const storageKey = `game-last-played:${slug}`;
-    const resumed = localStorage.getItem(storageKey) !== null;
-    localStorage.setItem(storageKey, new Date().toISOString());
     void recordGameVisit(slug);
-    void recordGameTelemetry(slug, "game_start");
-    if (resumed) void recordGameTelemetry(slug, "game_resume");
-    const leave = () => {
-      if (wasGameCompleted(slug)) return;
-      void recordGameTelemetry(slug, "game_quit", {
-        durationSeconds: Math.max(0, (performance.now() - openedAt) / 1000),
-        result: "left",
-      });
+    const leave = () => { void quitGameRound(slug); };
+    const hide = (event: PageTransitionEvent) => {
+      if (event.persisted) void suspendGameRound(slug);
+      else leave();
     };
-    window.addEventListener("pagehide", leave, { once: true });
-    return () => window.removeEventListener("pagehide", leave);
+    const show = (event: PageTransitionEvent) => {
+      if (event.persisted) void restoreGameRound(slug);
+    };
+    window.addEventListener("pagehide", hide);
+    window.addEventListener("pageshow", show);
+    return () => {
+      window.removeEventListener("pagehide", hide);
+      window.removeEventListener("pageshow", show);
+      leave();
+    };
   }, [slug]);
   return null;
 }

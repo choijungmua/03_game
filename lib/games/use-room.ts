@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useEffectEvent, useRef, useState } from "react";
 
 import { ApiError, fetchApi, SERVER_ERROR_MESSAGE } from "@/lib/api-url";
+import { completeGameRound, quitGameRound, startGameRound } from "./game-events";
 
 import type { BotLevel, RoomAction, RoomResult, RoomState, RoomSummary, Vector } from "./rooms";
 
@@ -120,6 +121,18 @@ export function useRoom<S extends RoomState, A extends string>(slug: string) {
   const view = room.data?.view ?? null;
   const gone = view !== null && isGone(room.error);
   const reconnecting = view !== null && room.isError && !gone;
+  const trackedRoom = useRef<string | null>(null);
+  useEffect(() => {
+    const participant = view?.you !== null && view?.joined.black && view.joined.white;
+    const nextRoom = participant && !gone ? view.code : null;
+    if (trackedRoom.current !== nextRoom) {
+      void quitGameRound(slug);
+      trackedRoom.current = nextRoom;
+    }
+    if (!nextRoom || !view) return;
+    if (view.state.endReason) void completeGameRound(slug, { result: view.state.endReason });
+    else void startGameRound(slug);
+  }, [slug, view, gone]);
 
   const action = useMutation({
     mutationFn: (task: () => Promise<RoomSuccess<S>>) => task(),
@@ -223,6 +236,7 @@ export function useRoom<S extends RoomState, A extends string>(slug: string) {
   }
 
   function leave() {
+    void quitGameRound(slug);
     failures.current = 0;
     setCode(null);
     setToken(null);

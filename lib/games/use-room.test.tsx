@@ -7,6 +7,7 @@ import { createGame, type GomokuState, playMove } from "@/app/games/_games/capyb
 import type { GomokuAction } from "@/app/games/_games/capybara-gomoku/rooms";
 
 import type { RoomAction, RoomResult, Stone } from "./rooms";
+import { quitGameRound } from "./game-events";
 import { useRoom } from "./use-room";
 
 const SLUG = "capybara-gomoku";
@@ -20,6 +21,7 @@ function fakeServer() {
   const tokens: Record<Stone, string | null> = { black: null, white: null };
   const held: Array<() => void> = [];
   const posts: RoomAction[] = [];
+  const telemetry: string[] = [];
 
   const seatOf = (token?: string | null): Stone | null =>
     token && tokens.black === token ? "black" : token && tokens.white === token ? "white" : null;
@@ -45,6 +47,10 @@ function fakeServer() {
     /** 켜면 방이 사라진다(404) */
     gone: false,
     reads: 0,
+    finish() {
+      state = { ...state, winner: "black", endReason: "five" };
+      version += 1;
+    },
     release() {
       held.splice(0).forEach((deliver) => deliver());
     },
@@ -73,6 +79,10 @@ function fakeServer() {
   vi.stubGlobal("fetch", (input: string, init?: RequestInit) => {
     if (server.down) return Promise.reject(new TypeError("Failed to fetch"));
     const url = new URL(input);
+    if (url.pathname.endsWith("/telemetry")) {
+      telemetry.push(String(init?.body));
+      return Promise.resolve(new Response(null, { status: 202 }));
+    }
     const code = url.pathname.split("/")[5];
     let result: RoomResult<GomokuState>;
     if (init?.method === "POST") {
@@ -91,7 +101,7 @@ function fakeServer() {
     return Promise.resolve(response);
   });
 
-  return { server, posts };
+  return { server, posts, telemetry };
 }
 
 function renderRoom() {
@@ -131,9 +141,45 @@ describe("useRoom", () => {
     localStorage.clear();
   });
 
-  afterEach(() => {
+  afterEach(async () => {
+    await quitGameRound(SLUG);
     vi.useRealTimers();
     vi.unstubAllGlobals();
+  });
+
+  it("대기방은 시작으로 세지 않고 두 참가자가 모인 판의 시작·완료를 한 번씩 보낸다", async () => {
+    const { server, telemetry } = fakeServer();
+    const { result } = renderRoom();
+    act(() => result.current.create());
+    await until(() => result.current.view !== null);
+    expect(telemetry).toEqual([]);
+    server.join();
+    await tickPoll();
+    await until(() => telemetry.length === 1);
+    expect(telemetry[0]).toContain('"game_start"');
+    await tickPoll();
+    expect(telemetry).toHaveLength(1);
+    server.finish();
+    await tickPoll();
+    await until(() => telemetry.length === 2);
+    expect(telemetry[1]).toContain('"game_complete"');
+    act(() => result.current.leave());
+    await settle();
+    expect(telemetry).toHaveLength(2);
+  });
+
+  it("관전자는 플레이 시작으로 세지 않는다", async () => {
+    const { server, telemetry } = fakeServer();
+    server.create();
+    server.join();
+    const { result } = renderRoom();
+    act(() => result.current.join(CODE));
+    await until(() => result.current.spectateCode !== null);
+    act(() => result.current.watch());
+    await until(() => result.current.view !== null);
+    await settle();
+    expect(result.current.view?.you).toBeNull();
+    expect(telemetry).toEqual([]);
   });
 
   it("수를 둔 뒤에 늦게 도착한 옛날 폴링 응답이 판을 되돌리지 않는다", async () => {

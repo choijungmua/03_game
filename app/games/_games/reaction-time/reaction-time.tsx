@@ -8,7 +8,7 @@ import { GameOverActions } from "@/components/games/game-over-actions";
 import { ShareButton } from "@/components/games/share-button";
 import { cn } from "@/lib";
 import { FULL_BLEED_LAYER, GAME_SOUNDS, GAME_TITLES } from "@/lib/games/constants";
-import { submitGameRecord } from "@/lib/games/game-events";
+import { quitGameRound, startGameRound, submitGameRecord } from "@/lib/games/game-events";
 import { useFrameText } from "@/lib/games/use-frame-text";
 import { useInView } from "@/lib/games/use-in-view";
 import { useLockPageScroll } from "@/lib/games/use-lock-page-scroll";
@@ -73,6 +73,7 @@ export function ReactionTime() {
         }
         playGameSound(GAME_SOUNDS.go);
         setStartAt(Date.now());
+        void startGameRound("reaction-time");
         setPhase("running");
       }, COUNTDOWN_STEP_MS * (index + 1)),
     );
@@ -231,6 +232,7 @@ export function ReactionTime() {
         onCancelRound={
           phase === "countdown" || phase === "running"
             ? () => {
+                void quitGameRound("reaction-time");
                 playGameSound(GAME_SOUNDS.pause);
                 setPhase("idle");
               }

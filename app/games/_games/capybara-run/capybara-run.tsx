@@ -9,6 +9,7 @@ import { Leaderboard, TierLabel } from "@/components/games/leaderboard";
 import { ShareButton } from "@/components/games/share-button";
 import { cn } from "@/lib";
 import { countdownSound, GAME_SOUNDS, GAME_TITLES } from "@/lib/games/constants";
+import { pauseGameRound, quitGameRound, resumeGameRound, startGameRound, submitGameRecord } from "@/lib/games/game-events";
 import { useLockPageScroll } from "@/lib/games/use-lock-page-scroll";
 import { playGameSound } from "@/lib/lobby/settings";
 
@@ -185,6 +186,7 @@ export function CapybaraRun() {
   }
 
   function startCountdown() {
+    void quitGameRound(SLUG);
     playGameSound(GAME_SOUNDS.start);
     game.current = createRun();
     effects.current = emptyEffects();
@@ -205,6 +207,7 @@ export function CapybaraRun() {
       else {
         playGameSound(GAME_SOUNDS.go);
         setPhase("playing");
+        void startGameRound(SLUG);
       }
     }, 700);
     return () => clearTimeout(timer);
@@ -213,6 +216,7 @@ export function CapybaraRun() {
   const finish = useEffectEvent((state: RunState) => {
     const record: RunRecord = { id: crypto.randomUUID(), score: state.score, seconds: Math.floor(state.frame / 60), at: Date.now() };
     saveRecords(insertRecord(records, record));
+    void submitGameRecord(SLUG, record.score, record);
     setResult(record);
     setPhase("result");
   });
@@ -333,7 +337,7 @@ export function CapybaraRun() {
       tabIndex={phase === "idle" ? 0 : -1}
     >
       <GameControls
-        pause={phase === "playing" ? { paused, onPause: () => setPaused(true), onResume: () => setPaused(false), onRestart: startCountdown } : undefined}
+        pause={phase === "playing" ? { paused, onPause: () => { pauseGameRound(SLUG); setPaused(true); }, onResume: () => { void resumeGameRound(SLUG); setPaused(false); }, onRestart: startCountdown } : undefined}
       />
 
       {phase === "idle" && (

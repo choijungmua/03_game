@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { type PointerEvent as ReactPointerEvent, useEffect, useEffectEvent, useRef, useState } from "react";
 
 import { AdSlot } from "@/components/ads/ad-slot";
@@ -7,6 +8,7 @@ import { GameControls } from "@/components/games/game-controls";
 import { Button } from "@/components/inputs/button";
 import { API_URL } from "@/lib/api-url";
 import { GAME_SOUNDS, GAME_TITLES } from "@/lib/games/constants";
+import { completeGameRound, pauseGameRound, quitGameRound, resumeGameRound, startGameRound } from "@/lib/games/game-events";
 import { useLockPageScroll } from "@/lib/games/use-lock-page-scroll";
 import { playGameSound } from "@/lib/lobby/settings";
 
@@ -324,7 +326,11 @@ export function CapybaraVolleyball() {
       setScored(state.server);
       botError.current = (Math.random() - 0.5) * 50;
     }
-    if (state.winner !== null) setWinner(state.winner);
+    if (state.winner !== null) {
+      const side = guest.current ? 1 : 0;
+      void completeGameRound(SLUG, { value: state.score[side ?? 0], result: mode?.kind === "local" ? `side_${state.winner}` : state.winner === side ? "win" : "loss" });
+      setWinner(state.winner);
+    }
   }
 
   // 한 프레임: 혼자/같이 하기와 온라인 방장은 물리를 돌리고, 온라인 손님은 내 키만 보낸다
@@ -401,6 +407,7 @@ export function CapybaraVolleyball() {
   }, [mode]);
 
   function connect(code?: string) {
+    void quitGameRound(SLUG);
     socket.current?.close();
     reset();
     setCopied(false);
@@ -411,6 +418,7 @@ export function CapybaraVolleyball() {
     const update = (patch: Partial<Extract<Mode, { kind: "online" }>>) =>
       setMode((current) => (current?.kind === "online" && socket.current === ws ? { ...current, ...patch } : current));
     ws.onmessage = (event) => {
+      if (socket.current !== ws) return;
       let message: { type?: string; code?: string; side?: Side; keys?: number; state?: VolleyState; events?: GameEvent[] };
       try {
         message = JSON.parse(String(event.data));
@@ -420,8 +428,10 @@ export function CapybaraVolleyball() {
       if (message.type === "room" && message.code) {
         guest.current = message.side === 1;
         update({ code: message.code, side: message.side ?? 0, status: message.side === 1 ? "playing" : "waiting" });
+        if (message.side === 1) void startGameRound(SLUG);
         window.history.replaceState(null, "", `?code=${message.code}`);
       } else if (message.type === "start") {
+        void startGameRound(SLUG);
         playGameSound(GAME_SOUNDS.start);
         update({ status: "playing" });
       } else if (message.type === "input" && typeof message.keys === "number") {
@@ -429,10 +439,13 @@ export function CapybaraVolleyball() {
       } else if (message.type === "state" && message.state) {
         apply(message.state, message.events ?? []);
       } else if (message.type === "restart") {
+        void quitGameRound(SLUG);
         reset();
+        void startGameRound(SLUG);
       }
     };
     ws.onclose = (event) => {
+      if (socket.current === ws) void quitGameRound(SLUG);
       const reason =
         event.code === 4004
           ? "방을 찾을 수 없어요. 코드를 확인해 주세요"
@@ -460,18 +473,23 @@ export function CapybaraVolleyball() {
   }, []);
 
   function start(next: Mode) {
+    void quitGameRound(SLUG);
     playGameSound(GAME_SOUNDS.start);
     reset();
     setMode(next);
+    void startGameRound(SLUG);
   }
 
   function restart() {
+    void quitGameRound(SLUG);
     reset();
     playGameSound(GAME_SOUNDS.start);
     if (online) socket.current?.send(JSON.stringify({ type: "restart" }));
+    if (!online || online.status === "playing") void startGameRound(SLUG);
   }
 
   function toMenu() {
+    void quitGameRound(SLUG);
     socket.current?.close();
     socket.current = null;
     guest.current = false;
@@ -517,6 +535,14 @@ export function CapybaraVolleyball() {
           </div>
           <h1 className="text-title-2 font-bold text-text-primary">{GAME_TITLES[SLUG]}</h1>
           <p className="text-body-2 text-text-alternative">네트 너머 상대 바닥에 공을 떨어뜨리면 1점, {WIN_SCORE}점을 먼저 내면 이겨요</p>
+          <nav aria-label="게임 안내" className="flex flex-wrap justify-center gap-x-4">
+            <Link href={`/games/${SLUG}/guide`} className="inline-flex min-h-11 items-center text-body-2 text-text-primary underline underline-offset-4 hover:text-text-strong hover:decoration-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring">
+              하는 법·공략
+            </Link>
+            <Link href="/games" className="inline-flex min-h-11 items-center text-body-2 text-text-primary underline underline-offset-4 hover:text-text-strong hover:decoration-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring">
+              게임 목록
+            </Link>
+          </nav>
           <Button className="w-full" onClick={() => start({ kind: "cpu" })}>
             컴퓨터와 하기
           </Button>
@@ -566,7 +592,7 @@ export function CapybaraVolleyball() {
         leaveConfirm={online?.status === "playing" && winner === null ? "나가면 이 판이 끝나요. 나갈까요?" : undefined}
         pause={
           mode.kind !== "online" && winner === null
-            ? { paused, onPause: () => setPaused(true), onResume: () => setPaused(false), onRestart: restart }
+            ? { paused, onPause: () => { pauseGameRound(SLUG); setPaused(true); }, onResume: () => { void resumeGameRound(SLUG); setPaused(false); }, onRestart: restart }
             : undefined
         }
       />

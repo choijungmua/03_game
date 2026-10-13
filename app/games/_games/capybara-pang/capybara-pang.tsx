@@ -9,7 +9,7 @@ import { GameOverActions } from "@/components/games/game-over-actions";
 import { ShareButton } from "@/components/games/share-button";
 import { cn } from "@/lib";
 import { countdownSound, FULL_BLEED_LAYER, GAME_SOUNDS, GAME_TITLES } from "@/lib/games/constants";
-import { submitGameRecord } from "@/lib/games/game-events";
+import { completeGameRound, quitGameRound, startGameRound, submitGameRecord } from "@/lib/games/game-events";
 import { useFrameText } from "@/lib/games/use-frame-text";
 import { useInView } from "@/lib/games/use-in-view";
 import { useLockPageScroll } from "@/lib/games/use-lock-page-scroll";
@@ -513,6 +513,7 @@ export function CapybaraPang() {
         }
         playGameSound(GAME_SOUNDS.go);
         setPlayStartAt(Date.now());
+        void startGameRound("capybara-pang");
         setPhase("playing");
       }, COUNTDOWN_STEP_MS * (index + 1)),
     );
@@ -533,6 +534,7 @@ export function CapybaraPang() {
 
     const finalScore = scoreRef.current;
     if (finalScore === 0) {
+      void completeGameRound("capybara-pang", { value: 0 });
       playGameSound([...PANG_SOUNDS.timeUp, ...delayLayers(GAME_SOUNDS.fail, RESULT_SOUND_DELAY_MS)]);
       setResult({ score: 0, breakdown: EMPTY_SCORE_BREAKDOWN, maxCombo: 0, recordId: null, rank: null, lastBonus: 0 });
       return;
@@ -865,6 +867,7 @@ export function CapybaraPang() {
   }
 
   function startCountdown() {
+    void quitGameRound("capybara-pang");
     roundRef.current += 1;
     busyRef.current = false;
     idsRef.current = { next: 0 };
@@ -897,6 +900,7 @@ export function CapybaraPang() {
   }
 
   function cancelRound() {
+    void quitGameRound("capybara-pang");
     roundRef.current += 1;
     busyRef.current = false;
     playGameSound(GAME_SOUNDS.pause);
