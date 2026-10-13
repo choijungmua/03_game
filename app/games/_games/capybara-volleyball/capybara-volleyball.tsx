@@ -322,7 +322,7 @@ export function CapybaraVolleyball() {
     if (events.includes("point") || events.includes("win")) {
       setScore(state.score);
       setScored(state.server);
-      botError.current = (Math.random() - 0.5) * 50;
+      botError.current = (Math.random() - 0.5) * 24;
     }
     if (state.winner !== null) setWinner(state.winner);
   }
@@ -506,8 +506,8 @@ export function CapybaraVolleyball() {
         style={{ backgroundImage: `url(${ASSET}/court.webp)` }}
       >
         <GameControls />
-        <div className="flex w-full max-w-md flex-col items-center gap-4 rounded-3xl bg-background/85 p-6 text-center shadow-lg backdrop-blur">
-          <div className="flex items-end gap-2">
+        <div className="my-4 flex max-h-[calc(100dvh-2rem)] w-full max-w-md flex-col items-center gap-4 overflow-y-auto rounded-3xl bg-background/85 p-6 text-center shadow-lg backdrop-blur">
+          <div className="flex items-end gap-2 [@media(max-height:520px)]:hidden">
             {/* eslint-disable-next-line @next/next/no-img-element -- 투명 배경이 재인코딩에 깨지지 않게 그대로 쓴다 */}
             <img src={`${ASSET}/brown-spike.webp`} alt="" className="size-20 animate-bounce [animation-duration:1.4s]" />
             {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -561,7 +561,7 @@ export function CapybaraVolleyball() {
   const iWon = winner !== null && (mode.kind === "local" || winner === (online?.side ?? 0));
 
   return (
-    <div className="relative flex h-dvh w-dvw touch-none flex-col items-center justify-center bg-[#7cc4f0] select-none">
+    <div className="relative flex h-dvh w-dvw touch-none flex-col items-center justify-center select-none" style={{ background: COURT_FILL }}>
       <GameControls
         leaveConfirm={online?.status === "playing" && winner === null ? "나가면 이 판이 끝나요. 나갈까요?" : undefined}
         pause={
@@ -570,16 +570,21 @@ export function CapybaraVolleyball() {
             : undefined
         }
       />
-      <div
-        className="pointer-events-none absolute top-2 z-10 flex h-20 w-72 items-center px-7 bg-contain bg-center bg-no-repeat pt-2 font-bold text-[#5a3a1e]"
-        style={{ backgroundImage: `url(${ASSET}/scoreboard.webp)` }}
-      >
-        {([0, 1] as const).map((side) => (
-          <span key={`${side}-${score[side]}`} className={`flex flex-1 flex-col items-center leading-none ${scored === side ? "animate-score-pop" : ""}`}>
-            <span className="text-title-2">{score[side]}</span>
-            <span className="text-caption-2">{label(side)}</span>
-          </span>
-        ))}
+      <div className="pointer-events-none absolute top-2 left-1/2 z-10 w-[clamp(7rem,22dvh,13rem)] -translate-x-1/2">
+        <div className="relative aspect-[512/346] w-full bg-contain bg-no-repeat" style={{ backgroundImage: `url(${ASSET}/scoreboard.webp)` }}>
+          {([0, 1] as const).map((side) => (
+            <span
+              key={`${side}-${score[side]}`}
+              className={`absolute top-[36%] bottom-[19%] flex items-center justify-center text-[clamp(0.9rem,4dvh,1.6rem)] font-bold text-[#5a3a1e] tabular-nums ${side === 0 ? "left-[10%] right-[55%]" : "left-[55%] right-[11%]"} ${scored === side ? "animate-score-pop" : ""}`}
+            >
+              {score[side]}
+            </span>
+          ))}
+        </div>
+        <div className="flex text-caption-2 font-bold text-white [text-shadow:0_1px_2px_rgb(0_0_0/0.5)]">
+          <span className="flex-1 truncate text-center">{label(0)}</span>
+          <span className="flex-1 truncate text-center">{label(1)}</span>
+        </div>
       </div>
       <canvas
         ref={canvas}
@@ -590,8 +595,12 @@ export function CapybaraVolleyball() {
         style={{ aspectRatio: `${WIDTH} / ${HEIGHT}` }}
       />
 
+      <p className="pointer-events-none absolute bottom-28 hidden text-caption-1 font-bold text-[#7a5228] portrait:pointer-coarse:block">
+        휴대폰을 가로로 돌리면 코트가 더 크게 보여요
+      </p>
+
       {mode.kind !== "local" && (
-        <div className="absolute inset-x-0 bottom-4 flex justify-between px-4 sm:hidden">
+        <div className="absolute inset-x-0 bottom-[max(1rem,env(safe-area-inset-bottom))] flex justify-between px-4 pointer-fine:hidden">
           <div className="flex gap-3">
             <button type="button" aria-label="왼쪽" className={TOUCH} data-bit={KEY.left} {...touchProps}>
               {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -655,7 +664,10 @@ export function CapybaraVolleyball() {
   );
 }
 
-const TOUCH = "size-18 rounded-full drop-shadow-md transition-transform active:scale-90 active:brightness-90";
+/** 캔버스 높이(화면에 맞춰 줄어든)에서 모래 선 위치(그림 기준 83.5%)에 하늘·모래 경계를 둔다 */
+const COURT_H = `min(100dvh, 100vw * ${HEIGHT / WIDTH})`;
+const COURT_FILL = `linear-gradient(#6cc3f7 calc(50% + ${COURT_H} * 0.335), #f2b575 0)`;
+const TOUCH = "size-18 [@media(max-height:520px)]:size-14 rounded-full opacity-90 drop-shadow-md transition-transform active:scale-90 active:brightness-90";
 
 function Overlay({ children }: { children: React.ReactNode }) {
   return (
