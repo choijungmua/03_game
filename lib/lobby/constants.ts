@@ -262,6 +262,13 @@ export const SOUNDS: Record<LobbySound, readonly SoundLayer[]> = {
     { kind: "noise", color: "pink", filter: "bandpass", q: 0.9, from: 3200, to: 1800, ms: 160, level: 0.13 },
     { at: 150, kind: "tone", wave: "sine", fm: { ratio: 3.5, index: 1 }, from: 880, to: 880, ms: 180, level: 0.13, wet: 0.2 },
   ],
+  // 띠링 → 레벨 업!: 칼림바 세 음이 올라가고 카피바라가 신나서 외친다
+  levelUp: [
+    { kind: "tone", wave: "sine", fm: { ratio: 3.5, index: 1 }, from: 784, to: 784, ms: 160, level: 0.14, wet: 0.25 },
+    { at: 90, kind: "tone", wave: "sine", fm: { ratio: 3.5, index: 1 }, from: 988, to: 988, ms: 160, level: 0.14, wet: 0.25 },
+    { at: 180, kind: "tone", wave: "sine", fm: { ratio: 3.5, index: 1 }, from: 1175, to: 1175, ms: 260, level: 0.16, wet: 0.3 },
+    { at: 260, kind: "voice", line: "levelup", from: 9000, to: 7000, ms: 700, level: 0.75 },
+  ],
   // 첨벙 → 잡았다!: 물고기를 끌어올린다
   fishCatch: [
     { kind: "noise", color: "pink", filter: "lowpass", q: 1, from: 1800, to: 300, ms: 220, level: 0.25, wet: 0.3 },
