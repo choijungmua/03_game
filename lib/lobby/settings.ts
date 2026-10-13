@@ -125,6 +125,8 @@ export type SoundLayer = {
       fm?: { ratio: number; index: number };
       /** 로우패스를 이 Hz에서 시작해 끝으로 갈수록 닫아(필터 엔벨로프) 말랑하게 */
       lowpass?: number;
+      /** 목소리처럼 떨리게: rate Hz로 ±depth 센트 (카피바라 울음의 바르르 떨림) */
+      vibrato?: { rate: number; depth: number };
     }
   | { kind: "noise"; filter: BiquadFilterType; q: number; color?: "white" | "pink" | "brown" }
   | { kind: "voice"; line: VoiceLine }
@@ -350,6 +352,15 @@ function playLayer(
       oscillator.type = layer.wave;
       oscillator.detune.value = cents;
       sweep(oscillator.frequency);
+      if (layer.vibrato) {
+        const lfo = ctx.createOscillator();
+        lfo.frequency.value = layer.vibrato.rate;
+        const depth = ctx.createGain();
+        depth.gain.value = layer.vibrato.depth;
+        lfo.connect(depth);
+        depth.connect(oscillator.detune);
+        sources.push(lfo);
+      }
       if (layer.fm) {
         // 흔드는 깊이가 소리 끝으로 갈수록 줄어 "통-" 하고 맑게 남는다 (실제 나무·쇠 타악기처럼)
         const modulator = ctx.createOscillator();
