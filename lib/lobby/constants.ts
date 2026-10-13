@@ -203,21 +203,22 @@ export const SOUNDS: Record<LobbySound, readonly SoundLayer[]> = {
     { at: 120, kind: "noise", color: "brown", filter: "lowpass", q: 1, from: 800, to: 200, ms: 110, level: 0.32 },
     { at: 120, kind: "tone", wave: "sine", fm: { ratio: 2.76, index: 1 }, from: 180, to: 150, ms: 90, level: 0.1 },
   ],
-  // 하~아암↗: 입을 크게 벌려 높게 시작, 내려갔다가 입을 다물며 끝을 살짝 올린다 + 콧김 + 쩝
+  // 흐읍 → 햐↗암↗ → 하… 쩝: 숨을 들이쉬고, 짧고 밝게 올라가는 두 마디, 숨을 내쉬고 입맛 다시기
   yawn: [
-    { kind: "cry", vowel: "i", from: 900, to: 1300, ms: 120, level: 0.12, breath: 0.3 },
-    { at: 100, kind: "cry", vowel: "a", vowelTo: "u", from: 1000, via: [1250, 820], to: 1120, ms: 950, level: 0.2, vibrato: { rate: 5.5, depth: 35 }, breath: 0.25 },
-    { at: 100, kind: "noise", color: "pink", filter: "bandpass", q: 0.7, from: 1600, to: 700, ms: 1000, level: 0.04, attack: 300 },
-    { at: 1080, kind: "noise", color: "white", filter: "bandpass", q: 2, from: 2400, to: 1800, ms: 30, level: 0.12 },
+    { kind: "noise", color: "pink", filter: "bandpass", q: 0.9, from: 900, to: 1700, ms: 340, level: 0.09, attack: 150 },
+    { at: 320, kind: "cry", vowel: "e", from: 1150, to: 1450, ms: 160, level: 0.16, breath: 0.4 },
+    { at: 500, kind: "cry", vowel: "a", from: 1250, to: 1550, ms: 140, level: 0.13, breath: 0.4 },
+    { at: 620, kind: "noise", color: "pink", filter: "bandpass", q: 0.9, from: 1700, to: 1000, ms: 320, level: 0.06, attack: 40 },
+    { at: 960, kind: "noise", color: "white", filter: "bandpass", q: 2, from: 2600, to: 2000, ms: 30, level: 0.12 },
   ],
-  // 사각사각 → 끄응↗: 발톱으로 털을 위아래로 긁는 소리 다섯 번, 시원해서 작게 끙
+  // 사각사각 → 끼잉↗: 발톱으로 털을 위아래로 긁는 소리 다섯 번, 시원해서 짧게 끼잉
   scratch: [
     { kind: "noise", filter: "bandpass", q: 2.2, from: 4200, to: 2600, ms: 70, level: 0.16, pan: -0.15 },
     { at: 120, kind: "noise", filter: "bandpass", q: 2.2, from: 3600, to: 2300, ms: 70, level: 0.14, pan: 0.15 },
     { at: 240, kind: "noise", filter: "bandpass", q: 2.2, from: 4200, to: 2600, ms: 70, level: 0.15, pan: -0.15 },
     { at: 360, kind: "noise", filter: "bandpass", q: 2.2, from: 3600, to: 2300, ms: 70, level: 0.13, pan: 0.15 },
     { at: 480, kind: "noise", filter: "bandpass", q: 2.2, from: 4000, to: 2500, ms: 80, level: 0.12, pan: -0.1 },
-    { at: 620, kind: "cry", vowel: "u", from: 850, to: 1050, ms: 260, level: 0.1, breath: 0.35 },
+    { at: 620, kind: "cry", vowel: "e", from: 1000, to: 1300, ms: 160, level: 0.1, breath: 0.35 },
   ],
   // 아삭 + 냠냠: 수박을 바삭 베어 물고 맛있게 먹는다
   chomp: [
@@ -253,8 +254,8 @@ export const SOUNDS: Record<LobbySound, readonly SoundLayer[]> = {
     { at: 220, kind: "tone", wave: "sine", from: 520, to: 880, ms: 40, level: 0.05, wet: 0.3 },
     { at: 320, kind: "tone", wave: "sine", from: 600, to: 1000, ms: 40, level: 0.04, wet: 0.3 },
     // 끼우우~: 따뜻한 물에 녹아내리는 나른한 울음 + 기분 좋은 짧은 삑
-    { at: 380, kind: "cry", vowel: "a", vowelTo: "e", from: 950, via: [1150, 860], to: 1100, ms: 720, level: 0.18, vibrato: { rate: 6, depth: 30 }, breath: 0.25 },
-    { at: 1120, kind: "cry", vowel: "i", from: 1100, to: 1450, ms: 120, level: 0.12 },
+    { at: 380, kind: "cry", vowel: "a", vowelTo: "e", from: 1050, to: 1350, ms: 260, level: 0.16, breath: 0.35 },
+    { at: 680, kind: "cry", vowel: "i", from: 1200, to: 1550, ms: 110, level: 0.12 },
   ],
   // 촤르르 → 똑똑: 물에서 나오며 털에서 물이 흘러내린다
   bathOut: [
@@ -280,10 +281,10 @@ export const SOUNDS: Record<LobbySound, readonly SoundLayer[]> = {
     // 끼잇~!: 신나서 높이 올라가는 삑
     { at: 300, kind: "cry", vowel: "a", vowelTo: "i", from: 1000, via: [1300], to: 1800, ms: 280, level: 0.17, vibrato: { rate: 7, depth: 30 } },
   ],
-  // 쿠우… 푸~↗: 꾸벅꾸벅 조는 숨소리. 들이쉬고, 작은 콧소리로 내쉰다
+  // 스으… 푸↗: 꾸벅꾸벅 조는 숨소리. 들이쉬고, 짧은 콧소리로 내쉰다
   doze: [
     { kind: "noise", color: "pink", filter: "bandpass", q: 1, from: 700, to: 1300, ms: 550, level: 0.11, attack: 250 },
-    { at: 600, kind: "cry", vowel: "u", from: 760, to: 900, ms: 420, level: 0.13, breath: 0.6 },
+    { at: 640, kind: "cry", vowel: "e", from: 1050, to: 1250, ms: 180, level: 0.08, breath: 0.7 },
     { at: 600, kind: "noise", color: "pink", filter: "bandpass", q: 1.2, from: 1400, to: 800, ms: 450, level: 0.08, attack: 40 },
   ],
   // 첨벙 → 끼끼끼잇!: 물고기를 끌어올린다
