@@ -8,7 +8,7 @@ import { GameOverActions } from "@/components/games/game-over-actions";
 import { ShareButton } from "@/components/games/share-button";
 import { cn } from "@/lib";
 import { FULL_BLEED_LAYER, GAME_SOUNDS, GAME_TITLES } from "@/lib/games/constants";
-import { submitGameRecord } from "@/lib/games/game-events";
+import { completeGameRound, quitGameRound, startGameRound, submitGameRecord } from "@/lib/games/game-events";
 import { useFrameText } from "@/lib/games/use-frame-text";
 import { useInView } from "@/lib/games/use-in-view";
 import { useLockPageScroll } from "@/lib/games/use-lock-page-scroll";
@@ -143,6 +143,7 @@ export function ClickSpeed() {
         playGameSound(GAME_SOUNDS.go);
         setCount(0);
         setPlayStartAt(Date.now());
+        void startGameRound("click-speed");
         setPhase("playing");
       }, COUNTDOWN_STEP_MS * (index + 1)),
     );
@@ -155,6 +156,7 @@ export function ClickSpeed() {
     setPhase("result");
 
     if (count === 0) {
+      void completeGameRound("click-speed", { value: 0 });
       playGameSound([...CLICK_SPEED_SOUNDS.timeUp, ...delayLayers(GAME_SOUNDS.fail, RESULT_SOUND_DELAY_MS)]);
       setResult({ count: 0, cps: 0, seconds, recordId: null, rank: null });
       return;
@@ -196,6 +198,7 @@ export function ClickSpeed() {
   }
 
   function cancelRound() {
+    void quitGameRound("click-speed");
     playGameSound(GAME_SOUNDS.pause);
     setCount(0);
     setPhase("idle");

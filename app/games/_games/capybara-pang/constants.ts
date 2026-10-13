@@ -100,40 +100,43 @@ export const RESULT_TAP_GUARD_MS = 1000;
 export const RESULT_SOUND_DELAY_MS = 380;
 /** 이 등급 순서(PANG_TIERS 인덱스)부터는 결과 소리를 실패로 낸다 */
 export const FAIL_TIER_INDEX = 3;
+/** 연쇄 중 칭찬 목소리는 이 간격(ms) 안에 다시 내지 않는다 */
+export const VOICE_GAP_MS = 1500;
 
 export const PANG_SOUNDS = {
   /** 팡: 블록이 터짐 */
-  /** 뽁!: 물방울이 튀듯 올라가는 소리 + 딱 하는 찰칵 + 바닥을 치는 쿵. 콤보마다 음이 올라간다 */
+  /** 뽁!: 물방울이 톡 터지며 올라가는 소리 + 물기 머금은 핑크 소음 + 칼림바 반짝. 콤보마다 음이 올라간다 */
   pop: [
-    { kind: "tone", wave: "sine", from: 320, to: 1500, ms: 70, level: 0.2, attack: 2 },
-    { kind: "noise", filter: "highpass", q: 1, from: 3800, to: 2600, ms: 28, level: 0.14, attack: 1 },
-    { kind: "tone", wave: "triangle", from: 190, to: 60, ms: 110, level: 0.16, attack: 1 },
-    { kind: "tone", wave: "square", from: 1320, to: 1320, ms: 70, level: 0.035, at: 45 },
+    { kind: "tone", wave: "sine", from: 380, to: 1400, ms: 70, level: 0.18, attack: 2, lowpass: 5000 },
+    { kind: "noise", filter: "bandpass", q: 3, color: "pink", from: 2600, to: 1600, ms: 40, level: 0.12, attack: 1 },
+    { kind: "tone", wave: "sine", from: 1320, to: 1318, ms: 160, level: 0.06, at: 40, fm: { ratio: 3.5, index: 0.6 }, wet: 0.25 },
   ],
-  /** 콰광!: 한꺼번에 많이 터질 때 — 찢어지는 소음 + 묵직한 저음 + 반짝 올라가는 꼬리 */
+  /** 촤아앙!: 한꺼번에 많이 터질 때 — 물보라(핑크) + 묵직한 갈색 소음 + 마림바 꼬리 */
   bigPop: [
-    { kind: "noise", filter: "lowpass", q: 1.4, from: 3200, to: 120, ms: 380, level: 0.3, attack: 1 },
-    { kind: "tone", wave: "sawtooth", from: 150, to: 45, ms: 300, level: 0.12, attack: 1 },
-    { kind: "tone", wave: "sine", from: 90, to: 38, ms: 360, level: 0.26 },
-    { kind: "tone", wave: "sine", from: 400, to: 1800, ms: 90, level: 0.12, at: 20 },
-    { kind: "tone", wave: "triangle", from: 1760, to: 2640, ms: 160, level: 0.06, at: 120 },
+    { kind: "noise", filter: "lowpass", q: 0.9, color: "pink", from: 4200, to: 300, ms: 420, level: 0.24, attack: 2, wet: 0.3 },
+    { kind: "noise", filter: "lowpass", q: 1, color: "brown", from: 600, to: 80, ms: 380, level: 0.3, attack: 1 },
+    { kind: "tone", wave: "sine", from: 95, to: 40, ms: 360, level: 0.22 },
+    { kind: "tone", wave: "sine", from: 420, to: 1600, ms: 100, level: 0.1, at: 20, lowpass: 4000 },
+    { kind: "tone", wave: "sine", from: 1760, to: 1756, ms: 300, level: 0.06, at: 110, fm: { ratio: 4, index: 0.8 }, pan: 0.2, wet: 0.4 },
   ],
-  /** 뚜우: 길게 이은 콤보가 끊김 */
+  /** 뚜루룽↓: 길게 이은 콤보가 끊김 — 마림바가 내려앉는다 */
   comboBreak: [
-    { kind: "tone", wave: "triangle", from: 660, to: 220, ms: 260, level: 0.1 },
-    { kind: "tone", wave: "sine", from: 330, to: 110, ms: 260, level: 0.08, at: 40 },
+    { kind: "tone", wave: "sine", from: 523, to: 520, ms: 220, level: 0.1, fm: { ratio: 4, index: 0.7 }, wet: 0.2 },
+    { kind: "tone", wave: "sine", from: 349, to: 346, ms: 300, level: 0.1, at: 110, fm: { ratio: 4, index: 0.6 }, wet: 0.25 },
   ],
-  /** 째깍: 마지막 10초 동안 초마다 (3·2·1은 카운트다운 삐가 대신한다) */
-  tick: [{ kind: "tone", wave: "sine", from: 1500, to: 1300, ms: 45, level: 0.07 }],
-  /** 쾅: 라스트 팡으로 남은 폭탄·무지개가 터짐 */
+  /** 똑: 마지막 10초 동안 초마다 나무 시계 (3·2·1은 카운트다운 목소리가 대신한다) */
+  tick: [
+    { kind: "tone", wave: "sine", from: 1400, to: 1380, ms: 60, level: 0.07, fm: { ratio: 2.76, index: 0.5 } },
+    { kind: "noise", filter: "bandpass", q: 6, from: 3200, to: 2800, ms: 15, level: 0.04, wet: 0 },
+  ],
+  /** 쾅 촤악: 라스트 팡으로 남은 폭탄·무지개가 터짐 */
   lastPang: [
-    { kind: "noise", filter: "lowpass", q: 1, from: 1400, to: 200, ms: 260, level: 0.16 },
-    { kind: "tone", wave: "triangle", from: 220, to: 70, ms: 240, level: 0.12 },
-    { kind: "tone", wave: "sine", from: 880, to: 1760, ms: 120, level: 0.08, at: 60 },
+    { kind: "noise", filter: "lowpass", q: 1, color: "brown", from: 1600, to: 150, ms: 300, level: 0.22, wet: 0.3 },
+    { kind: "tone", wave: "sine", from: 180, to: 60, ms: 260, level: 0.14 },
+    { kind: "tone", wave: "sine", from: 880, to: 876, ms: 260, level: 0.07, at: 60, fm: { ratio: 3.5, index: 0.7 }, pan: -0.2, wet: 0.35 },
   ],
-  /** 삐―: 시간 끝 */
+  /** 지잉: 시간 끝 징 (목소리 "끝!"은 타임 오버 순간에 GAME_SOUNDS.timeUp이 낸다) */
   timeUp: [
-    { kind: "tone", wave: "square", from: 523, to: 523, ms: 320, level: 0.07 },
-    { kind: "tone", wave: "sine", from: 1046, to: 1040, ms: 320, level: 0.08 },
+    { kind: "tone", wave: "sine", from: 523, to: 520, ms: 450, level: 0.11, attack: 2, fm: { ratio: 1.4, index: 1 }, wet: 0.35 },
   ],
 } as const satisfies Record<string, readonly SoundLayer[]>;

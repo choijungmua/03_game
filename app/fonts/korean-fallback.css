@@ -1,0 +1,45 @@
+/* Hangul advances: Pretendard 1770/2048em, Malgun Gothic 1em, Noto CJK KR .92em.
+   Overrides retain Pretendard's 1950/2048 ascent and 494/2048 descent after scaling. */
+@font-face {
+    font-family: "Pretendard Malgun Fallback";
+    src: local("Malgun Gothic");
+    font-weight: 100 500;
+    size-adjust: 86.42578125%;
+    ascent-override: 110.1694915254%;
+    descent-override: 27.9096045198%;
+    line-gap-override: 0%;
+    unicode-range: U+AC00-D7A3;
+}
+
+@font-face {
+    font-family: "Pretendard Malgun Fallback";
+    src: local("Malgun Gothic Bold");
+    font-weight: 600 900;
+    size-adjust: 86.42578125%;
+    ascent-override: 110.1694915254%;
+    descent-override: 27.9096045198%;
+    line-gap-override: 0%;
+    unicode-range: U+AC00-D7A3;
+}
+
+@font-face {
+    font-family: "Pretendard Noto Fallback";
+    src: local("Noto Sans CJK KR"), local("NotoSansCJKkr-Regular");
+    font-weight: 100 500;
+    size-adjust: 93.9410665761%;
+    ascent-override: 101.3559322034%;
+    descent-override: 25.6768361582%;
+    line-gap-override: 0%;
+    unicode-range: U+AC00-D7A3;
+}
+
+@font-face {
+    font-family: "Pretendard Noto Fallback";
+    src: local("Noto Sans CJK KR Bold"), local("NotoSansCJKkr-Bold");
+    font-weight: 600 900;
+    size-adjust: 93.9410665761%;
+    ascent-override: 101.3559322034%;
+    descent-override: 25.6768361582%;
+    line-gap-override: 0%;
+    unicode-range: U+AC00-D7A3;
+}

@@ -8,8 +8,8 @@ import { GameControls } from "@/components/games/game-controls";
 import { GameOverActions } from "@/components/games/game-over-actions";
 import { ShareButton } from "@/components/games/share-button";
 import { cn } from "@/lib";
-import { FULL_BLEED_LAYER, GAME_SOUNDS, GAME_TITLES } from "@/lib/games/constants";
-import { submitGameRecord } from "@/lib/games/game-events";
+import { countdownSound, FULL_BLEED_LAYER, GAME_SOUNDS, GAME_TITLES } from "@/lib/games/constants";
+import { completeGameRound, quitGameRound, startGameRound, submitGameRecord } from "@/lib/games/game-events";
 import { useFrameText } from "@/lib/games/use-frame-text";
 import { useInView } from "@/lib/games/use-in-view";
 import { useLockPageScroll } from "@/lib/games/use-lock-page-scroll";
@@ -39,6 +39,7 @@ import {
   POP_SPARKS,
   RESULT_COUNT_MS,
   RESULT_SOUND_DELAY_MS,
+  VOICE_GAP_MS,
   RESULT_TAP_GUARD_MS,
   ROUND_SECONDS,
   SHAKE_CLEAR_COUNT,
@@ -498,6 +499,7 @@ export function CapybaraPang() {
   const dragRef = useRef<{ index: number; x: number; y: number; moved: boolean } | null>(null);
   const boardElRef = useRef<HTMLDivElement>(null);
   const resultAtRef = useRef(0);
+  const lastVoiceAtRef = useRef(0);
   const { ref: recordsRef, inView: recordsVisible } = useInView<HTMLElement>(phase === "result");
 
   useEffect(() => {
@@ -505,12 +507,13 @@ export function CapybaraPang() {
     const timers = COUNTDOWN_VALUES.map((_, index) =>
       setTimeout(() => {
         if (index < COUNTDOWN_VALUES.length - 1) {
-          playGameSound(GAME_SOUNDS.countdown);
+          playGameSound(countdownSound(COUNTDOWN_VALUES[index + 1]));
           setCountdownIndex(index + 1);
           return;
         }
         playGameSound(GAME_SOUNDS.go);
         setPlayStartAt(Date.now());
+        void startGameRound("capybara-pang");
         setPhase("playing");
       }, COUNTDOWN_STEP_MS * (index + 1)),
     );
@@ -531,6 +534,7 @@ export function CapybaraPang() {
 
     const finalScore = scoreRef.current;
     if (finalScore === 0) {
+      void completeGameRound("capybara-pang", { value: 0 });
       playGameSound([...PANG_SOUNDS.timeUp, ...delayLayers(GAME_SOUNDS.fail, RESULT_SOUND_DELAY_MS)]);
       setResult({ score: 0, breakdown: EMPTY_SCORE_BREAKDOWN, maxCombo: 0, recordId: null, rank: null, lastBonus: 0 });
       return;
@@ -569,7 +573,7 @@ export function CapybaraPang() {
     setHint(null);
     setPhase("lastpang");
     setBanner("timeover");
-    playGameSound(PANG_SOUNDS.timeUp);
+    playGameSound(GAME_SOUNDS.timeUp);
     await wait(TIME_OVER_MS);
     while (busyRef.current) {
       await wait(50);
@@ -580,7 +584,7 @@ export function CapybaraPang() {
 
     if (nextSpecial(boardRef.current) >= 0) {
       setBanner("lastpang");
-      playGameSound(GAME_SOUNDS.record);
+      playGameSound(GAME_SOUNDS.woah);
       await wait(LAST_PANG_INTRO_MS);
       // 터지는 동안엔 판이 보여야 하니 글씨는 걷고, 보너스는 점수 옆 배지가 올라가며 보여 준다
       setBanner(null);
@@ -632,9 +636,14 @@ export function CapybaraPang() {
     const untilHurry = untilEnd - HURRY_SECONDS * 1000;
     const timers = [setTimeout(() => void timeUp(), Math.max(0, untilEnd))];
     if (untilHurry > 0) timers.push(setTimeout(() => setHurry(true), untilHurry));
-    // 마지막 10초는 초마다 째깍, 3·2·1초 전은 카운트다운 삐
+    // 마지막 10초는 초마다 똑(들어서는 순간 "서둘러!"), 3·2·1초 전은 "셋·둘·하나"
     for (let left = HURRY_SECONDS; left >= 1; left -= 1) {
-      const sound = left <= COUNTDOWN_VALUES.length ? GAME_SOUNDS.countdown : PANG_SOUNDS.tick;
+      const sound =
+        left <= COUNTDOWN_VALUES.length
+          ? countdownSound(left)
+          : left === HURRY_SECONDS
+            ? [...PANG_SOUNDS.tick, ...GAME_SOUNDS.hurry]
+            : PANG_SOUNDS.tick;
       const delay = untilEnd - left * 1000;
       if (delay > 0) timers.push(setTimeout(() => playGameSound(sound), delay));
     }
@@ -714,7 +723,8 @@ export function CapybaraPang() {
     if (nextCombo % FEVER_COMBO === 0) {
       feverUntilRef.current = now + FEVER_MS;
       setFeverUntil(feverUntilRef.current);
-      playGameSound(GAME_SOUNDS.record);
+      playGameSound(GAME_SOUNDS.jackpot);
+      lastVoiceAtRef.current = now;
     }
     const remainingSeconds = Math.max(0, (playStartAt + ROUND_SECONDS * 1000 - now) / 1000);
     const points = scoreFor(tileCount, nextCombo, feverUntilRef.current > now, specialCount, remainingSeconds);
@@ -753,6 +763,11 @@ export function CapybaraPang() {
       const big = plan.cleared.size > SHAKE_CLEAR_COUNT;
       // 펑 하는 순간(BURST_AT_MS)에 맞춰 소리가 나고, 콤보가 이어질수록 음이 올라간다
       playGameSound(delayLayers(pitched(big ? PANG_SOUNDS.bigPop : PANG_SOUNDS.pop, cleared.combo), BURST_AT_MS));
+      // 크게 터지면 "좋아!" — 목소리는 VOICE_GAP_MS에 한 번만
+      if (big && Date.now() - lastVoiceAtRef.current > VOICE_GAP_MS) {
+        lastVoiceAtRef.current = Date.now();
+        playGameSound(delayLayers(GAME_SOUNDS.praise, BURST_AT_MS));
+      }
       setPopping(plan.cleared);
       setBlasts(activeBlasts);
       showBurst(plan.cleared, cleared.points, cleared.combo);
@@ -852,6 +867,7 @@ export function CapybaraPang() {
   }
 
   function startCountdown() {
+    void quitGameRound("capybara-pang");
     roundRef.current += 1;
     busyRef.current = false;
     idsRef.current = { next: 0 };
@@ -878,12 +894,13 @@ export function CapybaraPang() {
     setCursor(null);
     setSpawned(new Map());
     setPopping(EMPTY_CELLS);
-    playGameSound(GAME_SOUNDS.countdown);
+    playGameSound(countdownSound(COUNTDOWN_VALUES[0]));
     setCountdownIndex(0);
     setPhase("countdown");
   }
 
   function cancelRound() {
+    void quitGameRound("capybara-pang");
     roundRef.current += 1;
     busyRef.current = false;
     playGameSound(GAME_SOUNDS.pause);

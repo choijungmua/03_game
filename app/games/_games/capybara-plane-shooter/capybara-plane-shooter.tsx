@@ -9,8 +9,8 @@ import { GameControls } from "@/components/games/game-controls";
 import { GameOverActions } from "@/components/games/game-over-actions";
 import { ShareButton } from "@/components/games/share-button";
 import { cn } from "@/lib";
-import { FULL_BLEED_LAYER, GAME_SOUNDS, GAME_TITLES } from "@/lib/games/constants";
-import { submitGameRecord } from "@/lib/games/game-events";
+import { countdownSound, FULL_BLEED_LAYER, GAME_SOUNDS, GAME_TITLES } from "@/lib/games/constants";
+import { pauseGameRound, quitGameRound, resumeGameRound, startGameRound, submitGameRecord } from "@/lib/games/game-events";
 import { useInView } from "@/lib/games/use-in-view";
 import { useLockPageScroll } from "@/lib/games/use-lock-page-scroll";
 import { playGameSound, type SoundLayer } from "@/lib/lobby/settings";
@@ -731,6 +731,8 @@ export function CapybaraPlaneShooter() {
 
   // 멈출 때 입력을 비운다 — 방향키를 누른 채 멈추면 keyup을 놓쳐 이어할 때 한쪽으로 흘러간다
   function changePaused(next: boolean) {
+    if (next) pauseGameRound("capybara-plane-shooter");
+    else void resumeGameRound("capybara-plane-shooter");
     pausedRef.current = next;
     setPaused(next);
     if (next) {
@@ -751,7 +753,7 @@ export function CapybaraPlaneShooter() {
 
   // 3·2·1 숫자가 바뀔 때마다 한 박
   useEffect(() => {
-    if (phase === "countdown") playGameSound(GAME_SOUNDS.countdown);
+    if (phase === "countdown") playGameSound(countdownSound(COUNTDOWN_VALUES[countdownIndex]));
   }, [phase, countdownIndex]);
 
   useEffect(() => {
@@ -765,6 +767,7 @@ export function CapybaraPlaneShooter() {
         }
         playGameSound(GAME_SOUNDS.go);
         setPhase("playing");
+        void startGameRound("capybara-plane-shooter");
       }, COUNTDOWN_STEP_MS * (index + 1)),
     );
 
@@ -920,6 +923,7 @@ export function CapybaraPlaneShooter() {
   }
 
   function startCountdown() {
+    void quitGameRound("capybara-plane-shooter");
     changePaused(false);
     skillRef.current = null;
     keysRef.current = { left: false, right: false };

@@ -5,7 +5,7 @@ import { absoluteUrl } from "@/lib/seo/site";
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   // /list는 관리자용 noindex 페이지라 넣지 않는다
-  const staticPages = ["/", "/games", "/privacy", "/terms", "/guestbook", "/contact", "/about"].map((path) => ({
+  const staticPages = ["/", "/games", "/capybara", "/privacy", "/terms", "/guestbook", "/contact", "/about"].map((path) => ({
     url: absoluteUrl(path),
   }));
 

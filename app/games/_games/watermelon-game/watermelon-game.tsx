@@ -9,7 +9,7 @@ import { GameOverActions } from "@/components/games/game-over-actions";
 import { ShareButton } from "@/components/games/share-button";
 import { cn } from "@/lib";
 import { GAME_SOUNDS, GAME_TITLES } from "@/lib/games/constants";
-import { submitGameRecord } from "@/lib/games/game-events";
+import { pauseGameRound, quitGameRound, resumeGameRound, startGameRound, submitGameRecord } from "@/lib/games/game-events";
 import { useInView } from "@/lib/games/use-in-view";
 import { useLockPageScroll } from "@/lib/games/use-lock-page-scroll";
 import { playGameSound, type SoundLayer } from "@/lib/lobby/settings";
@@ -645,6 +645,8 @@ export function WatermelonGame() {
   }
 
   function changePaused(next: boolean) {
+    if (next) pauseGameRound("watermelon-game");
+    else void resumeGameRound("watermelon-game");
     pausedRef.current = next;
     setPaused(next);
     if (next) clearInput();
@@ -662,6 +664,7 @@ export function WatermelonGame() {
         }
         playGameSound(GAME_SOUNDS.go);
         setPhase("playing");
+        void startGameRound("watermelon-game");
       }, COUNTDOWN_STEP_MS * (index + 1)),
     );
     return () => timers.forEach(clearTimeout);
@@ -783,6 +786,7 @@ export function WatermelonGame() {
   }, [phase]);
 
   function startCountdown() {
+    void quitGameRound("watermelon-game");
     changePaused(false);
     clearInput();
     setHud(null);
