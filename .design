@@ -1,8 +1,8 @@
 schema: design.v1
 name: ggpli
-version: 0.7.1
+version: 0.7.2
 status: bootstrap
-updated_at: "2026-09-20"
+updated_at: "2026-10-13"
 description: "Dark-first shadcn foundation with the reusable ZMZM component architecture adapted for ggpli."
 
 $schema: https://raw.githubusercontent.com/AgentsORG/DESIGN/main/schema/design.v1.schema.json
@@ -64,12 +64,12 @@ tokens:
     ring: "oklch(0.708 0 0)"
   typography:
     body:
-      fontFamily: ["Pretendard", "system-ui", "sans-serif"]
+      fontFamily: ["Pretendard", "Pretendard Malgun Fallback", "Pretendard Noto Fallback", "system-ui", "sans-serif"]
       fontSize: 16
       fontWeight: 400
       lineHeight: 1.5
     control:
-      fontFamily: ["Pretendard", "system-ui", "sans-serif"]
+      fontFamily: ["Pretendard", "Pretendard Malgun Fallback", "Pretendard Noto Fallback", "system-ui", "sans-serif"]
       fontSize: 14
       fontWeight: 500
       lineHeight: 1.25

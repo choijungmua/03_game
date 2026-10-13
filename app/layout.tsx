@@ -6,6 +6,7 @@ import { JsonLd, websiteJsonLd } from "@/lib/seo/json-ld";
 import { SITE_DESCRIPTION, SITE_NAME, SITE_URL } from "@/lib/seo/site";
 
 import "./globals.css";
+import { DeferredFonts } from "./deferred-fonts";
 import { Providers } from "./providers";
 
 // 소유 확인 값은 공개값이라 기본값으로 둔다. 바꿀 때는 배포 환경변수로 덮어쓴다
@@ -51,6 +52,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
     // 폰트 변수는 html에 둔다: globals.css가 html에 font-sans(var(--font-pretendard))를 걸어서, body에만 두면 html에서 변수가 비어 기본 폰트로 떨어진다
     <html lang="ko" className={`${pretendard.variable} dark`} suppressHydrationWarning>
       <body>
+        <DeferredFonts />
         <a
           href="#main-content"
           className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-[max(1rem,env(safe-area-inset-top))] focus:z-[100] focus:rounded-md focus:bg-background focus:px-4 focus:py-3 focus:text-foreground focus:outline-2 focus:outline-ring"
