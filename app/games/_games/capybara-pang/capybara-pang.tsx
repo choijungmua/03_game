@@ -131,7 +131,8 @@ function delayLayers(layers: readonly SoundLayer[], ms: number): SoundLayer[] {
 function pitched(layers: readonly SoundLayer[], combo: number): SoundLayer[] {
   const step = COMBO_PITCH_STEPS[Math.min(Math.max(combo - 1, 0), COMBO_PITCH_STEPS.length - 1)];
   const ratio = 2 ** (step / 12);
-  return layers.map((layer) => ({ ...layer, from: layer.from * ratio, to: layer.to * ratio }));
+  // 녹음 소리는 from/to가 거르는 주파수라 재생 빠르기로 음을 올린다
+  return layers.map((layer) => (layer.kind === "voice" ? { ...layer, rate: (layer.rate ?? 1) * ratio } : { ...layer, from: layer.from * ratio, to: layer.to * ratio }));
 }
 
 /** 한 번 터질 때 판 위에 띄우는 것: 터진 자리 가운데의 +점수, 콤보, (많이 터지면) 하얀 번쩍 */

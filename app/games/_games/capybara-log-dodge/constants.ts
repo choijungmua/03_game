@@ -60,7 +60,7 @@ export const WAVE_SOUNDS: Record<LogKind, readonly SoundLayer[]> = {
   // 끼이익: 쪼개질 듯 삐걱거리는 큰 통나무
   split: [
     { kind: "noise", color: "brown", filter: "lowpass", q: 0.8, from: 420, to: 160, ms: 260, level: 0.18 },
-    { kind: "tone", wave: "sawtooth", detune: 14, lowpass: 700, from: 160, to: 120, ms: 280, level: 0.05, attack: 60 },
+    { kind: "tone", wave: "triangle", detune: 14, lowpass: 700, from: 160, to: 120, ms: 280, level: 0.05, attack: 60 },
   ],
 };
 
@@ -93,7 +93,7 @@ export const PACE_SOUNDS = {
   ],
   // 우우웅: 느릿느릿 무거운 통나무
   slow: [
-    { kind: "tone", wave: "sawtooth", detune: 10, lowpass: 400, from: 95, to: 70, ms: 440, level: 0.06, attack: 80, wet: 0.2 },
+    { kind: "tone", wave: "triangle", detune: 10, lowpass: 400, from: 95, to: 70, ms: 440, level: 0.06, attack: 80, wet: 0.2 },
     { kind: "noise", color: "brown", filter: "lowpass", q: 1, from: 260, to: 120, ms: 420, level: 0.16, attack: 80 },
   ],
 } as const satisfies Record<"fast" | "slow", readonly SoundLayer[]>;

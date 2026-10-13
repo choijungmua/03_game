@@ -107,14 +107,14 @@ export const PANG_SOUNDS = {
   /** 팡: 블록이 터짐 */
   /** 뽁!: 물방울이 톡 터지며 올라가는 소리 + 물기 머금은 핑크 소음 + 칼림바 반짝. 콤보마다 음이 올라간다 */
   pop: [
-    { kind: "tone", wave: "sine", from: 380, to: 1400, ms: 70, level: 0.18, attack: 2, lowpass: 5000 },
-    { kind: "noise", filter: "bandpass", q: 3, color: "pink", from: 2600, to: 1600, ms: 40, level: 0.12, attack: 1 },
+    { kind: "voice", line: "pop4", from: 12000, to: 12000, ms: 200, level: 0.5 },
+    { kind: "tone", wave: "sine", from: 380, to: 1400, ms: 70, level: 0.1, attack: 4, lowpass: 5000 },
     { kind: "tone", wave: "sine", from: 1320, to: 1318, ms: 160, level: 0.06, at: 40, fm: { ratio: 3.5, index: 0.6 }, wet: 0.25 },
   ],
   /** 촤아앙!: 한꺼번에 많이 터질 때 — 물보라(핑크) + 묵직한 갈색 소음 + 마림바 꼬리 */
   bigPop: [
-    { kind: "noise", filter: "lowpass", q: 0.9, color: "pink", from: 4200, to: 300, ms: 420, level: 0.24, attack: 2, wet: 0.3 },
-    { kind: "noise", filter: "lowpass", q: 1, color: "brown", from: 600, to: 80, ms: 380, level: 0.3, attack: 1 },
+    { kind: "noise", filter: "lowpass", q: 0.9, color: "pink", from: 4200, to: 300, ms: 420, level: 0.24, attack: 4, wet: 0.3 },
+    { kind: "noise", filter: "lowpass", q: 1, color: "brown", from: 600, to: 80, ms: 380, level: 0.3, attack: 3 },
     { kind: "tone", wave: "sine", from: 95, to: 40, ms: 360, level: 0.22 },
     { kind: "tone", wave: "sine", from: 420, to: 1600, ms: 100, level: 0.1, at: 20, lowpass: 4000 },
     { kind: "tone", wave: "sine", from: 1760, to: 1756, ms: 300, level: 0.06, at: 110, fm: { ratio: 4, index: 0.8 }, pan: 0.2, wet: 0.4 },
@@ -137,6 +137,6 @@ export const PANG_SOUNDS = {
   ],
   /** 지잉: 시간 끝 징 (목소리 "끝!"은 타임 오버 순간에 GAME_SOUNDS.timeUp이 낸다) */
   timeUp: [
-    { kind: "tone", wave: "sine", from: 523, to: 520, ms: 450, level: 0.11, attack: 2, fm: { ratio: 1.4, index: 1 }, wet: 0.35 },
+    { kind: "tone", wave: "sine", from: 523, to: 520, ms: 450, level: 0.11, attack: 4, fm: { ratio: 1.4, index: 1 }, wet: 0.35 },
   ],
 } as const satisfies Record<string, readonly SoundLayer[]>;

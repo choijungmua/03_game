@@ -94,12 +94,18 @@ export type LobbySound =
   | "stepWater"
   | "levelUp";
 
-/** public/sfx/voice/<이름>.wav — 사람 목소리를 카피바라 캐릭터 목소리로 가공한 대사 (scripts/audio로 다시 만든다) */
+/** public/sfx/voice/<이름>.wav — 동물의 숲처럼 대사 음절을 높고 빠르게 이어 붙인 카피바라 중얼거림 (scripts/audio/babble.py) */
 export const VOICE_LINES = [
   "three", "two", "one", "go", "win", "lose", "record", "nice", "wow", "great", "oops", "ouch", "myturn",
   "timeup", "woah", "careful", "hup", "hurry", "yawn", "yum", "hi", "gotit", "ahh", "levelup", "yay",
 ] as const;
-export type VoiceLine = (typeof VOICE_LINES)[number];
+/** public/sfx/fx/<이름>.wav — CC0 녹음 효과음: 방울 팝, 귀여운 생물 소리, 먹는 소리 (scripts/audio/fx.py) */
+export const FX_SAMPLES = [
+  "pop1", "pop2", "pop3", "pop4", "cute1", "cute2", "cute3", "cute4", "cute5", "cute6", "cute7", "cute8", "cute9", "cute10",
+  "eat1", "eat2", "snore",
+] as const;
+export type VoiceLine = (typeof VOICE_LINES)[number] | (typeof FX_SAMPLES)[number];
+const sampleUrl = (line: VoiceLine) => ((VOICE_LINES as readonly string[]).includes(line) ? `/sfx/voice/${line}.wav` : `/sfx/fx/${line}.wav`);
 
 /**
  * 효과음 한 겹. 여러 겹을 at(ms)만큼 늦춰 겹쳐서 한 소리를 만든다.
@@ -127,7 +133,8 @@ export type SoundLayer = {
       lowpass?: number;
     }
   | { kind: "noise"; filter: BiquadFilterType; q: number; color?: "white" | "pink" | "brown" }
-  | { kind: "voice"; line: VoiceLine }
+  /** 녹음 파일(목소리·CC0 효과음). rate는 재생 빠르기 = 음높이 배수 (1 = 원래) */
+  | { kind: "voice"; line: VoiceLine; rate?: number }
 );
 
 type Bus = { input: GainNode; reverb: GainNode };
@@ -222,11 +229,11 @@ function noiseBuffer(ctx: AudioContext, color: NoiseColor) {
   return buffer;
 }
 
-/** 목소리 파일은 처음 소리를 낼 때 한꺼번에 받아 둔다 (모두 합쳐 0.5MB 아래) */
+/** 녹음 파일은 처음 소리를 낼 때 한꺼번에 받아 둔다 (목소리·효과음 합쳐 0.8MB 아래) */
 function loadVoice(ctx: AudioContext, line: VoiceLine): AudioBuffer | Promise<AudioBuffer | null> {
   const cached = voices.get(line);
   if (cached) return cached;
-  const loading = fetch(`/sfx/voice/${line}.wav`)
+  const loading = fetch(sampleUrl(line))
     .then((response) => (response.ok ? response.arrayBuffer() : Promise.reject(new Error(String(response.status)))))
     .then((bytes) => ctx.decodeAudioData(bytes))
     .then((buffer) => {
@@ -248,7 +255,7 @@ function synthesize(layers: readonly SoundLayer[], settings: LobbySettings, boos
   // iOS는 통화·앱 전환 뒤 "interrupted"로 두기도 해서, running이 아니면 다시 깨운다
   if (ctx.state !== "running") ctx.resume().catch(() => {});
   const target = (bus ??= masterBus(ctx));
-  if (voices.size === 0) for (const line of VOICE_LINES) void loadVoice(ctx, line);
+  if (voices.size === 0) for (const line of [...VOICE_LINES, ...FX_SAMPLES]) void loadVoice(ctx, line);
 
   // 같은 소리를 계속 내도 기계음처럼 안 들리게 높낮이·크기·시작을 조금씩 흔든다
   const pitch = 0.94 + Math.random() * 0.12;
@@ -293,7 +300,7 @@ function playVoice(
   const source = ctx.createBufferSource();
   source.buffer = buffer;
   // 목소리는 반음 안쪽으로만 흔든다. 더 흔들면 말투가 어색해진다
-  source.playbackRate.value = 0.97 + Math.random() * 0.06;
+  source.playbackRate.value = (layer.rate ?? 1) * (0.97 + Math.random() * 0.06);
   const end = start + Math.min(layer.ms / 1000, buffer.duration / source.playbackRate.value);
   const filter = ctx.createBiquadFilter();
   filter.type = "lowpass";

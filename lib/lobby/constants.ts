@@ -215,6 +215,7 @@ export const SOUNDS: Record<LobbySound, readonly SoundLayer[]> = {
   ],
   // 아삭 + 냠냠: 수박을 바삭 베어 물고 맛있게 먹는다
   chomp: [
+    { kind: "voice", line: "eat1", from: 12000, to: 12000, ms: 600, level: 0.45 },
     { kind: "noise", filter: "highpass", q: 0.7, from: 4000, to: 1800, ms: 45, level: 0.35 },
     { at: 30, kind: "noise", color: "pink", filter: "bandpass", q: 1.2, from: 2600, to: 900, ms: 75, level: 0.28 },
     { at: 10, kind: "tone", wave: "sine", from: 230, to: 110, ms: 70, level: 0.12 },

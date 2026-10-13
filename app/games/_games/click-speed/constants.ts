@@ -9,7 +9,7 @@ export const CLICK_SPEED_SOUNDS = {
   ],
   /** 삐―: 시간 끝 */
   timeUp: [
-    { kind: "tone", wave: "square", from: 523, to: 523, ms: 320, level: 0.07 },
+    { kind: "tone", wave: "triangle", from: 523, to: 523, ms: 320, level: 0.07 },
     { kind: "tone", wave: "sine", from: 1046, to: 1040, ms: 320, level: 0.08 },
   ],
 } as const satisfies Record<string, readonly SoundLayer[]>;

@@ -82,7 +82,7 @@ export const PLANE_SHOOTER_SOUNDS = {
   enemyShot: [{ kind: "tone", wave: "sine", from: 560, to: 360, ms: 80, level: 0.06, lowpass: 2500 }],
   /** 부웅: 보스 탄막 발사 — 따뜻한 저음 + 갈색 바람 */
   bossShot: [
-    { kind: "tone", wave: "sawtooth", from: 320, to: 180, ms: 120, level: 0.04, detune: 10, lowpass: 1200 },
+    { kind: "tone", wave: "triangle", from: 320, to: 180, ms: 120, level: 0.04, detune: 10, lowpass: 1200 },
     { kind: "noise", filter: "lowpass", q: 1, color: "brown", from: 900, to: 300, ms: 120, level: 0.1 },
   ],
   /** 퍽 + "아야!": 비행기가 맞음 */
@@ -115,7 +115,7 @@ export const PLANE_SHOOTER_SOUNDS = {
   bossDefeat: [...GAME_SOUNDS.explosion, ...delay(GAME_SOUNDS.success, 300)],
   /** 그르렁↑ 뒤 "조심해!": 보스가 다음 페이즈로 (체력 2/3·1/3) */
   bossPhase: [
-    { kind: "tone", wave: "sawtooth", from: 90, to: 180, ms: 380, level: 0.08, attack: 40, detune: 15, lowpass: 900 },
+    { kind: "tone", wave: "triangle", from: 90, to: 180, ms: 380, level: 0.08, attack: 40, detune: 15, lowpass: 900 },
     { kind: "noise", filter: "lowpass", q: 1, color: "brown", from: 300, to: 900, ms: 380, level: 0.22, attack: 40 },
     ...delay(GAME_SOUNDS.warning, 380),
   ],
@@ -128,7 +128,7 @@ export const PLANE_SHOOTER_SOUNDS = {
   ],
   /** 그르르: 카이만 보스 등장 — 땅울림 */
   bossAppear: [
-    { kind: "tone", wave: "sawtooth", from: 110, to: 60, ms: 700, level: 0.08, attack: 80, detune: 18, lowpass: 600 },
+    { kind: "tone", wave: "triangle", from: 110, to: 60, ms: 700, level: 0.08, attack: 80, detune: 18, lowpass: 600 },
     { kind: "noise", filter: "lowpass", q: 1, color: "brown", from: 500, to: 120, ms: 700, level: 0.26, attack: 80, wet: 0.3 },
   ],
   /** 똑-딱: 보스 패턴 바뀜 — 우드블록 */
@@ -144,18 +144,18 @@ export const PLANE_SHOOTER_SOUNDS = {
   ],
   /** 위이잉: 레이저 충전 예고 — 바람이 모여든다 */
   laserWarn: [
-    { kind: "tone", wave: "sawtooth", from: 200, to: 900, ms: 850, level: 0.04, attack: 200, detune: 12, lowpass: 2000 },
+    { kind: "tone", wave: "triangle", from: 200, to: 900, ms: 850, level: 0.04, attack: 200, detune: 12, lowpass: 2000 },
     { kind: "noise", filter: "bandpass", q: 3, color: "pink", from: 400, to: 3000, ms: 850, level: 0.06, attack: 300 },
   ],
   /** 지이이잉: 레이저 발사 */
   laserBeam: [
-    { kind: "tone", wave: "sawtooth", from: 140, to: 130, ms: 1500, level: 0.05, attack: 20, detune: 20, lowpass: 1500 },
+    { kind: "tone", wave: "triangle", from: 140, to: 130, ms: 1500, level: 0.05, attack: 20, detune: 20, lowpass: 1500 },
     { kind: "noise", filter: "bandpass", q: 2, color: "pink", from: 1800, to: 1400, ms: 1500, level: 0.12, attack: 20, wet: 0.2 },
   ],
   /** 붕붕: 보스가 말벌 부하를 부름 — 날갯짓이 좌우로 */
   summon: [
-    { kind: "tone", wave: "sawtooth", from: 180, to: 220, ms: 160, level: 0.04, detune: 25, lowpass: 1500, pan: -0.3 },
-    { at: 140, kind: "tone", wave: "sawtooth", from: 200, to: 250, ms: 160, level: 0.04, detune: 25, lowpass: 1500, pan: 0.3 },
+    { kind: "tone", wave: "triangle", from: 180, to: 220, ms: 160, level: 0.04, detune: 25, lowpass: 1500, pan: -0.3 },
+    { at: 140, kind: "tone", wave: "triangle", from: 200, to: 250, ms: 160, level: 0.04, detune: 25, lowpass: 1500, pan: 0.3 },
   ],
   /** 삐삐 + "조심해!": 돌격 예고 */
   chargeWindup: GAME_SOUNDS.warning,
@@ -172,7 +172,7 @@ export const PLANE_SHOOTER_SOUNDS = {
   /** 지지징↑ + "얍!": 폭주 */
   overdrive: [
     { kind: "voice", line: "hup", from: 8000, to: 6000, ms: 300, level: 0.55 },
-    { kind: "tone", wave: "sawtooth", from: 200, to: 1200, ms: 380, level: 0.06, attack: 30, detune: 15, lowpass: 3500 },
+    { kind: "tone", wave: "triangle", from: 200, to: 1200, ms: 380, level: 0.06, attack: 30, detune: 15, lowpass: 3500 },
     { kind: "noise", filter: "bandpass", q: 1.5, color: "pink", from: 800, to: 4000, ms: 380, level: 0.1, attack: 30 },
   ],
   /** 콰-아앙 + "대박!": 폭탄 — 갈색 소음 울림 */
