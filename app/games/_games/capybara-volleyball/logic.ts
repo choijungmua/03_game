@@ -195,37 +195,89 @@ export function step(state: VolleyState, keys: [number, number]): { state: Volle
   return { state: { ...state, players, ball: { ...ball, y: GROUND - BALL_R, vx: 0, vy: 0 }, score, server: scorer, pause: POINT_PAUSE, winner }, events };
 }
 
-/** 공이 이 높이(받기 좋은 높이)까지 내려올 때의 x. 벽 튕김만 따지고 네트·사람은 무시한다 */
-export function landingX(ball: Ball, height = PLAYER_Y - PLAYER_R) {
-  let { x, y, vx, vy } = ball;
-  for (let frame = 0; frame < 240 && !(vy > 0 && y >= height); frame += 1) {
-    vy += BALL_GRAVITY;
-    x += vx;
-    y += vy;
-    if (x < BALL_R || x > WIDTH - BALL_R) {
-      x = Math.min(WIDTH - BALL_R, Math.max(BALL_R, x));
-      vx = -vx;
-    }
+/** 공을 실제 물리(벽·천장·네트 튕김)대로 굴려, height까지 내려올 때의 x와 걸린 프레임 */
+export function predict(ball: Ball, height = PLAYER_Y - PLAYER_R) {
+  const ignored: GameEvent[] = [];
+  let next = ball;
+  for (let frame = 0; frame < 240; frame += 1) {
+    if (next.vy > 0 && next.y >= height) return { x: next.x, frames: frame };
+    next = moveBall(next, ignored);
   }
-  return x;
+  return { x: next.x, frames: 240 };
 }
 
+/** 지금 뛰면 몇 프레임 뒤 내 몸 중심 높이 */
+const jumpY = (frames: number) => PLAYER_Y - JUMP_SPEED * frames + (PLAYER_GRAVITY * frames * (frames + 1)) / 2;
+
 /**
- * 컴퓨터 입력. 공이 떨어질 자리 조금 뒤에 서서 받고, 공이 머리 위로 오면 뛰어 스파이크한다.
+ * 컴퓨터 입력.
+ * - 네트 튕김까지 계산해 공이 떨어질 자리 뒤쪽(상대 쪽으로 튕겨 보내는 자리)에 선다
+ * - 공이 네트 가까이 높이 오면 꼭대기에서 만나게 뛰어 스파이크, 상대가 뒤에 있으면 꽂고 앞에 있으면 길게
+ * - 달려서 못 닿는 공은 다이빙
  * error(px)만큼 낙하 지점을 잘못 읽어 사람이 이길 틈을 둔다
  */
 export function botKeys(state: VolleyState, side: Side, error = 0): number {
   const me = state.players[side];
+  const rival = state.players[side === 0 ? 1 : 0];
   const { ball } = state;
   const dir = direction(side);
   const mine = (x: number) => (side === 0 ? x < NET_X : x > NET_X);
-  const landing = landingX(ball) + error;
-  const target = state.pause > 0 ? homeX(side) : mine(landing) ? landing - dir * 12 : homeX(side) + dir * 40;
+  const grounded = me.y >= PLAYER_Y;
   let keys = 0;
-  if (target < me.x - 4) keys |= KEY.left;
-  if (target > me.x + 4) keys |= KEY.right;
-  const above = me.y - ball.y;
-  if (state.pause === 0 && mine(ball.x) && Math.abs(ball.x - me.x) < 36 && above > 60 && above < 150 && ball.vy > 0) keys |= KEY.up;
-  if (me.y < PLAYER_Y - 20 && Math.hypot(ball.x - me.x, ball.y - me.y) < 80) keys |= KEY.hit | KEY.down;
+  const walk = (target: number, slack = 3) => {
+    if (target < me.x - slack) keys |= KEY.left;
+    if (target > me.x + slack) keys |= KEY.right;
+  };
+  if (state.pause > 0) {
+    walk(homeX(side));
+    return keys;
+  }
+
+  const landing = predict(ball);
+  const land = landing.x + error;
+  // 공 뒤쪽(네트 반대편)에서 받아야 몸에 맞고 상대 쪽으로 넘어간다
+  const receive = land - dir * 14;
+
+  if (!grounded) {
+    // 공중: 따라붙어 공 뒤로 가고, 닿을 만하면 스파이크
+    walk(ball.x - dir * 10, 2);
+    if (Math.hypot(ball.x - me.x, ball.y - me.y) < BALL_R + PLAYER_R + 30 && ball.y < me.y + 10) {
+      keys |= KEY.hit;
+      const rivalDeep = Math.abs(rival.x - NET_X) > 110;
+      const nearNet = Math.abs(me.x - NET_X) < 120;
+      // 상대가 뒤에 있거나 내가 네트 가까이면 꽂고, 상대가 네트에 붙어 있으면 머리 넘겨 길게
+      if (rivalDeep || nearNet) keys |= KEY.down;
+      if (!rivalDeep && !nearNet) keys |= KEY.up;
+    }
+    return keys;
+  }
+
+  if (!mine(land)) {
+    // 상대 쪽 공: 가운데쯤에서 기다린다
+    walk(homeX(side) + dir * 36);
+    return keys;
+  }
+
+  walk(receive);
+
+  // 점프 타이밍: 앞으로 8~20프레임 사이, 뛰었을 때 몸과 공이 높은 곳에서 만나면 지금 뛴다
+  let probe = ball;
+  const ignored: GameEvent[] = [];
+  for (let frame = 1; frame <= 22; frame += 1) {
+    probe = moveBall(probe, ignored);
+    if (frame < 7 || !mine(probe.x)) continue;
+    const reach = Math.abs(probe.x - me.x) - frame * MOVE_SPEED;
+    const dy = jumpY(frame) - probe.y;
+    if (reach < 16 && dy > 10 && dy < 52 && probe.y < PLAYER_Y - 70) {
+      keys |= KEY.up;
+      break;
+    }
+  }
+
+  // 달려서 못 닿는 낮은 공: 그쪽으로 다이빙
+  const gap = receive - me.x;
+  if (!(keys & KEY.up) && Math.abs(gap) > landing.frames * MOVE_SPEED + 8 && landing.frames < 26 && Math.abs(gap) < 150 && !me.held) {
+    keys = (keys & ~(KEY.left | KEY.right)) | (gap < 0 ? KEY.left : KEY.right) | KEY.hit;
+  }
   return keys;
 }
