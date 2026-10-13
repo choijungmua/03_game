@@ -91,7 +91,8 @@ export type LobbySound =
   | "applePick"
   | "bathIn"
   | "bathOut"
-  | "stepWater";
+  | "stepWater"
+  | "levelUp";
 
 /** public/sfx/voice/<이름>.wav — 사람 목소리를 카피바라 캐릭터 목소리로 가공한 대사 (scripts/audio로 다시 만든다) */
 export const VOICE_LINES = [
@@ -138,7 +139,7 @@ const noises = new Map<NoiseColor, AudioBuffer>();
 const voices = new Map<VoiceLine, AudioBuffer | Promise<AudioBuffer | null>>();
 
 /** 로비 효과음(걷기·펀치·맞기 등) 합성음 배율. 레이어 레벨이 0.1~0.3이라 같이 나는 목소리(0.7)에 묻혀서 키운다. 목소리·미니게임 소리는 그대로 */
-export const LOBBY_SFX_BOOST = 2.5;
+export const LOBBY_SFX_BOOST = 2;
 
 export function playSound(name: LobbySound, settings: LobbySettings) {
   playLayers(SOUNDS[name], settings, LOBBY_SFX_BOOST);
