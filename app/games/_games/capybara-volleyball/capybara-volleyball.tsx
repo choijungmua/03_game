@@ -352,8 +352,19 @@ export function CapybaraVolleyball() {
   });
 
   const render = useEffectEvent(() => {
-    const context = canvas.current?.getContext("2d");
-    if (context) draw(context, game.current, sprites.current, fx.current);
+    const element = canvas.current;
+    const context = element?.getContext("2d");
+    if (!element || !context) return;
+    // 화면에 보이는 크기 × 기기 픽셀 비율로 그린다 (432×304를 늘려 쓰면 그림이 뭉개진다)
+    const scale = Math.min(element.clientWidth / WIDTH, element.clientHeight / HEIGHT) * (window.devicePixelRatio || 1);
+    const width = Math.round(WIDTH * scale);
+    if (scale > 0 && element.width !== width) {
+      element.width = width;
+      element.height = Math.round(HEIGHT * scale);
+    }
+    context.setTransform(element.width / WIDTH, 0, 0, element.height / HEIGHT, 0, 0);
+    context.imageSmoothingQuality = "high";
+    draw(context, game.current, sprites.current, fx.current);
   });
 
   useEffect(() => {
@@ -617,7 +628,7 @@ export function CapybaraVolleyball() {
         width={WIDTH}
         height={HEIGHT}
         aria-label="카피바라 배구 코트"
-        className="max-h-full w-full object-contain [image-rendering:auto]"
+        className="max-h-full w-full object-contain"
         style={{ aspectRatio: `${WIDTH} / ${HEIGHT}` }}
       />
 

@@ -39,7 +39,7 @@ def parts(image, count):
 def save(image, name, size):
     image.thumbnail((size, size), Image.LANCZOS)
     OUT.mkdir(parents=True, exist_ok=True)
-    image.save(OUT / f"{name}.webp", quality=90)
+    image.save(OUT / f"{name}.webp", quality=92)
 
 
 def players(sheet, color):
@@ -51,23 +51,23 @@ def players(sheet, color):
         canvas = Image.new("RGBA", (side, side))
         crop = image.crop((x0, y0, x1, y1))
         canvas.paste(crop, ((side - crop.width) // 2, side - crop.height), crop)
-        save(canvas, f"{color}-{pose}", 256)
+        save(canvas, f"{color}-{pose}", 512)
 
 
 def props():
     image = key(SRC / "props-sheet.png")
-    for name, box, size in zip(["ball", "net", "scoreboard"], parts(image, 3), [128, 384, 512]):
+    for name, box, size in zip(["ball", "net", "scoreboard"], parts(image, 3), [256, 768, 640]):
         save(image.crop(box), name, size)
 
 
 def buttons():
     image = key(SRC / "buttons-sheet.png")
     for name, box in zip(["left", "right", "jump", "spike"], parts(image, 4)):
-        save(image.crop(box), f"btn-{name}", 192)
+        save(image.crop(box), f"btn-{name}", 256)
 
 
 if __name__ == "__main__":
-    Image.open(SRC / "court-bg.png").convert("RGB").resize((864, 608), Image.LANCZOS).save(OUT / "court.webp", quality=85)
+    Image.open(SRC / "court-bg.png").convert("RGB").save(OUT / "court.webp", quality=88)
     players("brown-sheet.png", "brown")
     players("white-sheet.png", "white")
     props()
