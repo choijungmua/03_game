@@ -254,6 +254,8 @@ const IDLE_ACTIONS: readonly { action: "scratch" | "yawn" | "doze"; ms: number }
   { action: "yawn", ms: 2000 },
   { action: "doze", ms: 3000 },
 ];
+/** 통나무에서 잠들었을 때 숨소리 간격 */
+const SNORE_EVERY_MS = 2800;
 const IDLE_CYCLE_MS = IDLE_ACTIONS.reduce((sum, { ms }) => sum + IDLE_WAIT_MS + ms, 0);
 /** 누른 곳까지 이만큼 가까워지면 멈춘다(제자리 떨림 방지) */
 const ARRIVE_PX = 6;
@@ -1740,6 +1742,8 @@ export function Lobby({ games }: { games: DoorGame[] }) {
     // 내 캐릭터 동작 프레임이 바뀌는 순간에만 효과음을 내려고 지난 프레임을 기억한다
     let soundPose: Pose = "stand";
     let soundIdle: IdleFrame | null = null;
+    /** 통나무에서 잠들면 이 시각마다 쿨쿨 숨소리 */
+    let nextSnoreAt = 0;
     let noticeTimer = 0;
 
     const showNotice = (text: string, ms = 1600) => {
@@ -2534,9 +2538,17 @@ export function Lobby({ games }: { games: DoorGame[] }) {
       if (idleFrame !== soundIdle) {
         // 하품은 시작할 때마다, 긁기는 동작마다 처음 한 번 (위아래로 번갈아 긁는 프레임마다 내면 시끄럽다)
         if (idleFrame === "yawn-1") playSound("yawn", settingsRef.current);
+        // 꾸벅(doze-1)할 때마다 쿠우… 푸~ 숨소리
+        else if (idleFrame === "doze-1") playSound("doze", settingsRef.current);
         else if (idleFrame === "scratch-2" && soundIdle === "scratch-1") playSound("scratch", settingsRef.current);
         soundIdle = idleFrame;
       }
+      if (me.sitting && now - me.sitSince >= SLEEP_AFTER_MS) {
+        if (now >= nextSnoreAt) {
+          playSound("doze", settingsRef.current);
+          nextSnoreAt = now + SNORE_EVERY_MS;
+        }
+      } else nextSnoreAt = 0;
 
       const follow = reducedMotion ? 1 : Math.min(1, dt / 120);
       camera.x += (me.x - camera.x) * follow;
