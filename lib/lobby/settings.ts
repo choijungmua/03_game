@@ -92,7 +92,8 @@ export type LobbySound =
   | "bathIn"
   | "bathOut"
   | "stepWater"
-  | "levelUp";
+  | "levelUp"
+  | "doze";
 
 /** public/sfx/voice/<이름>.wav — 사람 목소리를 카피바라 캐릭터 목소리로 가공한 대사 (scripts/audio로 다시 만든다) */
 export const VOICE_LINES = [
@@ -130,7 +131,34 @@ export type SoundLayer = {
     }
   | { kind: "noise"; filter: BiquadFilterType; q: number; color?: "white" | "pink" | "brown" }
   | { kind: "voice"; line: VoiceLine }
+  | {
+      /**
+       * 목소리처럼 들리는 울음. 성대(배음 많은 톱니파)를 입 모양(모음 공명 세 개)으로 걸러 낸다.
+       * 음 높이는 from → via… → to로 고르게 지나가고, 떨림은 소리가 난 뒤 천천히 붙는다(사람이 길게 낼 때처럼)
+       */
+      kind: "cry";
+      vowel: CryVowel;
+      /** 입 모양이 끝으로 갈수록 이 모음으로 바뀐다 ("아~암"처럼 다무는 하품) */
+      vowelTo?: CryVowel;
+      via?: readonly number[];
+      vibrato?: { rate: number; depth: number };
+      /** 숨소리 섞는 양 (0~1, 기본 0.18) */
+      breath?: number;
+    }
 );
+
+export type CryVowel = "a" | "e" | "i" | "u";
+/**
+ * 모음 공명(포먼트) Hz. 몸집이 작을수록 공명이 높아서 어른 목소리보다 높게 잡았다 (아이·작은 동물 목소리).
+ * 공명 폭을 넓게(Q 낮게) 둬야 휘파람·귀신 소리가 아니라 말랑한 목소리로 들린다
+ */
+const CRY_FORMANTS: Record<CryVowel, readonly [number, number, number]> = {
+  a: [1150, 1900, 3500],
+  e: [800, 2500, 3700],
+  i: [520, 3000, 4100],
+  u: [620, 1300, 3100],
+};
+const CRY_FORMANT_GAINS = [1, 0.55, 0.25] as const;
 
 type Bus = { input: GainNode; reverb: GainNode };
 type NoiseColor = "white" | "pink" | "brown";
@@ -192,7 +220,8 @@ function masterBus(ctx: AudioContext): Bus {
   const convolver = ctx.createConvolver();
   convolver.buffer = impulse;
   const reverb = ctx.createGain();
-  reverb.gain.value = 0.9;
+  // 울림이 크면 소리가 뭉개지고 목소리는 동굴 속처럼 으스스해진다. 방 안 정도로만
+  reverb.gain.value = 0.5;
   reverb.connect(convolver);
   convolver.connect(compressor);
   return { input, reverb };
@@ -322,12 +351,16 @@ function playLayer(
   pitch: number,
   volume: number,
 ) {
+  if (layer.kind === "cry") {
+    playCry(ctx, target, layer, start, pitch, volume);
+    return;
+  }
   const end = start + layer.ms / 1000;
   const gain = ctx.createGain();
   gain.gain.setValueAtTime(0.0001, start);
   gain.gain.exponentialRampToValueAtTime(layer.level * volume, start + (layer.attack ?? 8) / 1000);
   gain.gain.exponentialRampToValueAtTime(0.0001, end);
-  route(ctx, target, gain, layer, 0.14);
+  route(ctx, target, gain, layer, 0.08);
 
   const sweep = (param: AudioParam, multiplier = 1) => {
     param.setValueAtTime(layer.from * pitch * multiplier, start);
@@ -398,3 +431,92 @@ function playLayer(
   }
 }
 
+function playCry(
+  ctx: AudioContext,
+  target: Bus,
+  layer: Extract<SoundLayer, { kind: "cry" }>,
+  start: number,
+  pitch: number,
+  volume: number,
+) {
+  const seconds = layer.ms / 1000;
+  const end = start + seconds;
+  const level = layer.level * volume;
+  // 목소리는 뚝 끊기지 않는다: 빠르게 열고, 거의 그대로 끌다가, 끝 30%에서 잦아든다
+  const gain = ctx.createGain();
+  gain.gain.setValueAtTime(0.0001, start);
+  gain.gain.exponentialRampToValueAtTime(level, start + (layer.attack ?? 25) / 1000);
+  gain.gain.exponentialRampToValueAtTime(level * 0.8, start + seconds * 0.7);
+  gain.gain.exponentialRampToValueAtTime(0.0001, end);
+  // 마른 소리 위주: 울림이 많으면 귀신 소리처럼 들린다
+  route(ctx, target, gain, layer, 0.04);
+
+  const sources: AudioScheduledSourceNode[] = [];
+  const glottis = ctx.createOscillator();
+  glottis.type = "sawtooth";
+  const points = [layer.from, ...(layer.via ?? []), layer.to];
+  glottis.frequency.setValueAtTime(points[0] * pitch, start);
+  points.slice(1).forEach((hz, index) => {
+    glottis.frequency.exponentialRampToValueAtTime(hz * pitch, start + (seconds * (index + 1)) / (points.length - 1));
+  });
+  sources.push(glottis);
+
+  // 사람 목소리는 음이 늘 조금씩 흔들린다: 빠른 잔떨림 + 느린 흔들림 + (길게 낼 때) 뒤늦게 붙는 비브라토
+  const wobble = (rate: number, cents: number, delay = 0) => {
+    const lfo = ctx.createOscillator();
+    lfo.frequency.value = rate * (0.9 + Math.random() * 0.2);
+    const depth = ctx.createGain();
+    depth.gain.setValueAtTime(delay ? 0.0001 : cents, start);
+    if (delay) depth.gain.exponentialRampToValueAtTime(cents, start + delay);
+    lfo.connect(depth);
+    depth.connect(glottis.detune);
+    sources.push(lfo);
+  };
+  wobble(13, 7);
+  wobble(3.3, 12);
+  if (layer.vibrato) wobble(layer.vibrato.rate, layer.vibrato.depth, seconds * 0.35);
+
+  // 톱니파의 날카로운 윗배음을 눌러 버즈 소리를 없앤다
+  const soften = ctx.createBiquadFilter();
+  soften.type = "lowpass";
+  soften.frequency.value = 5200;
+  soften.Q.value = 0.5;
+  glottis.connect(soften);
+
+  const vowel = CRY_FORMANTS[layer.vowel];
+  const closing = CRY_FORMANTS[layer.vowelTo ?? layer.vowel];
+  vowel.forEach((hz, index) => {
+    const formant = ctx.createBiquadFilter();
+    formant.type = "bandpass";
+    formant.Q.value = 4;
+    formant.frequency.setValueAtTime(hz, start);
+    formant.frequency.exponentialRampToValueAtTime(closing[index], end);
+    const weight = ctx.createGain();
+    // 밴드패스는 소리를 많이 깎아서 다른 레이어와 비슷한 크기가 되게 키운다
+    weight.gain.value = CRY_FORMANT_GAINS[index] * 2.2;
+    soften.connect(formant);
+    formant.connect(weight);
+    weight.connect(gain);
+  });
+
+  // 숨소리: 같은 입 모양을 지나가는 바람
+  const breath = ctx.createBufferSource();
+  breath.buffer = noiseBuffer(ctx, "pink");
+  breath.loop = true;
+  const breathFilter = ctx.createBiquadFilter();
+  breathFilter.type = "bandpass";
+  breathFilter.Q.value = 1.2;
+  breathFilter.frequency.setValueAtTime(vowel[1], start);
+  breathFilter.frequency.exponentialRampToValueAtTime(closing[1], end);
+  const breathGain = ctx.createGain();
+  breathGain.gain.value = layer.breath ?? 0.18;
+  breath.connect(breathFilter);
+  breathFilter.connect(breathGain);
+  breathGain.connect(gain);
+  sources.push(breath);
+
+  for (const source of sources) {
+    source.start(start);
+    source.stop(end + 0.02);
+  }
+}
