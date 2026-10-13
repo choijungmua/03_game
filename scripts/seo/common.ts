@@ -7,6 +7,14 @@ import type { GameEntry, GameSeo } from "../../lib/games/types.ts";
 
 export const ROOT = process.cwd();
 
+export function shouldGenerateSeo(args: readonly string[], hasSeo: boolean, stale: boolean) {
+  const missingOnly = args.includes("--missing");
+  const staleOnly = args.includes("--stale");
+  return (!missingOnly && !staleOnly)
+    || (missingOnly && !hasSeo)
+    || (staleOnly && hasSeo && stale);
+}
+
 export type RegistryGame = Pick<GameEntry, "slug" | "title" | "description">;
 
 export interface KeywordStat {

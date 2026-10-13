@@ -24,6 +24,7 @@ import {
   type RegistryGame,
   resolveGames,
   ROOT,
+  shouldGenerateSeo,
   today,
 } from "./common.ts";
 
@@ -203,8 +204,8 @@ const registry = await readRegistry();
 const targets: RegistryGame[] = [];
 for (const game of await resolveGames(args)) {
   const seo = await loadSeo(game.slug);
-  if (args.includes("--missing") && seo) continue;
-  if (args.includes("--stale") && (!seo || !(await isStale(game.slug, seo)))) continue;
+  const stale = Boolean(seo && args.includes("--stale") && await isStale(game.slug, seo));
+  if (!shouldGenerateSeo(args, seo !== null, stale)) continue;
   targets.push(game);
 }
 

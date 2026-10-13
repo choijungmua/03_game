@@ -21,11 +21,13 @@ interface PageMetadataInput {
   description: string;
   path: string;
   keywords?: string[];
+  readonly imagePath?: string;
 }
 
 /** 페이지별 메타데이터. openGraph는 부모와 합쳐지지 않고 통째로 바뀌므로 사이트 공통값까지 매번 채운다 */
-export function pageMetadata({ title, description, path, keywords }: PageMetadataInput): Metadata {
+export function pageMetadata({ title, description, path, keywords, imagePath }: PageMetadataInput): Metadata {
   const fullTitle = siteTitle(title);
+  const imageMetadata = imagePath ? { images: [absoluteUrl(imagePath)] } : {};
   return {
     title,
     description,
@@ -38,7 +40,8 @@ export function pageMetadata({ title, description, path, keywords }: PageMetadat
       url: path,
       title: fullTitle,
       description,
+      ...imageMetadata,
     },
-    twitter: { card: "summary_large_image", title: fullTitle, description },
+    twitter: { card: "summary_large_image", title: fullTitle, description, ...imageMetadata },
   };
 }

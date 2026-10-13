@@ -83,6 +83,11 @@ export default function AboutPage() {
         <h2 className="text-base font-semibold text-foreground">함께 보기</h2>
         <ul className="space-y-1">
           <li>
+            <Link href="/guestbook" className="inline-flex min-h-11 items-center text-foreground underline underline-offset-2 hover:decoration-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring">
+              방명록
+            </Link>
+          </li>
+          <li>
             <Link href="/contact" className="inline-flex min-h-8 items-center text-foreground underline underline-offset-2">
               문의
             </Link>
