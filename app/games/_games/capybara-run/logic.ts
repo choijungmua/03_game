@@ -20,10 +20,10 @@ const JUMP_SPEED = 12.5;
 const DOUBLE_JUMP_SPEED = 11.5;
 /** 공중에서 ↓를 누르면 이만큼 더 빨리 떨어진다 */
 const FAST_FALL = 1.6;
-export const START_SPEED = 7;
+export const START_SPEED = 5;
 export const MAX_SPEED = 19;
-/** 프레임마다 빨라지는 양. 60초에 약 +9 */
-const ACCELERATION = 0.0025;
+/** 프레임마다 빨라지는 양. 60초에 약 +4.3, 3분 넘게 달려야 최고 속도 */
+const ACCELERATION = 0.0012;
 /** 부딪힌 뒤 깜빡이며 다시 안 맞는 프레임 */
 const HURT_FRAMES = 80;
 /** 버틴 1초마다 점수 */
@@ -207,7 +207,23 @@ interface Builder {
   speed: number;
 }
 
-/** 점프 한 번 궤적을 따라 놓는 코인 */
+/** 1단 점프 체공 프레임과 최고 높이 (발 기준) */
+const JUMP_FRAMES = (2 * JUMP_SPEED) / GRAVITY;
+const JUMP_PEAK = (JUMP_SPEED * JUMP_SPEED) / (2 * GRAVITY);
+
+/**
+ * 장애물 가운데(center)를 넘는 1단 점프의 실제 궤적에 놓는 코인. 몸통 가운데 높이에 놓아
+ * 가운데에 맞춰 한 번만 뛰면 다 먹고, 조금 이르거나 늦어도 몸통(34px)이 받아 준다
+ */
+export function jumpArc(center: number, speed: number, count: number): [number, number][] {
+  const span = JUMP_FRAMES * speed;
+  return Array.from({ length: count }, (_, index) => {
+    const t = (index + 0.5) / count;
+    return [center - span / 2 + span * t, GROUND - PLAYER_H / 2 - JUMP_PEAK * 4 * t * (1 - t)];
+  });
+}
+
+/** 점프 한 번 궤적을 따라 놓는 코인 (2단 점프·버섯처럼 1단 점프가 아닌 곳) */
 function arc(start: number, width: number, height: number, count: number): [number, number][] {
   return Array.from({ length: count }, (_, index) => {
     const t = (index + 0.5) / count;
@@ -229,13 +245,13 @@ const EASY: Chunk[] = [
   },
   (x, b) => {
     b.add("log", x, 32);
-    b.coins(arc(x - b.speed * 8, 32 + b.speed * 16, 80, 6));
+    b.coins(jumpArc(x + 16, b.speed, 6));
     return x + 32;
   },
   (x, b) => {
     const w = 60 + b.roll() * 50;
     b.add("fire", x, w);
-    b.coins(arc(x - b.speed * 8, w + b.speed * 16, 85, 7));
+    b.coins(jumpArc(x + w / 2, b.speed, 7));
     return x + w;
   },
   (x, b) => {
@@ -244,17 +260,18 @@ const EASY: Chunk[] = [
     return x + 54;
   },
   (x, b) => {
-    const w = 90 + b.roll() * 40 + b.speed * 4;
+    // 폭이 속도에 비례해 느릴 때도 1단 점프로 넉넉히 건넌다 (점프 길이는 속도×31)
+    const w = b.speed * (14 + b.roll() * 8);
     b.add("pit", x, w);
-    b.coins(arc(x - 10, w + 20, 90, 7));
+    b.coins(jumpArc(x + w / 2, b.speed, 7));
     return x + w;
   },
   (x, b) => {
     // 통나무 바로 뒤 불길: 점프 두 번 연속
     b.add("log", x, 32);
-    const fire = x + 32 + b.speed * 24;
+    const fire = x + 32 + b.speed * 36;
     b.add("fire", fire, 70);
-    b.coins([...arc(x - b.speed * 8, 32 + b.speed * 16, 80, 5), ...arc(fire - b.speed * 8, 70 + b.speed * 16, 85, 5)]);
+    b.coins([...jumpArc(x + 16, b.speed, 5), ...jumpArc(fire + 35, b.speed, 5)]);
     return fire + 70;
   },
 ];
@@ -291,11 +308,11 @@ const HARD: Chunk[] = [
   (x, b) => {
     // 불길 두 개 사이 가시덩굴: 점프 → 2단 점프 → 점프
     b.add("fire", x, 60);
-    const thorn = x + 60 + b.speed * 22;
+    const thorn = x + 60 + b.speed * 30;
     b.add("thorn", thorn, 140);
-    const fire = thorn + 140 + b.speed * 22;
+    const fire = thorn + 140 + b.speed * 30;
     b.add("fire", fire, 60);
-    b.coins([...arc(x - b.speed * 8, 60 + b.speed * 16, 85, 5), ...arc(thorn - b.speed * 6, 140 + b.speed * 14, 150, 7), ...arc(fire - b.speed * 8, 60 + b.speed * 16, 85, 5)]);
+    b.coins([...jumpArc(x + 30, b.speed, 5), ...arc(thorn - b.speed * 6, 140 + b.speed * 14, 150, 7), ...jumpArc(fire + 30, b.speed, 5)]);
     return fire + 60;
   },
   (x, b) => {
@@ -311,7 +328,7 @@ const HARD: Chunk[] = [
     b.add("branch", x, 54);
     const pit = x + 54 + b.speed * 14;
     b.add("pit", pit, 100 + b.speed * 3);
-    b.coins([...line(x - 30, GROUND - 10, 4, 24), ...arc(pit - 10, 120 + b.speed * 3, 90, 6)]);
+    b.coins([...line(x - 30, GROUND - 10, 4, 24), ...jumpArc(pit + 50 + b.speed * 1.5, b.speed, 6)]);
     return pit + 100 + b.speed * 3;
   },
 ];
@@ -330,13 +347,12 @@ const EXPERT: Chunk[] = [
     return x + first + gap + second + 40;
   },
   (x, b) => {
-    // 징검다리: 낭떠러지 - 작은 섬(불길) - 낭떠러지
+    // 징검다리: 낭떠러지 - 작은 섬 - 낭떠러지 (섬은 내려서 바로 다시 뛸 만큼)
     const pit = 90 + b.speed * 3;
-    const island = b.speed * 22;
+    const island = b.speed * 34;
     b.add("pit", x, pit);
-    b.add("fire", x + pit + island * 0.55, 40);
     b.add("pit", x + pit + island, pit);
-    b.coins([...arc(x - 10, pit + 20, 90, 5), ...arc(x + pit + island * 0.4, island * 0.6, 70, 3), ...arc(x + pit + island - 10, pit + 20, 90, 5)]);
+    b.coins([...jumpArc(x + pit / 2, b.speed, 5), ...jumpArc(x + pit + island + pit / 2, b.speed, 5)]);
     return x + pit * 2 + island;
   },
   (x, b) => {
@@ -407,7 +423,8 @@ function spawn(state: RunState): RunState {
   const lucky = roll();
   if (lucky < 0.07) builder.item("heart", end + state.speed * 10, GROUND - 90);
   else if (state.stage >= 2 && lucky < 0.15) builder.item("star", end + state.speed * 10, GROUND - 150);
-  const gap = state.stage === 3 ? 38 + roll() * 26 : state.stage === 2 ? 46 + roll() * 30 : 55 + roll() * 35;
+  // 장애물이 촘촘히 나오되, 조각 사이에 반응할 0.4~0.9초는 남긴다
+  const gap = state.stage === 3 ? 24 + roll() * 16 : state.stage === 2 ? 28 + roll() * 20 : 32 + roll() * 22;
   const nextX = end + state.speed * gap;
   return { ...state, hazards, coins, groups, nextId: id, nextX, seed };
 }

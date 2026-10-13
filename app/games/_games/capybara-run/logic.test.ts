@@ -8,6 +8,7 @@ import {
   createRun,
   GROUND,
   type Hazard,
+  jumpArc,
   MAX_SPEED,
   PLAYER_H,
   PLAYER_X,
@@ -59,8 +60,18 @@ describe("capybara run logic", () => {
   it("speeds up over time but never past the cap", () => {
     expect(run(course([]), 600).state.speed).toBeGreaterThan(START_SPEED);
     let state = course([]);
-    for (let frame = 0; frame < 5000; frame += 1) state = step({ ...state, hearts: 3 }, IDLE).state;
+    for (let frame = 0; frame < 15000; frame += 1) state = step({ ...state, hearts: 3 }, IDLE).state;
     expect(state.speed).toBe(MAX_SPEED);
+  });
+
+  it.each([START_SPEED, 12, MAX_SPEED])("one single jump over a log collects every coin on its arc (speed %d)", (speed) => {
+    const X = PLAYER_X + 400;
+    const coins = jumpArc(X + 16, speed, 6).map(([x, y]) => ({ x, y, group: 1 }));
+    const start = { ...course([{ kind: "log" as const, x: X, w: 32 }], coins), speed };
+    // 아치 시작(가운데 - 점프 길이/2)에 닿으면 한 번 뛴다
+    const { state } = run(start, 200, (s) => ({ jump: s.player.mode === "run" && s.distance + PLAYER_X >= X + 16 - 15.6 * s.speed && s.distance + PLAYER_X < X, down: false }));
+    expect(state.coinCount).toBe(6);
+    expect(state.hearts).toBe(3);
   });
 
   it("a single jump cannot reach the bar, a double jump grabs it and carries the capybara over the pit", () => {
@@ -197,7 +208,7 @@ describe("capybara run logic", () => {
       { kind: "spring" as const, x: PLAYER_X + 40, w: 36 },
       { kind: "pit" as const, x: PLAYER_X + 90, w: 7 * 30 },
     ];
-    const { state, events } = run(course(spring), 90);
+    const { state, events } = run({ ...course(spring), speed: 7 }, 90);
     expect(events.some((event) => event.type === "spring")).toBe(true);
     expect(state.hearts).toBe(3);
     expect(state.player.y).toBe(GROUND);
@@ -210,7 +221,7 @@ describe("capybara run logic", () => {
       { kind: "pit" as const, x: PLAYER_X + 150, w: 600 },
     ];
     let jumpedOff = false;
-    const { state } = run(course(bars), 110, (s, frame) => {
+    const { state } = run({ ...course(bars), speed: 7 }, 110, (s, frame) => {
       // 첫 철봉 끝 가까이에서 뛰어내린다
       const nearEnd = s.player.mode === "hang" && s.distance + PLAYER_X > PLAYER_X + 270;
       const jump = frame === 0 || frame === 12 || (nearEnd && !jumpedOff);

@@ -14,13 +14,13 @@ from scipy.signal import butter, resample_poly, sosfilt
 
 OUT_RATE = 24000
 
-# 대사별 음높이 배수: 신나는 말은 높게, 아쉬운 말은 낮게 (1.0 = 원래 목소리)
+# 대사별 음높이 배수: 성인 여자 목소리가 유지되게 살짝만 올린다 (1.0 = 원래 목소리, 1.15를 넘기면 아이 목소리가 된다)
 PITCH = {
-    "lose": 1.0, "yawn": 1.02, "ahh": 1.06, "careful": 1.08, "hurry": 1.12,
-    "yay": 1.3, "wow": 1.26, "woah": 1.26, "win": 1.24, "record": 1.22, "levelup": 1.22,
-    "hup": 1.28, "oops": 1.25, "ouch": 1.25, "yum": 1.3, "hi": 1.24, "gotit": 1.24,
+    "lose": 0.98, "yawn": 1.0, "ahh": 1.0, "careful": 1.02,
+    "yay": 1.1, "wow": 1.08, "woah": 1.08, "win": 1.08, "record": 1.06, "levelup": 1.06,
+    "hup": 1.1, "oops": 1.08, "ouch": 1.08, "yum": 1.1,
 }
-DEFAULT_PITCH = 1.18
+DEFAULT_PITCH = 1.04
 
 
 def trim(x: np.ndarray, rate: int) -> np.ndarray:
